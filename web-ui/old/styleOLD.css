@@ -1,0 +1,991 @@
+:root {
+  /* Board */
+  --bg: #01157f;
+  --fg: #f5f7ff;
+  --accent: #fee401;
+  --row-alt: #01157f;
+  --border: #335;
+  --clock-bg: #00245f;
+
+  /* Status */
+  --danger: #ff5252;
+
+  /* SBB-ish */
+  --sbb-red: #da291c;
+  --sbb-blue: #204b78;
+
+  /* Remark */
+  --remark: #fee401;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: #000;
+  color: var(--fg);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100%;
+}
+
+/* ------------------------------------------------------------------ */
+/* BOARD LAYOUT                                                       */
+/* ------------------------------------------------------------------ */
+
+.board {
+  background: var(--bg);
+  border-radius: 16px;
+  padding: 16px 20px 14px;
+  max-width: 900px;
+  width: 100%;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.55);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.mobile-fullscreen-wrapper {
+  width: 100%;
+  max-width: 960px;
+  padding: 16px;
+}
+
+/* Header = clock + title left / actions right (search + descendre) */
+
+.board-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  align-items: flex-start;
+}
+
+.header-left {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
+.header-right {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.clock-block {
+  width: 90px;
+  height: 90px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--clock-bg);
+  flex-shrink: 0;
+}
+
+.cff-clock {
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
+.title-block {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.title-block h1 {
+  font-size: 1.9rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.digital-clock {
+  margin-top: 2px;
+  font-size: 0.95rem;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  text-transform: none;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+  display: inline-block;
+  min-width: 22ch;
+  text-align: right;
+}
+
+/* ------------------------------------------------------------------ */
+/* FILTER TOGGLE "DESCENDRE"                                         */
+/* ------------------------------------------------------------------ */
+
+.filter-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  background: rgba(0, 0, 0, 0.18);
+  color: #ffffff;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease,
+    opacity 0.15s ease;
+}
+
+.filter-toggle .filter-indicator {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.35);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+}
+
+.filter-toggle.is-on {
+  background: #fee401;
+  color: #111;
+  border-color: transparent;
+}
+
+.filter-toggle.is-on .filter-indicator {
+  background: #12b33d;
+}
+
+.filter-toggle.is-hidden {
+  display: none;
+}
+
+/* ------------------------------------------------------------------ */
+/* INFO BUTTON (inline helper)                                       */
+/* ------------------------------------------------------------------ */
+
+.info-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  background: rgba(0, 0, 0, 0.18);
+  color: #ffffff;
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease,
+    transform 0.1s ease;
+}
+
+.info-button:hover {
+  background: rgba(0, 0, 0, 0.3);
+  border-color: rgba(255, 255, 255, 0.8);
+}
+
+.info-button:active {
+  transform: translateY(1px);
+}
+
+.info-button__icon {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1px solid currentColor;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+/* ------------------------------------------------------------------ */
+/* TABLE                                                              */
+/* ------------------------------------------------------------------ */
+
+.departures {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 4px;
+}
+
+.departures thead th {
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.departures thead th.col-min {
+  text-align: right;
+}
+
+.col-line {
+  width: 100px;
+}
+
+.col-time {
+  width: 80px;
+  text-align: left;
+}
+
+.col-platform {
+  width: 4rem;
+  text-align: left;
+}
+
+.col-min {
+  width: 70px;
+  text-align: right;
+}
+
+.col-remark {
+  width: 160px;
+  text-align: left;
+
+  /* avoid wrapping in the remark column */
+  white-space: nowrap;
+
+  /* align numeric content nicely (e.g., â€œ-1 minâ€, â€œRetard env. 3 minâ€) */
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+.departures tbody tr:nth-child(odd) {
+  background: var(--row-alt);
+}
+
+.departures tbody tr:nth-child(even) {
+  background: transparent;
+}
+
+.departures tbody td {
+  padding: 7px 8px;
+  font-size: 1rem;
+  vertical-align: middle;
+}
+
+/* ligne de sÃ©paration fine entre les lignes */
+#departures-body tr {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+#departures-body tr:last-child {
+  border-bottom: none;
+}
+
+/* ------------------------------------------------------------------ */
+/* PLATFORM / LINE FILTERS                                           */
+/* ------------------------------------------------------------------ */
+
+.platform-filter-container,
+.line-filter-container {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  margin-bottom: 2px;
+  font-size: 0.9rem;
+  position: relative;
+}
+
+.platform-filter-label,
+.line-filter-label {
+  font-weight: 600;
+}
+
+.platform-select,
+.line-select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  padding: 4px 26px 4px 10px;
+  font-size: 0.85rem;
+  background-color: rgba(0, 0, 0, 0.22);
+  color: var(--fg);
+  cursor: pointer;
+  outline: none;
+  position: relative;
+  padding-right: 32px;
+}
+
+/* Chevron for dropdowns */
+.platform-filter-container::after,
+.line-filter-container::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+  right: 22px;
+  top: 50%;
+  transform: translateY(-50%);
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 6px solid #ffffff;
+}
+
+.platform-select:focus,
+.line-select:focus {
+  box-shadow: 0 0 0 1px #ffffff, 0 0 0 3px rgba(255, 255, 255, 0.25);
+}
+
+/* ------------------------------------------------------------------ */
+/* CELLS                                                              */
+/* ------------------------------------------------------------------ */
+
+.col-line-cell {
+  text-align: left;
+}
+
+.col-time-cell {
+  width: 80px;
+}
+
+.col-min-cell {
+  width: 70px;
+  text-align: right;
+}
+
+/* time & min columns: align numbers nicely */
+.col-time-cell,
+.col-min-cell,
+.col-platform-cell {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+.col-platform-cell {
+  text-align: left;
+  opacity: 0.9;
+}
+
+/* Remarque (delays / info trafic) */
+.col-remark-cell {
+  font-weight: 600;
+  font-size: 0.9rem;
+
+  /* keep delay/early values readable and aligned */
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+.col-remark-cell.status-delay {
+  color: var(--remark); /* yellow for Retard */
+}
+
+.col-remark-cell.status-early {
+  color: #3ddc5a; /* green for En avance */
+}
+
+/* ------------------------------------------------------------------ */
+/* LINE BADGES                                                        */
+/* ------------------------------------------------------------------ */
+
+/* generic pill */
+.line-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 35px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-weight: 700;
+  color: #ffffff;
+  font-size: 0.85rem;
+  letter-spacing: 0.03em;
+}
+
+/* Train badge = rectangle SBB-ish */
+.line-train {
+  border-radius: 4px;
+  padding-inline: 10px;
+}
+
+/* ---------------- BUS LINES (TL palette approx) ------------------- */
+
+/* TL / Lausanne core lines 1â€“9 */
+.line-1 { background: #e1635c; }
+.line-2 { background: #f2b238; }
+.line-3 { background: #9d9ea4; }
+.line-4 { background: #3ca556; }
+.line-6 { background: #42a9e5; }
+.line-7 { background: #293c99; }
+.line-8 { background: #7c4fa8; }
+.line-9 { background: #b13286; }
+
+/* TL / Lausanne extended network (13+ etc.) */
+.line-13 { background: #4d8e89; }
+.line-16 { background: #cbb53c; }
+.line-17 { background: #e04335; }
+.line-18 { background: #5ab8f0; }
+.line-19 { background: #2856a5; }
+.line-20 { background: #e08a3c; }
+.line-21 { background: #b54d84; }
+.line-24 { background: #8cb673; }
+.line-25 { background: #486aa3; }
+.line-32 { background: #9a7ac5; }
+.line-33 { background: #567732; }
+.line-38 { background: #b2833f; }
+.line-41 { background: #9d2a82; }
+.line-45 { background: #2b7f8d; }
+.line-54 { background: #a86145; }
+.line-58 { background: #39a4c8; }
+.line-64 { background: #b53c3a; }
+
+/* TL / Lausanne extra lines */
+.line-31 { background: #2d7bbf; }
+.line-35 { background: #f39c3d; }
+.line-36 { background: #a8b4c6; }
+.line-42 { background: #4e7c3c; }
+.line-44 { background: #c76c3a; }
+.line-47 { background: #d75a4a; }
+.line-48 { background: #5f6fb3; }
+.line-49 { background: #8c6cc0; }
+.line-56 { background: #265a9a; }
+.line-60 { background: #4ba274; }
+.line-68 { background: #a43ba9; }
+.line-69 { background: #6b7ba9; }
+
+/* night line */
+.line-N1 {
+  background: #000000;
+  color: #ffd600;
+}
+
+/* ---------------- MBC (Morges) BUS LINES ------------------------- */
+.line-701 { background: #2e7d32; }
+.line-702 { background: #f39c3d; }
+.line-703 { background: #7b3f98; }
+.line-704 { background: #4caf50; }
+.line-705 { background: #6d4c41; }
+.line-706 { background: #f2c94c; color: #1b1818; }
+.line-724 { background: #a569bd; }
+.line-726 { background: #42a5f5; }
+.line-730 { background: #9e9e9e; }
+.line-735 { background: #e91e63; }
+.line-736 { background: #7e57c2; }
+.line-740 { background: #ef6c00; }
+.line-742 { background: #d84315; }
+.line-750 { background: #283593; }
+.line-752 { background: #f48fb1; color: #1b1818; }
+.line-760 { background: #009688; }
+
+/* ---------------- TPN (Nyon) BUS LINES --------------------------- */
+.line-803 { background: #e53935; }
+.line-804 { background: #43a047; }
+.line-805 { background: #fb8c00; }
+.line-810 { background: #ba68c8; }
+.line-811 { background: #8e24aa; }
+.line-813 { background: #f48fb1; color: #1b1818; }
+.line-814 { background: #1e3a8a; }
+.line-815 { background: #b71c1c; }
+.line-818 { background: #6d4c41; }
+.line-891 { background: #f2c94c; color: #1b1818; }
+
+/* ---------------- VMCV (Riviera) BUS LINES ---------------------- */
+
+.line-201 { background: #0069b4; }
+.line-202 { background: #f39c12; }
+.line-203 { background: #9b59b6; }
+.line-204 { background: #16a085; }
+.line-205 { background: #e74c3c; }
+.line-206 { background: #f1c40f; }
+.line-207 { background: #1abc9c; }
+.line-208 { background: #d35400; }
+.line-209 { background: #8e44ad; }
+.line-210 { background: #2980b9; }
+.line-211 { background: #27ae60; }
+.line-212 { background: #c0392b; }
+.line-213 { background: #7f8c8d; }
+.line-214 { background: #2c3e50; }
+.line-215 { background: #00a8e8; }
+
+.line-216 { background: #7cb342; }
+.line-217 { background: #ff7043; }
+.line-218 { background: #ab47bc; }
+
+.line-N290 { background: #000000; color: #f1c40f; }
+.line-N291 { background: #111111; color: #f1c40f; }
+
+/* Swiss PostAuto buses */
+.line-postbus {
+  background: #f6d13a;
+  color: #111111;
+  border-radius: 6px;
+  min-width: 48px;
+  padding: 3px 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.postbus-badge {
+  background: #f6cf42;
+  color: #111111;
+  border-radius: 4px;
+}
+
+/* ------------------------------------------------------------------ */
+/* GENEVA (TPG) LINE COLOURS                                         */
+/* ------------------------------------------------------------------ */
+
+.line-ge-12 { background: #f89c0c; }
+.line-ge-13 { background: #6ab656; }
+.line-ge-14 { background: #3d3597; }
+.line-ge-15 { background: #753f23; }
+.line-ge-16 { background: #e58cb5; }
+.line-ge-17 { background: #66ccf5; }
+.line-ge-18 { background: #9e3aa3; }
+
+.line-ge-2  { background: #c0e23d; color: #1b1818; }
+.line-ge-3  { background: #9f37a4; }
+.line-ge-6  { background: #189fe2; }
+.line-ge-7  { background: #62ba28; }
+.line-ge-10 { background: #047449; }
+.line-ge-19 { background: #9e6200; }
+
+.line-ge-1  { background: #3a3298; }
+.line-ge-5  { background: #66cdf5; }
+.line-ge-8  { background: #763d1e; }
+.line-ge-9  { background: #da122a; }
+.line-ge-11 { background: #7b6bbe; }
+.line-ge-20 { background: #62ba28; }
+.line-ge-21 { background: #680c40; }
+.line-ge-22 { background: #3a3298; }
+.line-ge-23 { background: #9f37a4; }
+.line-ge-25 { background: #955621; }
+.line-ge-28 { background: #8c70d2; }
+.line-ge-29 { background: #ed0080; color: #fee5b5; }
+.line-ge-31 { background: #2fb9ad; }
+.line-ge-32 { background: #80d2b9; color: #1b1818; }
+.line-ge-33 { background: #2fb9ad; }
+.line-ge-34 { background: #80d2b9; color: #1b1818; }
+.line-ge-37 { background: #237e86; }
+.line-ge-38 { background: #237e86; }
+.line-ge-39 { background: #2fb9ad; }
+.line-ge-40 { background: #80d2b9; color: #1b1818; }
+.line-ge-41 { background: #2fb9ad; }
+.line-ge-42 { background: #2fb9ad; }
+.line-ge-43 { background: #80d2b9; color: #1b1818; }
+.line-ge-44 { background: #2fb9ad; }
+.line-ge-45 { background: #80d2b9; color: #1b1818; }
+.line-ge-46 { background: #2fb9ad; }
+.line-ge-47 { background: #2fb9ad; }
+.line-ge-48 { background: #6cc5b4; color: #1e191a; }
+.line-ge-50 { background: #2fb9ad; }
+.line-ge-51 { background: #2fb9ad; }
+.line-ge-52 { background: #80d2b9; color: #1b1818; }
+.line-ge-53 { background: #80d2b9; color: #1b1818; }
+.line-ge-54 { background: #86d5bb; color: #1b1818; }
+.line-ge-55 { background: #237e86; }
+.line-ge-57 { background: #80d2b9; color: #1b1818; }
+.line-ge-58 { background: #2fb9ad; }
+.line-ge-59 { background: #237e86; }
+.line-ge-60 { background: #e236a4; }
+.line-ge-61 { background: #f68bcb; color: #1e191a; }
+.line-ge-64 { background: #f03da9; }
+.line-ge-66 { background: #f68bcb; color: #1e191a; }
+.line-ge-67 { background: #f68bcb; color: #1e191a; }
+.line-ge-68 { background: #f03da9; }
+.line-ge-69 { background: #f68bcb; color: #1e191a; }
+.line-ge-70 { background: #2fb9ad; }
+.line-ge-71 { background: #237e86; }
+.line-ge-72 { background: #80d2b9; color: #1b1818; }
+.line-ge-73 { background: #237e86; }
+.line-ge-74 { background: #80d2b9; color: #1b1818; }
+.line-ge-75 { background: #237e86; }
+.line-ge-78 { background: #237e86; }
+.line-ge-80 { background: #f68bcb; color: #1e191a; }
+.line-ge-82 { background: #e236a4; }
+.line-ge-83 { background: #e236a4; }
+.line-ge-91 { background: #00545b; }
+.line-ge-92 { background: #6cc5b4; color: #1e191a; }
+
+.line-ge-A     { background: #f3700c; }
+.line-ge-E     { background: #f3700c; }
+.line-ge-Eplus { background: #171714; }
+.line-ge-G     { background: #f89ad0; color: #1b1818; }
+.line-ge-Gplus { background: #1e191a; }
+.line-ge-L     { background: #f3700c; }
+.line-ge-M     { background: #81cd23; color: #111110; }
+.line-ge-N     { background: #41a2dd; }
+
+.line-ge-A1 { background: #7b6bbe; }
+.line-ge-A2 { background: #057449; }
+.line-ge-A3 { background: #21b140; }
+.line-ge-A4 { background: #189fe2; }
+.line-ge-A5 { background: #f03da9; }
+.line-ge-A6 { background: #e236a4; color: #da122a; }
+
+.line-ge-C1,
+.line-ge-C3,
+.line-ge-C4,
+.line-ge-C5,
+.line-ge-C6,
+.line-ge-C7,
+.line-ge-C8,
+.line-ge-C9 {
+  background: #ffffff;
+  color: #1e191a;
+}
+
+/* ------------------------------------------------------------------ */
+/* ZÃœRICH (VBZ) TRAM LINE COLOURS                                    */
+/* ------------------------------------------------------------------ */
+
+.line-zh-2  { background: #ed1c24; }
+.line-zh-3  { background: #00ac4f; }
+.line-zh-4  { background: #49479d; }
+.line-zh-5  { background: #956438; }
+.line-zh-6  { background: #d99f4f; }
+.line-zh-7  { background: #231f20; }
+.line-zh-8  { background: #a6ce39; color: #000000; }
+.line-zh-9  { background: #49479d; }
+.line-zh-10 { background: #ee3897; }
+.line-zh-11 { background: #00ac4f; }
+.line-zh-12 { background: #7ad0e2; color: #000000; }
+.line-zh-13 { background: #ffd503; color: #000000; }
+.line-zh-14 { background: #00aeef; }
+.line-zh-15 { background: #ed1c24; }
+.line-zh-17 { background: #9e1762; }
+.line-zh-20 { background: #9e1762; }
+
+/* ---------------- TRAIN LINES (SBB-like) -------------------------- */
+
+.train-longdistance {
+  background: var(--sbb-red);
+  color: #ffffff;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  font-style: italic;
+  border-radius: 4px;
+}
+
+.train-rexpress {
+  background: #ffffff;
+  color: var(--sbb-red);
+  border: 2px solid var(--sbb-red);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.train-regio {
+  background: #ffffff;
+  color: #000000;
+  border: 2px solid #000000;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.train-pe {
+  background: var(--sbb-red);
+  color: #ffffff;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  font-style: italic;
+  border-radius: 4px;
+}
+
+/* compact SBB rectangles */
+.line-badge.train-longdistance,
+.line-badge.train-rexpress,
+.line-badge.train-regio,
+.line-badge.train-pe {
+  min-width: 60px;
+  padding: 0 4px 1px;
+  font-size: 0.78rem;
+  border-radius: 4px;
+  justify-content: flex-start;
+}
+
+.line-badge.train-longdistance-solo {
+  justify-content: flex-start;
+  min-width: 60px;
+}
+
+/* ------------------------------------------------------------------ */
+/* ARRIVAL ICONS (0 min)                                             */
+/* ------------------------------------------------------------------ */
+
+.bus-arrival-icon,
+.train-arrival-icon {
+  width: 22px;
+  height: 22px;
+  vertical-align: middle;
+  fill: #ffffff;
+}
+
+.pulse-bus,
+.pulse-train {
+  animation: pulse-zoom 1s ease-in-out infinite;
+}
+
+@keyframes pulse-zoom {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.3); }
+}
+
+/* ------------------------------------------------------------------ */
+/* STATION SEARCH CARD                                                */
+/* ------------------------------------------------------------------ */
+
+.station-card {
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.18);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  position: relative;
+}
+
+.station-card-inline {
+  padding: 6px 10px 4px;
+}
+
+.station-card label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.station-input-wrapper {
+  display: flex;
+  gap: 8px;
+}
+
+.station-input-wrapper input {
+  flex: 1;
+  border-radius: 999px;
+  border: none;
+  padding: 6px 10px;
+  font-size: 0.9rem;
+  outline: none;
+}
+
+.station-input-wrapper button {
+  border-radius: 999px;
+  border: none;
+  padding: 6px 14px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  background: #fee401;
+  color: #111;
+  font-weight: 600;
+}
+
+.station-suggestions {
+  list-style: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 4px;
+  z-index: 20;
+  max-height: 190px;
+  padding: 0;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.35);
+  overflow-y: auto;
+}
+
+.station-suggestion-item {
+  padding: 4px 10px;
+  cursor: pointer;
+  background: #000d53;
+}
+
+.station-suggestion-item:hover {
+  background: #202a68;
+}
+
+/* Infos + Descendre stay compact on the same row */
+#info-btn,
+.filter-toggle {
+  flex: 0 0 auto;
+}
+
+/* Station search card goes on the next line and takes width */
+.header-right .station-card {
+  flex: 1 1 100%;
+  max-width: 420px;
+}
+
+/* ------------------------------------------------------------------ */
+/* ACCESSIBILITY FOCUS STATES                                         */
+/* ------------------------------------------------------------------ */
+
+.filter-toggle:focus-visible,
+.platform-select:focus-visible,
+.line-select:focus-visible,
+.station-input-wrapper input:focus-visible,
+.station-input-wrapper button:focus-visible {
+  outline: 2px solid #fee401;
+  outline-offset: 2px;
+}
+
+/* ------------------------------------------------------------------ */
+/* FOOTER                                                             */
+/* ------------------------------------------------------------------ */
+
+.board-footer {
+  display: flex;
+  justify-content: flex-end;
+  font-size: 0.55rem;
+  opacity: 0.7;
+  margin-top: 4px;
+}
+
+/* ------------------------------------------------------------------ */
+/* INFO PANEL OVERLAY                                                 */
+/* ------------------------------------------------------------------ */
+
+.info-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 40;
+}
+
+.info-overlay.is-visible {
+  display: flex;
+}
+
+.info-panel {
+  background: #021a8f;
+  color: var(--fg);
+  border-radius: 16px;
+  max-width: 640px;
+  width: 90%;
+  padding: 18px 20px 16px;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.65);
+  font-size: 0.9rem;
+}
+
+.info-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.info-panel-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.info-panel-close {
+  border: none;
+  background: transparent;
+  color: #ffffff;
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+
+.info-panel-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.info-panel-section-title {
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.info-panel-body p {
+  line-height: 1.4;
+}
+
+.info-panel-body ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+
+.info-panel-body li {
+  margin-bottom: 2px;
+}
+
+@media (max-width: 600px) {
+  .info-panel {
+    max-width: 95%;
+    width: 95%;
+    padding: 14px 14px 12px;
+    font-size: 0.85rem;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* RESPONSIVE                                                         */
+/* ------------------------------------------------------------------ */
+
+@media (max-width: 600px) {
+  .mobile-fullscreen-wrapper {
+    max-width: 100%;
+    padding: 0;
+  }
+
+  body {
+    background: var(--bg);
+    display: block;
+    min-height: 100vh;
+  }
+
+  .board {
+    border-radius: 0;
+    max-width: 100%;
+    width: 100%;
+    height: 100vh;
+    margin: 0;
+    box-shadow: none;
+    padding: 8px 10px 10px; /* tighter inner padding on mobile */
+  }
+
+  .board-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .header-right {
+    align-items: center;
+  }
+
+  .title-block h1 {
+    font-size: 1.5rem;
+  }
+
+  .digital-clock {
+    font-size: 0.85rem;
+  }
+
+  .departures tbody td {
+    font-size: 0.9rem;
+  }
+
+  .platform-filter-container,
+  .line-filter-container {
+    display: inline-flex;
+    flex-wrap: nowrap;
+    margin-top: 6px;
+    margin-right: 8px;
+  }
+}

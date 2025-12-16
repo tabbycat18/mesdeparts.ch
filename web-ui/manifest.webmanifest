@@ -1,0 +1,16 @@
+{
+  "name": "mesdeparts.ch",
+  "short_name": "Mes Départs",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#01157f",
+  "icons": [
+    {
+      "src": "bus-icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
