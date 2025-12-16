@@ -71,7 +71,8 @@ function updateUrlWithStation(name, id) {
   } else {
     params.delete("stationId");
   }
-  const newUrl = `${window.location.pathname}?${params.toString()}`;
+  const query = params.toString();
+  const newUrl = query ? `${window.location.pathname}?${query}` : window.location.pathname;
   window.history.replaceState({}, "", newUrl);
 }
 

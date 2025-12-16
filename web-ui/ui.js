@@ -933,15 +933,15 @@ export function setupStationSearch(onStationPicked) {
   let favoritesOnly = !!appState.favoritesOnly;
 
   function renderFavoriteChipsList() {
-  if (!favoritesChipList) return;
+    if (!favoritesChipList) return;
 
-  const favs = loadFavorites();
-  favoritesChipList.innerHTML = "";
-  favoritesChipList.classList.toggle("favorites-manage-mode", favoritesManageMode);
+    const favs = loadFavorites();
+    favoritesChipList.innerHTML = "";
+    favoritesChipList.classList.toggle("favorites-manage-mode", favoritesManageMode);
 
-  if (favoritesEmpty) {
-    favoritesEmpty.classList.toggle("is-hidden", favs.length > 0);
-  }
+    if (favoritesEmpty) {
+      favoritesEmpty.classList.toggle("is-hidden", favs.length > 0);
+    }
 
     if (!favs.length) {
       updateFavoritesDeleteState();
@@ -957,44 +957,44 @@ export function setupStationSearch(onStationPicked) {
       const content = document.createElement("span");
       content.className = "favorite-chip__content";
 
-    const nameSpan = document.createElement("span");
-    nameSpan.className = "favorite-chip__name";
-    nameSpan.textContent = f.name;
-    nameSpan.addEventListener("click", (e) => {
-      e.preventDefault();
-      if (favoritesManageMode) return;
-      setStationSelection(f.name, f.id, onStationPicked);
-      closeFavoritesPopover();
-    });
+      const nameSpan = document.createElement("span");
+      nameSpan.className = "favorite-chip__name";
+      nameSpan.textContent = f.name;
+      nameSpan.addEventListener("click", (e) => {
+        e.preventDefault();
+        if (favoritesManageMode) return;
+        setStationSelection(f.name, f.id, onStationPicked);
+        closeFavoritesPopover();
+      });
 
-    chip.addEventListener("click", (e) => {
-      if (favoritesManageMode) return;
-      e.preventDefault();
-      setStationSelection(f.name, f.id, onStationPicked);
-      closeFavoritesPopover();
-    });
+      chip.addEventListener("click", (e) => {
+        if (favoritesManageMode) return;
+        e.preventDefault();
+        setStationSelection(f.name, f.id, onStationPicked);
+        closeFavoritesPopover();
+      });
 
-    const select = document.createElement("span");
-    select.className = "favorite-chip__select";
-    select.style.display = favoritesManageMode ? "inline-flex" : "none";
+      const select = document.createElement("span");
+      select.className = "favorite-chip__select";
+      select.style.display = favoritesManageMode ? "inline-flex" : "none";
 
-    const isSel = favoritesManageMode && selectedFavorites.has(f.id);
-    if (isSel) {
-      chip.classList.add("is-active");
-      select.textContent = "✕";
-    } else {
-      select.textContent = " ";
-    }
-
-    select.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      if (!favoritesManageMode) return;
-      if (selectedFavorites.has(f.id)) {
-        selectedFavorites.delete(f.id);
-        chip.classList.remove("is-active");
-        select.textContent = " ";
+      const isSel = favoritesManageMode && selectedFavorites.has(f.id);
+      if (isSel) {
+        chip.classList.add("is-active");
+        select.textContent = "✕";
       } else {
+        select.textContent = " ";
+      }
+
+      select.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!favoritesManageMode) return;
+        if (selectedFavorites.has(f.id)) {
+          selectedFavorites.delete(f.id);
+          chip.classList.remove("is-active");
+          select.textContent = " ";
+        } else {
           selectedFavorites.add(f.id);
           chip.classList.add("is-active");
           select.textContent = "✕";
@@ -1673,44 +1673,44 @@ export function renderDepartures(rows) {
     tdTime.className = "col-time-cell";
     tdTime.textContent = dep.timeStr || "";
 
-  // Platform
-  const tdPlat = document.createElement("td");
-  tdPlat.className = "col-platform-cell";
-  const platformVal = dep.platform || "";
-  const prevPlatform = dep.previousPlatform || null;
+    // Platform
+    const tdPlat = document.createElement("td");
+    tdPlat.className = "col-platform-cell";
+    const platformVal = dep.platform || "";
+    const prevPlatform = dep.previousPlatform || null;
 
-  if (dep.platformChanged && platformVal) {
-    const wrap = document.createElement("div");
-    wrap.className = "platform-change-wrap";
+    if (dep.platformChanged && platformVal) {
+      const wrap = document.createElement("div");
+      wrap.className = "platform-change-wrap";
 
-    if (prevPlatform) {
-      const prevBadge = document.createElement("span");
-      prevBadge.className = "platform-badge platform-badge--prev";
-      prevBadge.textContent = prevPlatform;
-      wrap.appendChild(prevBadge);
+      if (prevPlatform) {
+        const prevBadge = document.createElement("span");
+        prevBadge.className = "platform-badge platform-badge--prev";
+        prevBadge.textContent = prevPlatform;
+        wrap.appendChild(prevBadge);
+      }
+
+      const curBadge = document.createElement("span");
+      curBadge.className = "platform-badge platform-badge--current";
+      curBadge.textContent = platformVal;
+
+      const arrow = document.createElement("span");
+      arrow.className = "platform-change-arrow";
+      arrow.textContent = "⇄";
+      curBadge.appendChild(arrow);
+
+      wrap.appendChild(curBadge);
+
+      tdPlat.appendChild(wrap);
+      tdPlat.classList.add("platform-changed");
+    } else if (platformVal) {
+      const badge = document.createElement("span");
+      badge.className = "platform-badge";
+      badge.textContent = platformVal;
+      tdPlat.appendChild(badge);
+    } else {
+      tdPlat.textContent = "";
     }
-
-    const curBadge = document.createElement("span");
-    curBadge.className = "platform-badge platform-badge--current";
-    curBadge.textContent = platformVal;
-
-    const arrow = document.createElement("span");
-    arrow.className = "platform-change-arrow";
-    arrow.textContent = "⇄";
-    curBadge.appendChild(arrow);
-
-    wrap.appendChild(curBadge);
-
-    tdPlat.appendChild(wrap);
-    tdPlat.classList.add("platform-changed");
-  } else if (platformVal) {
-    const badge = document.createElement("span");
-    badge.className = "platform-badge";
-    badge.textContent = platformVal;
-    tdPlat.appendChild(badge);
-  } else {
-    tdPlat.textContent = "";
-  }
 
     // Min
     const tdMin = document.createElement("td");

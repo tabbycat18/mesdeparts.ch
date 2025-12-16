@@ -469,6 +469,7 @@ export function t(key) {
 export function applyStaticTranslations() {
   const pairs = [
     ["#station-subtitle", "nextDepartures"],
+    ["#departures-caption", "nextDepartures"],
     ["label[for='station-input']", "searchStop"],
     [".line-chips-label", "servedByLines"],
     ["th.col-line", "columnLine"],
