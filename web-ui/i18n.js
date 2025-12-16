@@ -362,6 +362,12 @@ const TRANSLATIONS = {
     it: "Fine del servizio per questa fermata oggi",
     en: "Service ended for this stop today",
   },
+  loadingDepartures: {
+    fr: "Actualisation…",
+    de: "Wird aktualisiert…",
+    it: "Aggiornamento…",
+    en: "Refreshing…",
+  },
 };
 
 let currentLang = "fr";

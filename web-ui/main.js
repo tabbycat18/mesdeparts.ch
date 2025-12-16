@@ -25,6 +25,7 @@ import {
   setupStationSearch,
   updateStationTitle,
   renderDepartures,
+  setBoardLoadingState,
 } from "./ui.js";
 
 import { setupInfoButton } from "./infoBTN.js";
@@ -120,6 +121,7 @@ async function refreshDepartures({ retried } = {}) {
   if (tbody) {
     tbody.setAttribute("aria-busy", "true");
   }
+  setBoardLoadingState(true);
 
   try {
     if (!appState.stationId) {
@@ -174,6 +176,7 @@ async function refreshDepartures({ retried } = {}) {
     if (tbody) {
       tbody.removeAttribute("aria-busy");
     }
+    setBoardLoadingState(false);
   }
 }
 

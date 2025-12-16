@@ -236,6 +236,19 @@ export function updateStationTitle() {
   if (input && !input.value) input.value = appState.STATION || "";
 }
 
+export function setBoardLoadingState(isLoading) {
+  const hint = document.getElementById("loading-hint");
+  if (!hint) return;
+
+  if (isLoading) {
+    hint.textContent = t("loadingDepartures");
+    hint.classList.add("is-visible");
+  } else {
+    hint.textContent = "";
+    hint.classList.remove("is-visible");
+  }
+}
+
 // ---------------- VIEW MODE BUTTON ----------------
 
 function viewModeLabel(mode) {

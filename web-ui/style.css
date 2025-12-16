@@ -1244,6 +1244,18 @@ body {
   background: #202a68;
 }
 
+.loading-hint {
+  display: none;
+  margin-top: 6px;
+  font-size: 0.82rem;
+  color: var(--accent);
+  font-style: italic;
+}
+
+.loading-hint.is-visible {
+  display: block;
+}
+
 /* Quick controls: view segmented + filters + favorites */
 .quick-controls {
   display: flex;
