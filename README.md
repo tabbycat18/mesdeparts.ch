@@ -1,71 +1,70 @@
 # mesdeparts.ch
 
-Tableau de départs des transports publics suisses (bus, tram, métro et trains), gratuit et accessible directement depuis un navigateur.
+Departure board for Swiss public transport (bus, tram, metro, trains), free and usable straight from a browser.
 
-Le projet est né d’une frustration personnelle face aux solutions matérielles payantes et fermées.  
-Il s’inspire :
-- de l’horloge CFF animée popularisée par la communauté (voir projet et discussion Reddit ci-dessous),
-- et d’appareils physiques comme Tramli, tout en faisant un choix volontairement différent : **aucun matériel propriétaire, aucun paiement, aucune inscription**.
+This project came from personal frustration with paid, closed hardware solutions. It is inspired by:
+- the community-made animated SBB clock (see project and Reddit thread below),
+- hardware devices like Tramli, while deliberately choosing a different path: **no proprietary hardware, no payment, no signup**.
 
-L’objectif est de proposer une alternative simple et ouverte :
-- choisir n’importe quel arrêt ou gare en Suisse,
-- afficher les départs en continu,
-- et pouvoir l’utiliser sur un ordinateur, une tablette ou un petit écran, sans contrainte matérielle spécifique.
+The goal is a simple, open alternative:
+- pick any stop or station in Switzerland,
+- show departures continuously,
+- run it on a laptop, tablet, or small screen without special hardware.
 
-L’interface s’inspire des panneaux officiels :
-- style “panneau bus” pour les bus/trams,
-- style “panneau train” pour les trains,
-avec un affichage lisible à distance.
+The UI borrows from official boards:
+- “bus board” look for buses/trams,
+- “train board” look for trains,
+kept readable from a distance.
 
-Données en temps réel via l’API transport.opendata.ch.  
-Projet personnel, indépendant, sans affiliation avec les entreprises de transport public (p. ex. CFF/SBB/FFS).
+Real-time data comes from transport.opendata.ch.  
+Personal project, independent, with no affiliation to transport operators (e.g. SBB/CFF/FFS).
 
 ## Inspirations
 
-- Horloge CFF animée (projet communautaire)  
+- Animated SBB clock (community project)  
   https://cff-clock.slyc.ch/
 
-- Discussion Reddit à l’origine de l’inspiration  
+- Reddit thread that sparked the idea  
   https://www.reddit.com/r/Switzerland/comments/1fxt48a/want_a_sbb_clock_on_your_computer/
 
-- Discussion Reddit sur l’expérience avec Tramli.ch  
+- Reddit discussion about Tramli.ch  
   https://www.reddit.com/r/Switzerland/comments/1phax17/anyone_has_experience_with_tramlich/
 
-- Tramli (appareil physique d’affichage des départs)  
+- Tramli (physical departures device)  
   https://tramli.ch/en
 
-## Fonctions principales
-- Recherche d'arrêt avec suggestions et raccourcis favoris (stockés dans `localStorage`, pas de compte).
-- Deux vues bus: par ligne (équilibrage par destination) ou chronologique; les trains sont toujours listés chronologiquement.
-- Filtres rapides par quai/ligne + mode “Mes favoris” pour restreindre l'affichage.
-- Horloge digitale + horloge CFF intégrée; rafraîchissement auto du board toutes les 10 s (~3 h d'horizon).
-- Interface multilingue (FR/DE/IT/EN) et détection basique du réseau (TL/TPG/VBZ/TPN/MBC/VMCV) pour les couleurs de lignes.
-- Liens profonds: `?stationName=...&stationId=...` pour ouvrir directement un arrêt.
+## Main features
+- Stop search with suggestions and favorite shortcuts (stored in `localStorage`, no account).
+- Two bus views: by line (balanced by destination) or chronological; trains are always chronological.
+- Quick filters by platform/line + “My favorites” mode to narrow the list.
+- Digital clock + embedded SBB clock; auto-refresh every 10 s (~3 h horizon).
+- Multilingual UI (FR/DE/IT/EN) and basic network detection (TL/TPG/VBZ/TPN/MBC/VMCV) for line colors.
+- Deep links: `?stationName=...&stationId=...` to open a stop directly.
 
-## Démarrer en local
-1) Prérequis: navigateur récent; aucun build ni dépendance. Un simple serveur HTTP suffit (évite les restrictions des modules ES en `file://`).
-2) Lancer un serveur statique depuis `web-ui/`:
+## Run locally
+1) Prerequisite: a recent browser; no build or deps needed. A simple HTTP server avoids ES module issues on `file://`.
+2) Start a static server from `web-ui/`:
 ```sh
 cd web-ui
 python3 -m http.server 8000
 ```
-3) Ouvrir http://localhost:8000 et rechercher un arrêt (ex: "Lausanne, motte").
+3) Open http://localhost:8000 and search for a stop (e.g. "Lausanne, motte").
 
-## Déploiement
-- Dossier `web-ui/` entièrement statique: à déposer tel quel sur Netlify/Vercel/S3/nginx/Apache.
-- `main.js` est chargé comme module ES depuis `index.html`; conserver la structure de fichiers relative.
+## Deployment
+- The `web-ui/` folder is fully static: drop it on Netlify/Vercel/S3/nginx/Apache as-is.
+- `main.js` is loaded as an ES module from `index.html`; keep the relative file structure intact.
 
-## Structure rapide
-- `web-ui/index.html` : markup du tableau, popovers favoris/filtres, horloge.
-- `web-ui/main.js` : bootstrap de l'app, boucle de rafraîchissement, persistance station/URL.
-- `web-ui/logic.js` : appels transport.opendata.ch + normalisation (retards, quais, modes, filtres).
-- `web-ui/ui.js` : rendu du board, recherche d'arrêt, gestion des favoris et filtres.
-- `web-ui/state.js` : configuration globale (horizons, vues, seuils) et état partagé.
-- `web-ui/i18n.js` : mini-lib de traduction (FR/DE/IT/EN) + switch langue.
-- `web-ui/favourites.js` : stockage local des favoris (`md_favorites_v1`).
-- `web-ui/style.css` : styles du board (modes, couleurs réseaux, popovers).
+## Quick structure
+- `web-ui/index.html`: board markup, favorites/filters popovers, clocks.
+- `web-ui/main.js`: app bootstrap, refresh loop, station/URL persistence.
+- `web-ui/logic.js`: transport.opendata.ch calls + normalization (delays, platforms, modes, filters).
+- `web-ui/ui.js`: board rendering, stop search, favorites and filters handling.
+- `web-ui/state.js`: global config (horizons, views, thresholds) and shared state.
+- `web-ui/i18n.js`: tiny translation helper (FR/DE/IT/EN) + language switch.
+- `web-ui/favourites.js`: local storage for favorites (`md_favorites_v1`).
+- `web-ui/style.css`: board styling (modes, network colors, popovers).
 
-## Notes techniques
-- Station par défaut: `Lausanne, motte`; le nom et l'id peuvent être forcés via l'URL ou `localStorage`.
-- Rafraîchissement automatique toutes les 10 s; les données peuvent varier selon la couverture de l'API (horizon de 3 h max).
-- Pas d'analytics ni backend; toutes les données utilisateur (langue, favoris) restent dans le navigateur.
+## Technical notes
+- Default station: `Lausanne, motte`; name and id can be forced via URL or `localStorage`.
+- Auto-refresh every 10 s; data depends on API coverage (max 3 h horizon).
+- No analytics or backend; all user data (language, favorites) stays in the browser.
