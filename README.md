@@ -1,6 +1,6 @@
 # mesdeparts.ch
 
-Tableau de départs des transports publics suisses (bus, tram, métro, trains) affiché façon board CFF. Données en temps réel via l'API transport.opendata.ch.
+Tableau de départs des transports publics suisses (bus, tram, métro, trains). L’affichage reprend le principe des panneaux de bus pour les arrêts de bus et celui des panneaux de train pour les trains. La présentation varie selon le mode choisis. Données en temps réel via l'API transport.opendata.ch.
 
 ## Fonctions principales
 - Recherche d'arrêt avec suggestions et raccourcis favoris (stockés dans `localStorage`, pas de compte).
