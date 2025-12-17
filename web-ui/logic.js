@@ -19,6 +19,13 @@ import {
 } from "./state.js";
 import { t } from "./i18n.js";
 
+// API base can be overridden by setting window.__MD_API_BASE__ before scripts load
+const API_BASE =
+  (typeof window !== "undefined" && window.__MD_API_BASE__) ||
+  "https://transport.opendata.ch/v1";
+
+const apiUrl = (pathAndQuery) => `${API_BASE}${pathAndQuery}`;
+
 function isMobileViewport() {
   try {
     return typeof window !== "undefined" &&
@@ -189,7 +196,7 @@ function lineLooksLike(dep, journey) {
 // --------------------------------------------------------
 
 export async function resolveStationId() {
-  const url = `https://transport.opendata.ch/v1/locations?query=${encodeURIComponent(appState.STATION)}`;
+  const url = apiUrl(`/locations?query=${encodeURIComponent(appState.STATION)}`);
   const data = await fetchJson(url);
 
   const list = data.stations || data.stops || data.locations || [];
@@ -200,7 +207,7 @@ export async function resolveStationId() {
 }
 
 export async function fetchStationSuggestions(query) {
-  const url = `https://transport.opendata.ch/v1/locations?query=${encodeURIComponent(query)}&limit=7`;
+  const url = apiUrl(`/locations?query=${encodeURIComponent(query)}&limit=7`);
   const data = await fetchJson(url);
 
   const list = data.stations || data.stops || data.locations || [];
@@ -252,7 +259,7 @@ export async function fetchDeparturesGrouped(viewMode = VIEW_MODE_LINE) {
     await resolveStationId();
   }
 
-  const url = `https://transport.opendata.ch/v1/stationboard?station=${encodeURIComponent(appState.stationId)}&limit=300`;
+  const url = apiUrl(`/stationboard?station=${encodeURIComponent(appState.stationId)}&limit=300`);
   const data = await fetchJson(url);
 
   const now = new Date();
@@ -693,7 +700,7 @@ export async function fetchJourneyDetails(dep) {
   const time = dt.toTimeString().slice(0, 5);
 
   const url =
-    `https://transport.opendata.ch/v1/connections` +
+    apiUrl("/connections") +
     `?from=${encodeURIComponent(from)}` +
     `&to=${encodeURIComponent(to)}` +
     `&date=${encodeURIComponent(date)}` +
