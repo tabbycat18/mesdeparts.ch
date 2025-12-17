@@ -34,9 +34,15 @@ export default {
       cf: { cacheEverything: true },
     });
 
+    // Do not cache error responses; just pass them through
+    if (!res.ok) {
+      return addCors(res);
+    }
+
     const ttl = ttlFor(url.pathname);
     const proxyRes = new Response(res.body, res);
-    proxyRes.headers.set("Cache-Control", `public, s-maxage=${ttl}`);
+    // Force short edge cache and minimal browser cache to avoid sticky errors
+    proxyRes.headers.set("Cache-Control", `public, s-maxage=${ttl}, max-age=0`);
     proxyRes.headers.set("Access-Control-Allow-Origin", "*");
 
     ctx.waitUntil(cache.put(cacheKey, proxyRes.clone()));
