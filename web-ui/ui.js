@@ -542,6 +542,41 @@ function updateFilterButtonState() {
   }
 }
 
+function applyLineBadgeFilter(lineId) {
+  const cleanId = String(lineId || "").trim();
+  if (!cleanId) return;
+
+  const allowed = (appState.lineOptions || [])
+    .map((v) => String(v || "").trim())
+    .filter(Boolean)
+    .sort((a, b) => {
+    const na = parseInt(String(a).replace(/\D/g, ""), 10) || 0;
+    const nb = parseInt(String(b).replace(/\D/g, ""), 10) || 0;
+    if (na !== nb) return na - nb;
+    return String(a).localeCompare(String(b), "fr-CH");
+  });
+  if (!allowed.includes(cleanId)) return;
+
+  const current = normalizeFilterArray(appState.lineFilter, allowed);
+  const isSameSolo = current.length === 1 && current[0] === cleanId;
+  const next = isSameSolo ? [] : [cleanId];
+
+  appState.lineFilter = next.length ? next : null;
+  filterPending.lines = normalizeFilterArray(appState.lineFilter, allowed);
+
+  applyFiltersToLegacySelects();
+  updateFilterButtonState();
+
+  if (filterSheetOpen) {
+    syncPendingFromState({ preserveSelections: true });
+    renderFilterSheet();
+  }
+
+  renderLineChips(allowed);
+
+  if (typeof filtersOnChange === "function") filtersOnChange();
+}
+
 function syncPendingFromState({ preserveSelections = false } = {}) {
   const platforms = (appState.platformOptions || []).slice().sort((a, b) => a.localeCompare(b, "fr-CH"));
   const lines = (appState.lineOptions || []).slice().sort((a, b) => {
@@ -1248,10 +1283,15 @@ function renderLineChips(lines) {
   const container = document.getElementById("line-chips-container");
   if (!wrap || !container) return;
 
-  wrap.style.display = lines.length ? "flex" : "none";
+  const normalizedLines = (lines || [])
+    .map((v) => String(v || "").trim())
+    .filter(Boolean);
+  const activeLines = new Set(normalizeFilterArray(appState.lineFilter, normalizedLines));
+
+  wrap.style.display = normalizedLines.length ? "flex" : "none";
 
   container.innerHTML = "";
-  for (const ln of lines) {
+  for (const ln of normalizedLines) {
     const badge = document.createElement("span");
     const lineNetwork =
       (appState.lineNetworks && appState.lineNetworks[ln]) ||
@@ -1259,6 +1299,24 @@ function renderLineChips(lines) {
       appState.currentNetwork;
     badge.className = busBadgeClass({ simpleLineId: ln, network: lineNetwork });
     badge.textContent = ln;
+    badge.classList.add("is-clickable");
+    badge.setAttribute("role", "button");
+    badge.setAttribute("tabindex", "0");
+    badge.setAttribute("aria-pressed", activeLines.has(ln) ? "true" : "false");
+    badge.classList.toggle("is-active-filter", activeLines.has(ln));
+
+    const activate = (e) => {
+      e.preventDefault();
+      applyLineBadgeFilter(ln);
+    };
+
+    badge.addEventListener("click", activate);
+    badge.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        activate(e);
+      }
+    });
+
     container.appendChild(badge);
   }
 }
@@ -1607,6 +1665,13 @@ export function renderDepartures(rows) {
     return;
   }
 
+  const lineOptions = (appState.lineOptions || [])
+    .map((v) => String(v || "").trim())
+    .filter(Boolean);
+  const activeLineFilters = new Set(
+    normalizeFilterArray(appState.lineFilter, lineOptions)
+  );
+
   let prevLineKey = null;
 
   for (const dep of rows || []) {
@@ -1672,6 +1737,26 @@ export function renderDepartures(rows) {
       } else {
         badge.className = busBadgeClass(dep);
         badge.textContent = lineId || "";
+      }
+
+      if (lineId) {
+        badge.classList.add("is-clickable");
+        badge.setAttribute("role", "button");
+        badge.tabIndex = 0;
+        badge.title = `${t("filterLines")}: ${lineId}`;
+        badge.classList.toggle("is-active-filter", activeLineFilters.has(lineId));
+        badge.setAttribute("aria-pressed", activeLineFilters.has(lineId) ? "true" : "false");
+        badge.addEventListener("click", (e) => {
+          e.stopPropagation();
+          applyLineBadgeFilter(lineId);
+        });
+        badge.addEventListener("keydown", (e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            e.stopPropagation();
+            applyLineBadgeFilter(lineId);
+          }
+        });
       }
     }
     tdLine.appendChild(badge);

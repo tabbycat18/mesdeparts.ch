@@ -671,6 +671,19 @@ body {
   overflow: visible; /* allow the night stripe to extend behind */
 }
 
+.line-badge.is-clickable {
+  cursor: pointer;
+}
+
+.line-badge.is-clickable:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: 2px;
+}
+
+.line-badge.is-active-filter {
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.35);
+}
+
 /* fallback: mimic onboard LED signs when no specific line color exists */
 .line-badge[class*="line-generic-"],
 .line-badge.line-generic {
