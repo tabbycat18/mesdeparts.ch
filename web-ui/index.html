@@ -48,45 +48,47 @@
             <!-- Carte de sélection d'arrêt, plus discrète -->
             <section class="station-card station-card-inline">
               <label for="station-input">Recherche d'arrêt</label>
-              <div class="station-input-wrapper">
-                <input
-                  id="station-input"
-                  type="text"
-                  placeholder="Lausanne, motte"
-                  autocomplete="off"
-                />
-                <button
-                  id="station-fav-toggle"
-                  class="fav-toggle"
-                  type="button"
-                  aria-label="Ajouter aux favoris"
-                  title="Ajouter aux favoris"
-                >
-                  ☆
-                </button>
-                <div class="language-switcher language-switcher--inline">
-                  <label class="sr-only" for="language-select">Langue</label>
-                  <select
-                    id="language-select"
-                    class="language-select"
-                    aria-label="Langue"
+              <div class="station-input-block">
+                <div class="station-input-wrapper">
+                  <input
+                    id="station-input"
+                    type="text"
+                    placeholder="Lausanne, motte"
+                    autocomplete="off"
+                  />
+                  <button
+                    id="station-fav-toggle"
+                    class="fav-toggle"
+                    type="button"
+                    aria-label="Ajouter aux favoris"
+                    title="Ajouter aux favoris"
                   >
-                    <option value="fr">FR</option>
-                    <option value="de">DE</option>
-                    <option value="it">IT</option>
-                    <option value="en">EN</option>
-                  </select>
+                    ☆
+                  </button>
+                  <div class="language-switcher language-switcher--inline">
+                    <label class="sr-only" for="language-select">Langue</label>
+                    <select
+                      id="language-select"
+                      class="language-select"
+                      aria-label="Langue"
+                    >
+                      <option value="fr">FR</option>
+                      <option value="de">DE</option>
+                      <option value="it">IT</option>
+                      <option value="en">EN</option>
+                    </select>
+                  </div>
+                  <button
+                    id="info-btn"
+                    class="info-button"
+                    type="button"
+                    aria-label="Informations"
+                  >
+                    <span class="info-button__icon">i</span>
+                  </button>
                 </div>
-                <button
-                  id="info-btn"
-                  class="info-button"
-                  type="button"
-                  aria-label="Informations"
-                >
-                  <span class="info-button__icon">i</span>
-                </button>
+                <ul id="station-suggestions" class="station-suggestions"></ul>
               </div>
-              <ul id="station-suggestions" class="station-suggestions"></ul>
               <div class="quick-controls">
                 <div class="view-section">
                   <div id="view-section-label" class="quick-controls__label">Affichage</div>

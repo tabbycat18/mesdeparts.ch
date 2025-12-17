@@ -1187,6 +1187,10 @@ body {
   color: #ffffff;
 }
 
+.station-input-block {
+  position: relative;
+}
+
 .station-input-wrapper {
   display: flex;
   align-items: center;
