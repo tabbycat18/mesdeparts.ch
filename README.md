@@ -37,7 +37,7 @@ Personal project, independent, with no affiliation to transport operators (e.g. 
 - Stop search with suggestions and favorite shortcuts (stored in `localStorage`, no account).
 - Two bus views: by line (balanced by destination) or chronological; trains are always chronological.
 - Quick filters by platform/line + “My favorites” mode to narrow the list.
-- Digital clock + embedded SBB clock; auto-refresh every 10 s (~3 h horizon).
+- Digital clock + embedded SBB clock; auto-refresh every 20 s (~3 h horizon).
 - Multilingual UI (FR/DE/IT/EN) and basic network detection (TL/TPG/VBZ/TPN/MBC/VMCV) for line colors.
 - Deep links: `?stationName=...&stationId=...` to open a stop directly.
 
@@ -54,6 +54,16 @@ python3 -m http.server 8000
 - The `web-ui/` folder is fully static: drop it on Netlify/Vercel/S3/nginx/Apache as-is.
 - `main.js` is loaded as an ES module from `index.html`; keep the relative file structure intact.
 
+## Edge cache (Cloudflare Worker)
+- Deploy `cloudflare-worker/worker.js` as a Cloudflare Worker, attach it to a route like `https://api.mesdeparts.ch/*`.
+- Set a global before scripts load to point the UI at your Worker:
+  ```html
+  <script>window.__MD_API_BASE__ = "https://api.mesdeparts.ch";</script>
+  ```
+  Keep this near the top of `web-ui/index.html` (above `main.js`).
+- Default fallback (no global set) calls `https://transport.opendata.ch/v1` directly for local/dev use.
+- Cache TTLs in the Worker: ~20 s for stationboard, ~45 s for connections, 24 h for locations search.
+
 ## Quick structure
 - `web-ui/index.html`: board markup, favorites/filters popovers, clocks.
 - `web-ui/main.js`: app bootstrap, refresh loop, station/URL persistence.
@@ -66,5 +76,5 @@ python3 -m http.server 8000
 
 ## Technical notes
 - Default station: `Lausanne, motte`; name and id can be forced via URL or `localStorage`.
-- Auto-refresh every 10 s; data depends on API coverage (max 3 h horizon).
+- Auto-refresh every 20 s; data depends on API coverage (max 3 h horizon).
 - No analytics or backend; all user data (language, favorites) stays in the browser.
