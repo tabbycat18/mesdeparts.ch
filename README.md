@@ -55,14 +55,16 @@ python3 -m http.server 8000
 - `main.js` is loaded as an ES module from `index.html`; keep the relative file structure intact.
 
 ## Edge cache (Cloudflare Worker)
-- Deploy `cloudflare-worker/worker.js` as a Cloudflare Worker, attach it to a route like `https://api.mesdeparts.ch/*`.
-- Set a global before scripts load to point the UI at your Worker:
+- What it does: serverless proxy in front of `transport.opendata.ch`, caches JSON at the edge (20–60 s) so many users share one upstream request per stop.
+- Files: `cloudflare-worker/worker.js` (Worker code), `wrangler.toml` (entry + name).
+- Deploy (dashboard): Cloudflare → Workers → Create → paste `cloudflare-worker/worker.js` → Deploy → add Custom Domain or Route `api.mesdeparts.ch/*` → let it create the DNS record (proxied/orange cloud).
+- Deploy (CLI): `npx wrangler deploy` (uses `wrangler.toml` with `main = cloudflare-worker/worker.js`). If you need a different name/date, adjust `name`/`compatibility_date` in the file.
+- Point the UI: add near the top of `web-ui/index.html`:
   ```html
   <script>window.__MD_API_BASE__ = "https://api.mesdeparts.ch";</script>
   ```
-  Keep this near the top of `web-ui/index.html` (above `main.js`).
-- Default fallback (no global set) calls `https://transport.opendata.ch/v1` directly for local/dev use.
-- Cache TTLs in the Worker: ~20 s for stationboard, ~45 s for connections, 24 h for locations search.
+  Without this, local/dev falls back to `https://transport.opendata.ch/v1`.
+- TTLs: stationboard ~20 s, connections ~45 s, locations search 24 h. CORS `*` is set. Errors are not cached.
 
 ## Quick structure
 - `web-ui/index.html`: board markup, favorites/filters popovers, clocks.
