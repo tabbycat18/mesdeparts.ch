@@ -1,9 +1,9 @@
 const ORIGIN_BASE = "https://transport.opendata.ch";
 
 const ttlFor = (path) => {
-  if (path.startsWith("/stationboard")) return 20;  // board refresh
-  if (path.startsWith("/connections")) return 45;   // journey overlay
-  if (path.startsWith("/locations")) return 86400;  // stop search cache
+  if (path.startsWith("/stationboard")) return 20;      // board refresh
+  if (path.startsWith("/connections")) return 45;       // journey details overlay (trips)
+  if (path.startsWith("/locations")) return 86400;      // stop search cache
   return 30;
 };
 

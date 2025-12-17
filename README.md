@@ -64,7 +64,7 @@ python3 -m http.server 8000
   <script>window.__MD_API_BASE__ = "https://api.mesdeparts.ch";</script>
   ```
   Without this, local/dev falls back to `https://transport.opendata.ch/v1`.
-- TTLs: stationboard ~20 s, connections ~45 s, locations search 24 h. CORS `*` is set. Errors are not cached.
+- TTLs: stationboard ~20 s, journey details overlay (`/connections`) ~45 s, locations search 24 h. CORS `*` is set. Errors are not cached.
 
 ## Quick structure
 - `web-ui/index.html`: board markup, favorites/filters popovers, clocks.
