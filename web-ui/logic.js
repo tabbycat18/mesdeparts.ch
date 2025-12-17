@@ -696,8 +696,9 @@ export async function fetchJourneyDetails(dep) {
   const dt = new Date(tMs);
   if (Number.isNaN(dt.getTime())) throw new Error("fetchJourneyDetails: invalid scheduledTime");
 
-  const date = dt.toISOString().slice(0, 10);
-  const time = dt.toTimeString().slice(0, 5);
+  // Use CH timezone helpers to avoid UTC day-shift around midnight
+  const date = toCHDateYYYYMMDD(dt.getTime());
+  const time = toCHTimeHHMM(dt.getTime());
 
   const url =
     apiUrl("/connections") +
