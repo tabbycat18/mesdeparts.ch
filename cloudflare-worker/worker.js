@@ -1,4 +1,4 @@
-const ORIGIN = "https://transport.opendata.ch/v1";
+const ORIGIN_BASE = "https://transport.opendata.ch";
 
 const ttlFor = (path) => {
   if (path.startsWith("/stationboard")) return 20;  // board refresh
@@ -20,9 +20,8 @@ export default {
     }
 
     const url = new URL(request.url);
-    // Ensure we keep the /v1 prefix when building the upstream URL
-    const upstreamPath = url.pathname.replace(/^\//, "") + url.search;
-    const upstream = new URL(upstreamPath, ORIGIN);
+    // Preserve the /v1 prefix when forwarding to the upstream API
+    const upstream = new URL(`/v1${url.pathname}${url.search}`, ORIGIN_BASE);
     const cacheKey = new Request(upstream.toString(), request);
     const cache = caches.default;
 
