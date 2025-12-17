@@ -116,12 +116,14 @@ function applyStation(name, id) {
   updateStationTitle();
 }
 
-async function refreshDepartures({ retried } = {}) {
+async function refreshDepartures({ retried, showLoadingHint = true } = {}) {
   const tbody = document.getElementById("departures-body");
   if (tbody) {
     tbody.setAttribute("aria-busy", "true");
   }
-  setBoardLoadingState(true);
+  if (showLoadingHint) {
+    setBoardLoadingState(true);
+  }
 
   try {
     if (!appState.stationId) {
@@ -176,7 +178,9 @@ async function refreshDepartures({ retried } = {}) {
     if (tbody) {
       tbody.removeAttribute("aria-busy");
     }
-    setBoardLoadingState(false);
+    if (showLoadingHint) {
+      setBoardLoadingState(false);
+    }
   }
 }
 
@@ -221,7 +225,7 @@ async function refreshDepartures({ retried } = {}) {
   refreshDepartures();
 
   // Periodic refresh
-  setInterval(refreshDepartures, REFRESH_DEPARTURES);
+  setInterval(() => refreshDepartures({ showLoadingHint: false }), REFRESH_DEPARTURES);
 })();
 function setupLanguageSwitcher(onChange) {
   const sel = document.getElementById("language-select");
