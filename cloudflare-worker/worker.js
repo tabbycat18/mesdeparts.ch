@@ -20,7 +20,9 @@ export default {
     }
 
     const url = new URL(request.url);
-    const upstream = new URL(url.pathname + url.search, ORIGIN);
+    // Ensure we keep the /v1 prefix when building the upstream URL
+    const upstreamPath = url.pathname.replace(/^\//, "") + url.search;
+    const upstream = new URL(upstreamPath, ORIGIN);
     const cacheKey = new Request(upstream.toString(), request);
     const cache = caches.default;
 
