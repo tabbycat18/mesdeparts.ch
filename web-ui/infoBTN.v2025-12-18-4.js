@@ -36,6 +36,9 @@ function buildInfoOverlay() {
   const intro = document.createElement("p");
   intro.textContent = t("infoIntro");
 
+  const story = document.createElement("p");
+  story.textContent = t("infoStory");
+
   const ul = document.createElement("ul");
 
   const li1 = document.createElement("li");
@@ -104,6 +107,7 @@ function buildInfoOverlay() {
   creditsList.appendChild(creditAuthor);
 
   body.appendChild(intro);
+  body.appendChild(story);
   body.appendChild(ul);
   body.appendChild(disclaimerTitle);
   body.appendChild(disclaimer);

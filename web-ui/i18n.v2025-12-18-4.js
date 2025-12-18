@@ -231,10 +231,16 @@ const TRANSLATIONS = {
     en: "Close",
   },
   infoIntro: {
-    fr: "mesdeparts.ch affiche les prochains départs en Suisse. Les noms avec virgule désignent un arrêt (bus/tram), ceux sans virgule une gare (train).",
-    de: "mesdeparts.ch zeigt die nächsten Abfahrten in der Schweiz. Namen mit Komma stehen für eine Haltestelle (Bus/Tram), ohne Komma für einen Bahnhof (Zug).",
-    it: "mesdeparts.ch mostra le prossime partenze in Svizzera. I nomi con virgola indicano una fermata (bus/tram), senza virgola una stazione (treno).",
-    en: "mesdeparts.ch shows upcoming departures in Switzerland. Names with a comma are stops (bus/tram); names without a comma are stations (train).",
+    fr: "mesdeparts.ch affiche les prochains départs en Suisse. Les noms avec virgule désignent un arrêt (bus/tram), ceux sans virgule une gare (train). Actualisation automatique toutes les 20 s (~3 h d’horizon).",
+    de: "mesdeparts.ch zeigt die nächsten Abfahrten in der Schweiz. Namen mit Komma stehen für eine Haltestelle (Bus/Tram), ohne Komma für einen Bahnhof (Zug). Automatische Aktualisierung alle 20 s (~3 h Horizont).",
+    it: "mesdeparts.ch mostra le prossime partenze in Svizzera. I nomi con virgola indicano una fermata (bus/tram), senza virgola una stazione (treno). Aggiornamento automatico ogni 20 s (~3 h di orizzonte).",
+    en: "mesdeparts.ch shows upcoming departures in Switzerland. Names with a comma are stops (bus/tram); names without a comma are stations (train). Auto-refresh runs every 20 s (~3 h horizon).",
+  },
+  infoStory: {
+    fr: "Né de l’envie d’avoir un tableau des départs chez soi, utilisable partout en Suisse (pas seulement dans les grandes gares). Inspiré par des discussions en ligne (horloge CFF, Reddit, forums), c’est devenu une alternative personnelle, gratuite et open source dans le navigateur.",
+    de: "Entstanden aus dem Wunsch nach einer Abfahrtsanzeige zu Hause, nutzbar an jedem Schweizer Halt (nicht nur an grossen Bahnhöfen). Inspiriert von Online-Diskussionen (SBB-Uhr, Reddit, Foren) wurde daraus eine persönliche, kostenlose und Open-Source-Alternative im Browser.",
+    it: "Nato dal desiderio di avere una tabella partenze a casa, utilizzabile in ogni fermata svizzera (non solo nelle grandi stazioni). Ispirato da discussioni online (orologio FFS, Reddit, forum), è diventato un’alternativa personale, gratuita e open source nel browser.",
+    en: "Born from wanting a home departure board usable at any Swiss stop (not just big stations). Inspired by online discussions (SBB clock, Reddit, forums), it became a personal, free, open-source browser alternative.",
   },
   infoLi1: {
     fr: "Recherche : saisissez un arrêt ou choisissez un favori (étoile). Les suggestions apparaissent dès 2 lettres.",
@@ -255,10 +261,10 @@ const TRANSLATIONS = {
     en: "Filters: “Filters” button → Platform/Lines chips. The counter shows active filters; “Reset” clears them.",
   },
   infoLi4: {
-    fr: "Mes favoris : stockés localement sur cet appareil. Le bouton étoile ajoute/retire un arrêt ; “Mes favoris” peut afficher uniquement vos arrêts.",
-    de: "Meine Favoriten: lokal auf diesem Gerät gespeichert. Der Stern fügt eine Haltestelle hinzu/entfernt sie; „Meine Favoriten“ zeigt nur diese Haltestellen.",
-    it: "I miei preferiti: salvati localmente su questo dispositivo. La stella aggiunge/rimuove una fermata; “I miei preferiti” può mostrare solo quelle fermate.",
-    en: "My favorites: stored locally on this device. The star adds/removes a stop; “My favorites” can show only those stops.",
+    fr: "Mes favoris : stockés localement sur cet appareil (sans compte). Le bouton étoile ajoute/retire un arrêt ; “Mes favoris” peut afficher uniquement vos arrêts.",
+    de: "Meine Favoriten: lokal auf diesem Gerät gespeichert (ohne Konto). Der Stern fügt eine Haltestelle hinzu/entfernt sie; „Meine Favoriten“ zeigt nur diese Haltestellen.",
+    it: "I miei preferiti: salvati localmente su questo dispositivo (senza account). La stella aggiunge/rimuove una fermata; “I miei preferiti” può mostrare solo quelle fermate.",
+    en: "My favorites: stored locally on this device (no account). The star adds/removes a stop; “My favorites” can show only those stops.",
   },
   infoLi5: {
     fr: "Retards : bus/tram dès +2 min, trains dès +1 min. “Départ” est toujours l’horaire officiel ; “min” est un compte à rebours temps réel qui peut inclure de petits décalages non signalés comme retards officiels.",
@@ -333,10 +339,10 @@ const TRANSLATIONS = {
     en: "Data: transport.opendata.ch",
   },
   creditsAuthor: {
-    fr: "© 2024 Mattia Pastore – mesdeparts.ch - Tous droits réservés.",
-    de: "© 2024 Mattia Pastore – mesdeparts.ch - Alle Rechte vorbehalten.",
-    it: "© 2024 Mattia Pastore – mesdeparts.ch - Tutti i diritti riservati.",
-    en: "© 2024 Mattia Pastore – mesdeparts.ch - All rights reserved.",
+    fr: "© 2024 Mattia Pastore – mesdeparts.ch — Licence Apache 2.0.",
+    de: "© 2024 Mattia Pastore – mesdeparts.ch — Apache-Lizenz 2.0.",
+    it: "© 2024 Mattia Pastore – mesdeparts.ch — Licenza Apache 2.0.",
+    en: "© 2024 Mattia Pastore – mesdeparts.ch — Apache License 2.0.",
   },
   creditsClock: {
     fr: "Horloge : sbbUhr — © GoetteSebastian — Apache License 2.0",

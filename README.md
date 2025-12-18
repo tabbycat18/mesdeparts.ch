@@ -2,9 +2,9 @@
 
 Departure board for Swiss public transport (bus, tram, metro, trains), free and usable straight from a browser.
 
-This project came from personal frustration with paid, closed hardware solutions. It is inspired by:
+This project started from wanting a simple, browser-based departure board usable anywhere in Switzerland. It is inspired by:
 - the community-made animated SBB clock (see project and Reddit thread below),
-- hardware devices like Tramli, while deliberately choosing a different path: **no proprietary hardware, no payment, no signup**.
+- hardware devices like Tramli, with a browser-based approach that **requires no dedicated hardware, no payment, no signup**.
 
 The goal is a simple, open alternative:
 - pick any stop or station in Switzerland,
@@ -23,6 +23,7 @@ Personal project, independent, with no affiliation to transport operators (e.g. 
 
 - Animated SBB clock (community project)  
   https://cff-clock.slyc.ch/
+  Thanks to GoetteSebastian for sbbUhr — it's amazing !
 
 - Reddit thread that sparked the idea  
   https://www.reddit.com/r/Switzerland/comments/1fxt48a/want_a_sbb_clock_on_your_computer/
@@ -91,3 +92,7 @@ python3 -m http.server 8000
 - Default station: `Lausanne, motte`; name and id can be forced via URL or `localStorage`.
 - Auto-refresh every 20 s; data depends on API coverage (max 3 h horizon).
 - No analytics or backend; all user data (language, favorites) stays in the browser.
+- Public API limits: transport.opendata.ch is a shared service with rate limits and no SLA; availability and coverage can vary, so consider the Cloudflare Worker cache for steadier performance.
+
+## License
+Apache License 2.0. See `LICENSE`.
