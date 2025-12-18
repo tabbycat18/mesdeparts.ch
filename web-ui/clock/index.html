@@ -29,17 +29,50 @@
     <script>
       (function () {
         var urlParams = new URLSearchParams(window.location.search);
-        var myClock = new sbbUhr("sbb_uhr_container", false, 60);
+        var scriptCandidates = [
+          "js/sbbUhr-1.3.js",
+          "/clock/js/sbbUhr-1.3.js",
+        ];
 
-        if (urlParams.has("stop")) {
-          myClock.stop();
-        } else {
-          myClock.start();
+        function bootClock() {
+          if (typeof window.sbbUhr !== "function") {
+            console.error("sbbUhr not available; clock disabled.");
+            return;
+          }
+
+          var myClock = new window.sbbUhr("sbb_uhr_container", false, 60);
+
+          if (urlParams.has("stop")) {
+            myClock.stop();
+          } else {
+            myClock.start();
+          }
+
+          if (urlParams.has("inverted")) {
+            myClock.invertColors();
+          }
         }
 
-        if (urlParams.has("inverted")) {
-          myClock.invertColors();
+        function loadFallbackScript() {
+          if (typeof window.sbbUhr === "function") {
+            bootClock();
+            return;
+          }
+
+          var nextSrc = scriptCandidates.shift();
+          if (!nextSrc) {
+            console.error("sbbUhr script failed to load from all paths.");
+            return;
+          }
+
+          var script = document.createElement("script");
+          script.src = nextSrc;
+          script.onload = loadFallbackScript;
+          script.onerror = loadFallbackScript;
+          document.head.appendChild(script);
         }
+
+        loadFallbackScript();
       })();
     </script>
   </body>
