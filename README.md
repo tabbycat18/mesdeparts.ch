@@ -68,8 +68,9 @@ python3 -m http.server 8000
   <script>window.__MD_API_BASE__ = "https://api.mesdeparts.ch";</script>
   ```
   Without this, local/dev falls back to `https://transport.opendata.ch/v1`.
-- UI toggle: “Tableau” mode (off by default) uses the Worker cache to avoid overloading public servers; normal mode calls `transport.opendata.ch` directly. Refresh cadence is ~20 s in Tableau mode vs ~10 s in normal mode.
+- UI toggle: “Tableau” mode (off by default) uses the Worker cache to avoid overloading public servers; normal mode calls `transport.opendata.ch` directly. Refresh cadence is ~20 s in Tableau mode vs ~10 s in normal mode. If the page stays open in normal mode, it auto-switches to Tableau after ~2 minutes unless the user explicitly keeps normal mode.
 - TTLs: stationboard ~25 s, journey details overlay (`/connections`) ~45 s, locations search 24 h. CORS `*` is set. Errors are not cached.
+- TTL note: the cache TTL applies only in Tableau mode; in normal mode there is no cache, so each UI refresh calls the public API directly.
 - Rate limiting: default 120 req/min per IP (set `RATE_LIMIT_PER_MIN` in the Worker env). Optional global daily guard via `GLOBAL_DAILY_LIMIT`.
 - Debug headers: `x-md-cache` (HIT/MISS/BYPASS) and `x-md-rate-remaining`.
 - How cache affects load: for a given edge + station, the Worker makes at most one upstream call per TTL; users on the same edge share that cached response. Different regions use different edges, so upstream calls scale with edges × stations.
