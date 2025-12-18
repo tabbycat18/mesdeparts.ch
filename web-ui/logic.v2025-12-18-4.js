@@ -16,15 +16,21 @@ import {
   DEBUG_EARLY,
   VIEW_MODE_TIME,
   VIEW_MODE_LINE,
+  API_MODE_DIRECT,
 } from "./state.v2025-12-18-4.js";
 import { t } from "./i18n.v2025-12-18-4.js";
 
 // API base can be overridden by setting window.__MD_API_BASE__ before scripts load
-const API_BASE =
+const DIRECT_API_BASE = "https://transport.opendata.ch/v1";
+const BOARD_API_BASE =
   (typeof window !== "undefined" && window.__MD_API_BASE__) ||
-  "https://transport.opendata.ch/v1";
+  DIRECT_API_BASE;
 
-const apiUrl = (pathAndQuery) => `${API_BASE}${pathAndQuery}`;
+function getApiBase() {
+  return appState.apiMode === API_MODE_DIRECT ? DIRECT_API_BASE : BOARD_API_BASE;
+}
+
+const apiUrl = (pathAndQuery) => `${getApiBase()}${pathAndQuery}`;
 
 function isMobileViewport() {
   try {
@@ -265,16 +271,19 @@ function formatPlannedTime(d) {
   });
 }
 
-export async function fetchDeparturesGrouped(viewMode = VIEW_MODE_LINE) {
+export async function fetchStationboardRaw() {
   if (!appState.stationId) {
     await resolveStationId();
   }
 
   const url = apiUrl(`/stationboard?station=${encodeURIComponent(appState.stationId)}&limit=300`);
-  const data = await fetchJson(url);
+  return fetchJson(url);
+}
 
+export function buildDeparturesGrouped(data, viewMode = VIEW_MODE_LINE) {
   const now = new Date();
   const night = isNightWindow(now);
+  const stationboard = Array.isArray(data?.stationboard) ? data.stationboard : [];
 
   // Rule: no comma means “main station” -> show trains only
   const stationName = appState.STATION || "";
@@ -312,7 +321,7 @@ export async function fetchDeparturesGrouped(viewMode = VIEW_MODE_LINE) {
       ? [appState.lineFilter]
       : [];
 
-  for (const entry of data.stationboard || []) {
+  for (const entry of stationboard) {
     const rawNumber = entry.number ? String(entry.number) : "";
     const rawCategory = entry.category ? String(entry.category) : "";
 
@@ -693,6 +702,11 @@ export async function fetchDeparturesGrouped(viewMode = VIEW_MODE_LINE) {
   }
 
   return flat;
+}
+
+export async function fetchDeparturesGrouped(viewMode = VIEW_MODE_LINE) {
+  const data = await fetchStationboardRaw();
+  return buildDeparturesGrouped(data, viewMode);
 }
 
 async function fetchJourneyDetailsById(journeyId) {

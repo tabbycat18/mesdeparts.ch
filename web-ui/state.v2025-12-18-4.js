@@ -15,6 +15,7 @@ export const MAX_TRAIN_ROWS = 20;
 
 // Refresh cadence
 export const REFRESH_DEPARTURES = 20_000;
+export const REFRESH_DIRECT = 10_000;
 
 // How far ahead we keep departures (client-side window).
 // Note: the upstream API may not return a full 3h horizon for every stop.
@@ -38,6 +39,10 @@ export const VIEW_MODE_TIME = "time";   // chronological list
 export const VIEW_MODE_LINE = "line";   // grouped by line
 export const VIEW_MODE_DOWN = "down";   // Motte special filter (“Descendre” / centre-ville)
 
+export const API_MODE_BOARD = "board";
+export const API_MODE_DIRECT = "direct";
+export const API_MODE_STORAGE_KEY = "md_api_mode";
+
 export const appState = {
   // Station
   STATION: DEFAULT_STATION,
@@ -48,6 +53,9 @@ export const appState = {
 
   // View (controls bus display + Motte filter)
   viewMode: VIEW_MODE_LINE,
+
+  // API mode: board (Cloudflare) vs direct (transport.opendata.ch)
+  apiMode: API_MODE_BOARD,
 
   // UI refs
   viewSelect: null,              // dropdown (#view-select)

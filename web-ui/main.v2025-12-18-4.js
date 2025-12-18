@@ -7,20 +7,27 @@ import {
   appState,
   DEFAULT_STATION,
   REFRESH_DEPARTURES,
+  REFRESH_DIRECT,
   DEBUG_FORCE_NOW,
   VIEW_MODE_LINE,
+  API_MODE_BOARD,
+  API_MODE_DIRECT,
+  API_MODE_STORAGE_KEY,
 } from "./state.v2025-12-18-4.js";
 
 import {
   detectNetworkFromStation,
   resolveStationId,
-  fetchDeparturesGrouped,
+  fetchStationboardRaw,
+  buildDeparturesGrouped,
 } from "./logic.v2025-12-18-4.js";
 
 import {
   setupClock,
   setupViewToggle,
   setupFilters,
+  setupBoardModeToggle,
+  refreshBoardModeToggleUi,
   renderFilterOptions,
   setupStationSearch,
   updateStationTitle,
@@ -33,6 +40,17 @@ import { initI18n, applyStaticTranslations, setLanguage, LANGUAGE_OPTIONS } from
 
 // Persist station between reloads
 const STORAGE_KEY = "mesdeparts.station";
+const DEFAULT_API_MODE = API_MODE_DIRECT;
+
+function getInitialApiMode() {
+  try {
+    const stored = localStorage.getItem(API_MODE_STORAGE_KEY);
+    if (stored === API_MODE_BOARD || stored === API_MODE_DIRECT) return stored;
+  } catch {
+    // ignore
+  }
+  return DEFAULT_API_MODE;
+}
 
 function updateDebugPanel(rows) {
   const sample = (rows || []).slice(0, 4).map((d) => ({
@@ -54,6 +72,15 @@ function updateDebugPanel(rows) {
   };
 
   console.debug("[MesDeparts][debug]", payload);
+}
+
+let refreshTimer = null;
+let lastStationboardData = null;
+
+function startRefreshLoop() {
+  if (refreshTimer) clearInterval(refreshTimer);
+  const interval = appState.apiMode === API_MODE_DIRECT ? REFRESH_DIRECT : REFRESH_DEPARTURES;
+  refreshTimer = setInterval(() => refreshDepartures({ showLoadingHint: false }), interval);
 }
 
 function normalizeStationName(name) {
@@ -126,18 +153,18 @@ async function refreshDepartures({ retried, showLoadingHint = true } = {}) {
   }
 
   try {
-    if (!appState.stationId) {
-      await resolveStationId();
-    }
-
-    const rows = await fetchDeparturesGrouped(appState.viewMode);
+    const data = await fetchStationboardRaw();
+    const rows = buildDeparturesGrouped(data, appState.viewMode);
+    lastStationboardData = data;
 
     // If nothing came back, try re-resolving the station once before declaring “Fin de service”.
     if (!retried && (!rows || rows.length === 0)) {
       try {
         await resolveStationId();
-        const retryRows = await fetchDeparturesGrouped(appState.viewMode);
+        const retryData = await fetchStationboardRaw();
+        const retryRows = buildDeparturesGrouped(retryData, appState.viewMode);
         if (retryRows && retryRows.length) {
+          lastStationboardData = retryData;
           renderFilterOptions();
           renderDepartures(retryRows);
           return;
@@ -184,6 +211,23 @@ async function refreshDepartures({ retried, showLoadingHint = true } = {}) {
   }
 }
 
+function refreshDeparturesFromCache() {
+  if (!lastStationboardData) {
+    refreshDepartures();
+    return;
+  }
+
+  try {
+    const rows = buildDeparturesGrouped(lastStationboardData, appState.viewMode);
+    renderFilterOptions();
+    renderDepartures(rows);
+    updateDebugPanel(rows);
+  } catch (err) {
+    console.error("[MesDeparts] cached refresh error:", err);
+    refreshDepartures();
+  }
+}
+
 // --------------------------------------------------------
 // Boot
 // --------------------------------------------------------
@@ -191,6 +235,7 @@ async function refreshDepartures({ retried, showLoadingHint = true } = {}) {
 (function boot() {
   const lang = initI18n();
   appState.language = lang;
+  appState.apiMode = getInitialApiMode();
   applyStaticTranslations();
 
   const urlStation = getStationFromUrl();
@@ -213,7 +258,12 @@ async function refreshDepartures({ retried, showLoadingHint = true } = {}) {
   });
 
   setupFilters(() => {
+    refreshDeparturesFromCache();
+  });
+
+  setupBoardModeToggle(() => {
     refreshDepartures();
+    startRefreshLoop();
   });
 
   setupStationSearch((name, id) => {
@@ -225,7 +275,7 @@ async function refreshDepartures({ retried, showLoadingHint = true } = {}) {
   refreshDepartures();
 
   // Periodic refresh
-  setInterval(() => refreshDepartures({ showLoadingHint: false }), REFRESH_DEPARTURES);
+  startRefreshLoop();
 })();
 function setupLanguageSwitcher(onChange) {
   const sel = document.getElementById("language-select");
@@ -247,6 +297,7 @@ function setupLanguageSwitcher(onChange) {
     const applied = setLanguage(lang);
     appState.language = applied;
     applyStaticTranslations();
+    refreshBoardModeToggleUi();
     renderFilterOptions();
     if (typeof appState._ensureViewSelectOptions === "function") {
       appState._ensureViewSelectOptions();

@@ -184,6 +184,48 @@
                       <button id="filters-apply" class="primary-button" type="button">Appliquer</button>
                     </footer>
                   </div>
+                  <button
+                    id="board-mode-toggle"
+                    class="filters-pill mode-pill"
+                    type="button"
+                    aria-pressed="false"
+                    aria-controls="board-mode-popover"
+                  >
+                    <span id="board-mode-label">Tableau</span>
+                    <span id="board-mode-state" class="mode-pill__state">OFF</span>
+                  </button>
+                  <div
+                    id="board-mode-popover"
+                    class="mode-popover is-hidden"
+                    role="dialog"
+                    aria-modal="false"
+                    aria-labelledby="board-mode-title"
+                  >
+                    <div class="mode-popover__header">
+                      <div class="mode-popover__title" id="board-mode-title">Tableau</div>
+                      <button
+                        class="mode-popover__close"
+                        type="button"
+                        aria-label="Fermer"
+                        data-board-popover-close="true"
+                      >
+                        ×
+                      </button>
+                    </div>
+                    <div class="mode-popover__body">
+                      <p id="board-mode-desc-1">
+                        Le mode tableau passe par Cloudflare et met en cache les réponses pour éviter de surcharger
+                        les serveurs publics.
+                      </p>
+                      <p id="board-mode-desc-2">
+                        Le mode normal appelle transport.opendata.ch directement.
+                      </p>
+                    </div>
+                    <footer class="mode-popover__footer">
+                      <button id="board-mode-dismiss" class="ghost-button" type="button">Ne plus afficher</button>
+                      <button id="board-mode-ok" class="primary-button" type="button">OK</button>
+                    </footer>
+                  </div>
                   <button id="filters-reset-inline" class="link-button is-hidden" type="button">
                     Réinitialiser
                   </button>

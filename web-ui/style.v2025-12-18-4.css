@@ -1402,6 +1402,20 @@ body {
   display: block;
 }
 
+.mode-pill {
+  gap: 10px;
+}
+
+.mode-pill__state {
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  opacity: 0.7;
+}
+
+.mode-pill.is-active .mode-pill__state {
+  opacity: 1;
+}
+
 .fav-pill__icon {
   font-size: 1rem;
 }
@@ -1527,6 +1541,69 @@ body {
 }
 
 .filters-popover__footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.mode-popover {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 10px);
+  background: #021a8f;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 14px;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.5);
+  padding: 12px 12px 10px;
+  width: min(420px, calc(100vw - 24px));
+  z-index: 34;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mode-popover.is-hidden {
+  display: none;
+}
+
+.mode-popover__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.mode-popover__title {
+  font-weight: 780;
+  font-size: 1rem;
+}
+
+.mode-popover__close {
+  border: none;
+  background: transparent;
+  color: #ffffff;
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 4px 6px;
+}
+
+.mode-popover__body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-right: 2px;
+}
+
+.mode-popover__body p {
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.mode-popover__footer {
   display: flex;
   justify-content: space-between;
   align-items: center;

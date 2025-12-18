@@ -3,7 +3,14 @@
 // UI: clock, table render, filters, station search, view toggle
 // --------------------------------------------------------
 
-import { appState, VIEW_MODE_TIME, VIEW_MODE_LINE } from "./state.v2025-12-18-4.js";
+import {
+  appState,
+  VIEW_MODE_TIME,
+  VIEW_MODE_LINE,
+  API_MODE_BOARD,
+  API_MODE_DIRECT,
+  API_MODE_STORAGE_KEY,
+} from "./state.v2025-12-18-4.js";
 import { fetchStationSuggestions, fetchJourneyDetails, parseApiDate } from "./logic.v2025-12-18-4.js";
 import {
   loadFavorites,
@@ -369,6 +376,151 @@ const filterPending = {
   platforms: [],
   lines: [],
 };
+
+// ---------------- BOARD MODE (API) ----------------
+
+const BOARD_MODE_HINT_KEY = "md_board_mode_hint_v1";
+
+const boardModeUi = {
+  toggle: null,
+  label: null,
+  state: null,
+  popover: null,
+  dismissBtn: null,
+  okBtn: null,
+};
+
+function isBoardModeActive() {
+  return appState.apiMode !== API_MODE_DIRECT;
+}
+
+function updateBoardModeToggleUi() {
+  if (!boardModeUi.toggle) return;
+  const active = isBoardModeActive();
+  boardModeUi.toggle.classList.toggle("is-active", active);
+  boardModeUi.toggle.setAttribute("aria-pressed", active ? "true" : "false");
+  if (boardModeUi.label) boardModeUi.label.textContent = t("boardModeLabel");
+  if (boardModeUi.state) {
+    boardModeUi.state.textContent = t(active ? "boardModeStateOn" : "boardModeStateOff");
+  }
+}
+
+function setBoardModeHintDismissed() {
+  try {
+    localStorage.setItem(BOARD_MODE_HINT_KEY, "1");
+  } catch {
+    // ignore
+  }
+}
+
+function shouldShowBoardModeHint() {
+  try {
+    return localStorage.getItem(BOARD_MODE_HINT_KEY) !== "1";
+  } catch {
+    return true;
+  }
+}
+
+function openBoardModePopover() {
+  if (!boardModeUi.popover) return;
+  boardModeUi.popover.classList.remove("is-hidden");
+  boardModeUi.popover.setAttribute("aria-hidden", "false");
+  if (boardModeUi.toggle) boardModeUi.toggle.setAttribute("aria-expanded", "true");
+}
+
+function closeBoardModePopover() {
+  if (!boardModeUi.popover) return;
+  boardModeUi.popover.classList.add("is-hidden");
+  boardModeUi.popover.setAttribute("aria-hidden", "true");
+  if (boardModeUi.toggle) boardModeUi.toggle.setAttribute("aria-expanded", "false");
+}
+
+function isBoardModePopoverOpen() {
+  return boardModeUi.popover && !boardModeUi.popover.classList.contains("is-hidden");
+}
+
+export function refreshBoardModeToggleUi() {
+  updateBoardModeToggleUi();
+}
+
+export function setupBoardModeToggle(onChange) {
+  boardModeUi.toggle = document.getElementById("board-mode-toggle");
+  boardModeUi.label = document.getElementById("board-mode-label");
+  boardModeUi.state = document.getElementById("board-mode-state");
+  boardModeUi.popover = document.getElementById("board-mode-popover");
+  boardModeUi.dismissBtn = document.getElementById("board-mode-dismiss");
+  boardModeUi.okBtn = document.getElementById("board-mode-ok");
+
+  if (!boardModeUi.toggle) return;
+
+  if (boardModeUi.popover) {
+    boardModeUi.popover.setAttribute("aria-hidden", "true");
+    boardModeUi.popover.addEventListener("click", (e) => {
+      if (e.target && e.target.dataset && e.target.dataset.boardPopoverClose === "true") {
+        closeBoardModePopover();
+      }
+    });
+  }
+
+  updateBoardModeToggleUi();
+  boardModeUi.toggle.setAttribute("aria-expanded", "false");
+
+  boardModeUi.toggle.addEventListener("click", (e) => {
+    e.stopPropagation();
+    closeFavoritesPopover();
+    closeFiltersSheet(false);
+
+    const next = isBoardModeActive() ? API_MODE_DIRECT : API_MODE_BOARD;
+    appState.apiMode = next;
+    try {
+      localStorage.setItem(API_MODE_STORAGE_KEY, next);
+    } catch {
+      // ignore
+    }
+    updateBoardModeToggleUi();
+
+    if (typeof onChange === "function") onChange(next);
+
+    if (next === API_MODE_DIRECT) {
+      closeBoardModePopover();
+      return;
+    }
+
+    if (shouldShowBoardModeHint()) {
+      openBoardModePopover();
+    }
+  });
+
+  if (boardModeUi.dismissBtn) {
+    boardModeUi.dismissBtn.addEventListener("click", () => {
+      setBoardModeHintDismissed();
+      closeBoardModePopover();
+    });
+  }
+
+  if (boardModeUi.okBtn) {
+    boardModeUi.okBtn.addEventListener("click", () => {
+      closeBoardModePopover();
+    });
+  }
+
+  document.addEventListener("click", (e) => {
+    if (
+      isBoardModePopoverOpen() &&
+      boardModeUi.popover &&
+      !boardModeUi.popover.contains(e.target) &&
+      (!boardModeUi.toggle || !boardModeUi.toggle.contains(e.target))
+    ) {
+      closeBoardModePopover();
+    }
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && isBoardModePopoverOpen()) {
+      closeBoardModePopover();
+    }
+  });
+}
 
 const selectedFavorites = new Set();
 let favoritesManageMode = false;
