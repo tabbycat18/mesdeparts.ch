@@ -17,8 +17,8 @@ import {
   VIEW_MODE_TIME,
   VIEW_MODE_LINE,
   API_MODE_DIRECT,
-} from "./state.v2025-12-18-4.js";
-import { t } from "./i18n.v2025-12-18-4.js";
+} from "./state.v2025-12-18-5.js";
+import { t } from "./i18n.v2025-12-18-5.js";
 
 // API base can be overridden by setting window.__MD_API_BASE__ before scripts load
 const DIRECT_API_BASE = "https://transport.opendata.ch/v1";

@@ -15,14 +15,14 @@ import {
   API_MODE_STORAGE_KEY,
   API_MODE_AUTO_OFF_KEY,
   API_MODE_AUTO_SWITCH_MS,
-} from "./state.v2025-12-18-4.js";
+} from "./state.v2025-12-18-5.js";
 
 import {
   detectNetworkFromStation,
   resolveStationId,
   fetchStationboardRaw,
   buildDeparturesGrouped,
-} from "./logic.v2025-12-18-4.js";
+} from "./logic.v2025-12-18-5.js";
 
 import {
   setupClock,
@@ -36,10 +36,10 @@ import {
   updateStationTitle,
   renderDepartures,
   setBoardLoadingState,
-} from "./ui.v2025-12-18-4.js";
+} from "./ui.v2025-12-18-5.js";
 
-import { setupInfoButton } from "./infoBTN.v2025-12-18-4.js";
-import { initI18n, applyStaticTranslations, setLanguage, LANGUAGE_OPTIONS } from "./i18n.v2025-12-18-4.js";
+import { setupInfoButton } from "./infoBTN.v2025-12-18-5.js";
+import { initI18n, applyStaticTranslations, setLanguage, LANGUAGE_OPTIONS } from "./i18n.v2025-12-18-5.js";
 
 // Persist station between reloads
 const STORAGE_KEY = "mesdeparts.station";

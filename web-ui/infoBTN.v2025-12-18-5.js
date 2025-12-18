@@ -3,8 +3,8 @@
 // Small help overlay that explains how the board works
 // --------------------------------------------------------
 
-import { appState } from "./state.v2025-12-18-4.js";
-import { t } from "./i18n.v2025-12-18-4.js";
+import { appState } from "./state.v2025-12-18-5.js";
+import { t } from "./i18n.v2025-12-18-5.js";
 
 function buildInfoOverlay() {
   const overlay = document.createElement("div");
