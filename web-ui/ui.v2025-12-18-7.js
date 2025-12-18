@@ -11,16 +11,16 @@ import {
   API_MODE_DIRECT,
   API_MODE_STORAGE_KEY,
   API_MODE_AUTO_OFF_KEY,
-} from "./state.v2025-12-18-6.js";
-import { fetchStationSuggestions, fetchJourneyDetails, parseApiDate } from "./logic.v2025-12-18-6.js";
+} from "./state.v2025-12-18-7.js";
+import { fetchStationSuggestions, fetchJourneyDetails, parseApiDate } from "./logic.v2025-12-18-7.js";
 import {
   loadFavorites,
   addFavorite,
   removeFavorite,
   isFavorite,
   clearFavorites,
-} from "./favourites.v2025-12-18-6.js";
-import { t } from "./i18n.v2025-12-18-6.js";
+} from "./favourites.v2025-12-18-7.js";
+import { t } from "./i18n.v2025-12-18-7.js";
 
 
 
