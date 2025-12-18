@@ -3,16 +3,16 @@
 // UI: clock, table render, filters, station search, view toggle
 // --------------------------------------------------------
 
-import { appState, VIEW_MODE_TIME, VIEW_MODE_LINE } from "./state.v2025-12-18-3.js";
-import { fetchStationSuggestions, fetchJourneyDetails, parseApiDate } from "./logic.v2025-12-18-3.js";
+import { appState, VIEW_MODE_TIME, VIEW_MODE_LINE } from "./state.v2025-12-18-4.js";
+import { fetchStationSuggestions, fetchJourneyDetails, parseApiDate } from "./logic.v2025-12-18-4.js";
 import {
   loadFavorites,
   addFavorite,
   removeFavorite,
   isFavorite,
   clearFavorites,
-} from "./favourites.v2025-12-18-3.js";
-import { t } from "./i18n.v2025-12-18-3.js";
+} from "./favourites.v2025-12-18-4.js";
+import { t } from "./i18n.v2025-12-18-4.js";
 
 
 
@@ -785,6 +785,7 @@ export function setupFilters(onChange) {
   filterUi.favQuickToggle = document.getElementById("favorites-only-toggle");
   filterUi.platformSelect = document.getElementById("platform-filter");
   filterUi.lineSelect = document.getElementById("line-filter");
+  const selectInteraction = { platform: false, line: false };
   if (filterUi.favPopover) {
     filterUi.favPopover.setAttribute("aria-hidden", "true");
   }
@@ -894,7 +895,22 @@ export function setupFilters(onChange) {
   });
 
   if (filterUi.platformSelect) {
+    const mark = () => { selectInteraction.platform = true; };
+    filterUi.platformSelect.addEventListener("pointerdown", mark);
+    filterUi.platformSelect.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " " || e.key.startsWith("Arrow")) mark();
+    });
     filterUi.platformSelect.addEventListener("change", () => {
+      if (!selectInteraction.platform) {
+        // Guard against iOS restoring a stale <select> value without user interaction.
+        filterUi.platformSelect.value = "";
+        appState.platformFilter = null;
+        filterPending.platforms = [];
+        updateFilterButtonState();
+        if (typeof filtersOnChange === "function") filtersOnChange();
+        return;
+      }
+      selectInteraction.platform = false;
       const v = filterUi.platformSelect.value;
       appState.platformFilter = v ? [v] : null;
       filterPending.platforms = normalizeFilterArray(appState.platformFilter, appState.platformOptions);
@@ -904,7 +920,22 @@ export function setupFilters(onChange) {
   }
 
   if (filterUi.lineSelect) {
+    const mark = () => { selectInteraction.line = true; };
+    filterUi.lineSelect.addEventListener("pointerdown", mark);
+    filterUi.lineSelect.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " " || e.key.startsWith("Arrow")) mark();
+    });
     filterUi.lineSelect.addEventListener("change", () => {
+      if (!selectInteraction.line) {
+        // Guard against iOS restoring a stale <select> value without user interaction.
+        filterUi.lineSelect.value = "";
+        appState.lineFilter = null;
+        filterPending.lines = [];
+        updateFilterButtonState();
+        if (typeof filtersOnChange === "function") filtersOnChange();
+        return;
+      }
+      selectInteraction.line = false;
       const v = filterUi.lineSelect.value;
       appState.lineFilter = v ? [v] : null;
       filterPending.lines = normalizeFilterArray(appState.lineFilter, appState.lineOptions);
