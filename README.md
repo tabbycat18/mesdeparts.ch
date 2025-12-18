@@ -54,6 +54,7 @@ python3 -m http.server 8000
 - The `web-ui/` folder is fully static: drop it on Netlify/Vercel/S3/nginx/Apache as-is.
 - `main.*.js` is loaded as an ES module from `index.html`; keep the relative file structure intact.
 - Static assets are versioned (`*.vYYYY-MM-DD.js/css`): update filenames and `index.html` references on each release so caches can be long-lived.
+- If you deploy via Apache/FTP, upload `web-ui/.htaccess` (hidden file) to set cache headers.
 
 ## Edge cache (Cloudflare Worker)
 - What it does: serverless proxy in front of `transport.opendata.ch`, caches JSON at the edge (20–60 s) so many users share one upstream request per stop.
@@ -65,7 +66,16 @@ python3 -m http.server 8000
   <script>window.__MD_API_BASE__ = "https://api.mesdeparts.ch";</script>
   ```
   Without this, local/dev falls back to `https://transport.opendata.ch/v1`.
-- TTLs: stationboard ~20 s, journey details overlay (`/connections`) ~45 s, locations search 24 h. CORS `*` is set. Errors are not cached.
+- TTLs: stationboard ~25 s, journey details overlay (`/connections`) ~45 s, locations search 24 h. CORS `*` is set. Errors are not cached.
+- Rate limiting: default 120 req/min per IP (set `RATE_LIMIT_PER_MIN` in the Worker env). Optional global daily guard via `GLOBAL_DAILY_LIMIT`.
+- Debug headers: `x-md-cache` (HIT/MISS/BYPASS) and `x-md-rate-remaining`.
+
+## How it works
+- `index.html` is never cached so it always points to the latest versioned assets.
+- JS/CSS assets are versioned (e.g. `main.v2025-12-17.js`) and can be cached for 1 year.
+- The UI fetches `/stationboard`, renders the table, and uses the stationboard `passList` directly for details.
+- If `passList` is missing, details fall back to `/journey?id=...` and finally `/connections`.
+- All API calls go through the Worker (`api.mesdeparts.ch`) to keep upstream load low and predictable.
 
 ## Quick structure
 - `web-ui/index.html`: board markup, favorites/filters popovers, clocks.
