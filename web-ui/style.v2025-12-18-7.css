@@ -175,6 +175,12 @@ body {
   min-width: 0;
   text-align: left;
 }
+.unofficial-tag {
+  margin-top: 2px;
+  font-size: 0.78rem;
+  font-style: italic;
+  opacity: 0.7;
+}
 
 /* ------------------------------------------------------------------ */
 /* FILTER TOGGLE "DESCENDRE"                                         */

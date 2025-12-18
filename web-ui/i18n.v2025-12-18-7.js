@@ -134,6 +134,12 @@ const TRANSLATIONS = {
     it: "Preferiti",
     en: "Favorites",
   },
+  headerUnofficialTag: {
+    fr: "Non officiel — aucune affiliation",
+    de: "Inoffiziell — keine Zugehörigkeit",
+    it: "Non ufficiale — nessuna affiliazione",
+    en: "Unofficial — no affiliation",
+  },
   filterManageFavorites: {
     fr: "Gérer mes favoris",
     de: "Favoriten verwalten",
@@ -398,6 +404,12 @@ const TRANSLATIONS = {
     it: "Adattamento e integrazione per mesdeparts.ch. Versione web ispirata a CFF-Clock (SlendyMilky). Nessuna affiliazione o approvazione ufficiale CFF/SBB.",
     en: "Adaptation and integration for mesdeparts.ch. Web version inspired by CFF-Clock (SlendyMilky). No official affiliation or approval by CFF/SBB.",
   },
+  footerNote: {
+    fr: "Données : transport.opendata.ch — Horloge : sbbUhr (Apache 2.0) — Non officiel, aucune affiliation avec CFF/SBB/FFS ou les exploitants.",
+    de: "Daten: transport.opendata.ch — Uhr: sbbUhr (Apache License 2.0) — Inoffiziell, keine Zugehörigkeit zu SBB/CFF/FFS oder Betreibern.",
+    it: "Dati: transport.opendata.ch — Orologio: sbbUhr (Apache 2.0) — Non ufficiale, nessuna affiliazione con FFS/SBB/CFF o operatori.",
+    en: "Data: transport.opendata.ch — Clock: sbbUhr (Apache 2.0) — Unofficial; no affiliation with SBB/CFF/FFS or operators.",
+  },
   lineColorsNotice: {
     fr: "Les couleurs des lignes sont utilisées à des fins d’identification visuelle, selon les chartes publiques des exploitants.",
     de: "Die Linienfarben dienen der visuellen Identifikation gemäß den öffentlich zugänglichen Farbwelten der Betreiber.",
@@ -552,6 +564,8 @@ export function applyStaticTranslations() {
     ["#favorites-empty", "filterNoFavorites"],
     ["#platforms-empty", "filterNoPlatforms"],
     ["#lines-empty", "filterNoLines"],
+    ["#unofficial-tag", "headerUnofficialTag"],
+    ["#footer-note", "footerNote"],
     ["#view-section-label", "viewSectionLabel"],
     ["#view-segment [data-view='line']", "viewOptionLine"],
     ["#view-segment [data-view='time']", "viewOptionTime"],
