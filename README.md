@@ -43,6 +43,7 @@ Personal project, independent, with no affiliation to transport operators (e.g. 
 - Digital clock + self-hosted SBB clock; auto-refresh every 10-20 s depending on mode (~3 h horizon).
 - Multilingual UI (FR/DE/IT/EN) and basic network detection (TL/TPG/VBZ/TPN/MBC/VMCV) for line colors.
 - Deep links: `?stationName=...&stationId=...` to open a stop directly.
+- Installable PWA: manifest + service worker caching the static UI shell (API calls stay online-only).
 
 ## Run locally
 1) Prerequisite: a recent browser; no build or deps needed. A simple HTTP server avoids ES module issues on `file://`.
@@ -80,7 +81,7 @@ python3 -m http.server 8000
 
 ## How it works
 - `index.html` is never cached so it always points to the latest versioned assets.
-- JS/CSS assets are versioned (e.g. `main.v2025-12-18-6.js`) and can be cached for 1 year.
+- JS/CSS assets are versioned (e.g. `main.v2025-12-18-7.js`) and can be cached for 1 year.
 - The UI fetches `/stationboard`, renders the table, and uses the stationboard `passList` directly for details.
 - Filters and view changes are applied client‑side from the latest response; they do not trigger extra API calls.
 - If `passList` is missing, details fall back to `/journey?id=...` and finally `/connections`.
