@@ -18,6 +18,38 @@ function sbbUhr(container, background = false, fps = false) {
 	c.cycleDur = 58.5; // Durée du cycle de l'aiguille des secondes en secondes
 	c.easingDur = 2000; // Durée de l'animation en millisecondes
 	c.date, c.anim, c.sDeg, c.mDeg, c.hDeg, c.rTime = {};
+	c.timeZone = "Europe/Zurich";
+	c.tzFormatter = typeof Intl !== "undefined" && typeof Intl.DateTimeFormat === "function"
+		? new Intl.DateTimeFormat("en-GB", {
+			timeZone: c.timeZone,
+			hour12: false,
+			hourCycle: "h23",
+			year: "numeric",
+			month: "2-digit",
+			day: "2-digit",
+			hour: "2-digit",
+			minute: "2-digit",
+			second: "2-digit"
+		})
+		: null;
+	c.chOffsetMs = 0;
+	c.lastOffsetSecond = null;
+	c.getCHOffsetMs = function(date) {
+		if (!c.tzFormatter || typeof c.tzFormatter.formatToParts !== "function") return 0;
+		var parts = c.tzFormatter.formatToParts(date);
+		var vals = {};
+		for (var i = 0; i < parts.length; i++) {
+			if (parts[i].type !== "literal") vals[parts[i].type] = parts[i].value;
+		}
+		var year = parseInt(vals.year, 10);
+		var month = parseInt(vals.month, 10);
+		var day = parseInt(vals.day, 10);
+		var hour = parseInt(vals.hour, 10);
+		var minute = parseInt(vals.minute, 10);
+		var second = parseInt(vals.second, 10);
+		if (isNaN(year) || isNaN(month) || isNaN(day) || isNaN(hour) || isNaN(minute) || isNaN(second)) return 0;
+		return Date.UTC(year, month - 1, day, hour, minute, second) - date.getTime();
+	}
 	c.easeOutElastic = function(t, b, c, d) { 	// Fonction d'animation pour les aiguilles des heures et des minutes
 		t/=d;
 		if(t < 1) return c*Math.pow(2,-10*t) * Math.sin((t*d-2)*(2*Math.PI)/300)*1.5 + c + b;
@@ -62,13 +94,21 @@ function sbbUhr(container, background = false, fps = false) {
 	c.secondsHand = c.wrapper.appendChild(c.createComponent("sbb_uhr_seconds", c.svg.seconds));
 	c.container.appendChild(c.wrapper);
 	c.run = function() {	// Fonction appelée à chaque frame, obtient l'heure actuelle et définit les angles corrects pour les aiguilles
-		c.date = new Date();
+		var now = new Date();
+		var useTz = !!c.tzFormatter && typeof c.tzFormatter.formatToParts === "function";
+		if (useTz && c.lastOffsetSecond !== now.getSeconds()) {
+			c.chOffsetMs = c.getCHOffsetMs(now);
+			c.lastOffsetSecond = now.getSeconds();
+		}
+		var chDate = useTz ? new Date(now.getTime() + c.chOffsetMs) : now;
+		var sec = useTz ? chDate.getUTCSeconds() : now.getSeconds();
+		var ms = now.getMilliseconds();
 		c.rTime = {
-			h: c.date.getHours(),
-			m: c.date.getMinutes(),
-			s: c.date.getSeconds(),
-			ms: c.date.getMilliseconds(),
-			mss: c.date.getSeconds() * 1000 + c.date.getMilliseconds()
+			h: useTz ? chDate.getUTCHours() : now.getHours(),
+			m: useTz ? chDate.getUTCMinutes() : now.getMinutes(),
+			s: sec,
+			ms: ms,
+			mss: sec * 1000 + ms
 		};
 		c.sDeg = c.rotateHand(c.secondsHand, c.sDeg, Math.min(c.rTime.s * (360 / c.cycleDur) + (c.rTime.ms * .006), 360));
 		c.mDeg = c.rotateHand(c.minutesHand, c.mDeg, c.easeOutElastic(c.rTime.mss , (c.rTime.m * 6)-6 , 6 , c.easingDur));

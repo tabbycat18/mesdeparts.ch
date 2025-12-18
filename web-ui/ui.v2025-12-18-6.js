@@ -25,6 +25,50 @@ import { t } from "./i18n.v2025-12-18-6.js";
 
 
 const pad2 = (n) => String(n).padStart(2, "0");
+const CH_TIMEZONE = "Europe/Zurich";
+const CH_FORMATTER =
+  typeof Intl !== "undefined" && typeof Intl.DateTimeFormat === "function"
+    ? new Intl.DateTimeFormat("en-GB", {
+        timeZone: CH_TIMEZONE,
+        hour12: false,
+        hourCycle: "h23",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      })
+    : null;
+
+function getSwissParts(date) {
+  if (!CH_FORMATTER || typeof CH_FORMATTER.formatToParts !== "function") {
+    return {
+      year: String(date.getFullYear()),
+      month: pad2(date.getMonth() + 1),
+      day: pad2(date.getDate()),
+      hour: pad2(date.getHours()),
+      minute: pad2(date.getMinutes()),
+      second: pad2(date.getSeconds()),
+    };
+  }
+
+  const parts = CH_FORMATTER.formatToParts(date);
+  const out = {
+    year: "0000",
+    month: "00",
+    day: "00",
+    hour: "00",
+    minute: "00",
+    second: "00",
+  };
+
+  for (const part of parts) {
+    if (part.type in out) out[part.type] = part.value;
+  }
+
+  return out;
+}
 
 function normalizeLineId(dep) {
   if (!dep) return null;
@@ -221,17 +265,17 @@ export function setupClock() {
 
   function tick() {
     const now = new Date();
-    const dd = pad2(now.getDate());
-    const mm = pad2(now.getMonth() + 1);
-    const yyyy = now.getFullYear();
-    const hh = pad2(now.getHours());
-    const mi = pad2(now.getMinutes());
-    const ss = pad2(now.getSeconds());
-    el.textContent = `${dd}.${mm}.${yyyy} ${hh}:${mi}:${ss}`;
+    const parts = getSwissParts(now);
+    el.textContent = `${parts.day}.${parts.month}.${parts.year} ${parts.hour}:${parts.minute}:${parts.second}`;
   }
 
-  tick();
-  setInterval(tick, 1000);
+  function scheduleTick() {
+    tick();
+    const delay = 1000 - (Date.now() % 1000);
+    setTimeout(scheduleTick, delay);
+  }
+
+  scheduleTick();
 }
 
 // ---------------- STATION TITLE ----------------
