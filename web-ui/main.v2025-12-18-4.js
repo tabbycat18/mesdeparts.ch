@@ -13,6 +13,8 @@ import {
   API_MODE_BOARD,
   API_MODE_DIRECT,
   API_MODE_STORAGE_KEY,
+  API_MODE_AUTO_OFF_KEY,
+  API_MODE_AUTO_SWITCH_MS,
 } from "./state.v2025-12-18-4.js";
 
 import {
@@ -28,6 +30,7 @@ import {
   setupFilters,
   setupBoardModeToggle,
   refreshBoardModeToggleUi,
+  maybeShowBoardModePopover,
   renderFilterOptions,
   setupStationSearch,
   updateStationTitle,
@@ -76,6 +79,35 @@ function updateDebugPanel(rows) {
 
 let refreshTimer = null;
 let lastStationboardData = null;
+let autoBoardTimer = null;
+
+function shouldAutoSwitchToBoard() {
+  if (appState.apiMode !== API_MODE_DIRECT) return false;
+  try {
+    return localStorage.getItem(API_MODE_AUTO_OFF_KEY) !== "1";
+  } catch {
+    return false;
+  }
+}
+
+function scheduleAutoBoardModeSwitch() {
+  if (autoBoardTimer) clearTimeout(autoBoardTimer);
+  if (!shouldAutoSwitchToBoard()) return;
+
+  autoBoardTimer = setTimeout(() => {
+    if (!shouldAutoSwitchToBoard()) return;
+    appState.apiMode = API_MODE_BOARD;
+    try {
+      localStorage.setItem(API_MODE_STORAGE_KEY, API_MODE_BOARD);
+    } catch {
+      // ignore
+    }
+    refreshBoardModeToggleUi();
+    startRefreshLoop();
+    refreshDepartures();
+    maybeShowBoardModePopover();
+  }, API_MODE_AUTO_SWITCH_MS);
+}
 
 function startRefreshLoop() {
   if (refreshTimer) clearInterval(refreshTimer);
@@ -264,6 +296,7 @@ function refreshDeparturesFromCache() {
   setupBoardModeToggle(() => {
     refreshDepartures();
     startRefreshLoop();
+    scheduleAutoBoardModeSwitch();
   });
 
   setupStationSearch((name, id) => {
@@ -276,6 +309,7 @@ function refreshDeparturesFromCache() {
 
   // Periodic refresh
   startRefreshLoop();
+  scheduleAutoBoardModeSwitch();
 })();
 function setupLanguageSwitcher(onChange) {
   const sel = document.getElementById("language-select");

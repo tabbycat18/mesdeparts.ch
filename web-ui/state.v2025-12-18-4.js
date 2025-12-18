@@ -42,6 +42,8 @@ export const VIEW_MODE_DOWN = "down";   // Motte special filter (“Descendre”
 export const API_MODE_BOARD = "board";
 export const API_MODE_DIRECT = "direct";
 export const API_MODE_STORAGE_KEY = "md_api_mode";
+export const API_MODE_AUTO_OFF_KEY = "md_api_mode_auto_off";
+export const API_MODE_AUTO_SWITCH_MS = 120_000;
 
 export const appState = {
   // Station

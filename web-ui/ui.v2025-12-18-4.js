@@ -10,6 +10,7 @@ import {
   API_MODE_BOARD,
   API_MODE_DIRECT,
   API_MODE_STORAGE_KEY,
+  API_MODE_AUTO_OFF_KEY,
 } from "./state.v2025-12-18-4.js";
 import { fetchStationSuggestions, fetchJourneyDetails, parseApiDate } from "./logic.v2025-12-18-4.js";
 import {
@@ -443,6 +444,12 @@ export function refreshBoardModeToggleUi() {
   updateBoardModeToggleUi();
 }
 
+export function maybeShowBoardModePopover() {
+  if (shouldShowBoardModeHint()) {
+    openBoardModePopover();
+  }
+}
+
 export function setupBoardModeToggle(onChange) {
   boardModeUi.toggle = document.getElementById("board-mode-toggle");
   boardModeUi.label = document.getElementById("board-mode-label");
@@ -474,6 +481,11 @@ export function setupBoardModeToggle(onChange) {
     appState.apiMode = next;
     try {
       localStorage.setItem(API_MODE_STORAGE_KEY, next);
+      if (next === API_MODE_DIRECT) {
+        localStorage.setItem(API_MODE_AUTO_OFF_KEY, "1");
+      } else {
+        localStorage.removeItem(API_MODE_AUTO_OFF_KEY);
+      }
     } catch {
       // ignore
     }
@@ -486,9 +498,7 @@ export function setupBoardModeToggle(onChange) {
       return;
     }
 
-    if (shouldShowBoardModeHint()) {
-      openBoardModePopover();
-    }
+    maybeShowBoardModePopover();
   });
 
   if (boardModeUi.dismissBtn) {
