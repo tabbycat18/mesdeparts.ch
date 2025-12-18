@@ -7,7 +7,7 @@
   "theme_color": "#01157f",
   "icons": [
     {
-      "src": "bus-icon.png",
+      "src": "bus-icon-1.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
