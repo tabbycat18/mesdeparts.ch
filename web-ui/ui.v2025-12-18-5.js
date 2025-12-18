@@ -380,14 +380,11 @@ const filterPending = {
 
 // ---------------- BOARD MODE (API) ----------------
 
-const BOARD_MODE_HINT_KEY = "md_board_mode_hint_v1";
-
 const boardModeUi = {
   toggle: null,
   label: null,
   state: null,
   popover: null,
-  dismissBtn: null,
   okBtn: null,
 };
 
@@ -403,22 +400,6 @@ function updateBoardModeToggleUi() {
   if (boardModeUi.label) boardModeUi.label.textContent = t("boardModeLabel");
   if (boardModeUi.state) {
     boardModeUi.state.textContent = t(active ? "boardModeStateOn" : "boardModeStateOff");
-  }
-}
-
-function setBoardModeHintDismissed() {
-  try {
-    localStorage.setItem(BOARD_MODE_HINT_KEY, "1");
-  } catch {
-    // ignore
-  }
-}
-
-function shouldShowBoardModeHint() {
-  try {
-    return localStorage.getItem(BOARD_MODE_HINT_KEY) !== "1";
-  } catch {
-    return true;
   }
 }
 
@@ -445,9 +426,7 @@ export function refreshBoardModeToggleUi() {
 }
 
 export function maybeShowBoardModePopover() {
-  if (shouldShowBoardModeHint()) {
-    openBoardModePopover();
-  }
+  openBoardModePopover();
 }
 
 export function setupBoardModeToggle(onChange) {
@@ -455,7 +434,6 @@ export function setupBoardModeToggle(onChange) {
   boardModeUi.label = document.getElementById("board-mode-label");
   boardModeUi.state = document.getElementById("board-mode-state");
   boardModeUi.popover = document.getElementById("board-mode-popover");
-  boardModeUi.dismissBtn = document.getElementById("board-mode-dismiss");
   boardModeUi.okBtn = document.getElementById("board-mode-ok");
 
   if (!boardModeUi.toggle) return;
@@ -500,13 +478,6 @@ export function setupBoardModeToggle(onChange) {
 
     maybeShowBoardModePopover();
   });
-
-  if (boardModeUi.dismissBtn) {
-    boardModeUi.dismissBtn.addEventListener("click", () => {
-      setBoardModeHintDismissed();
-      closeBoardModePopover();
-    });
-  }
 
   if (boardModeUi.okBtn) {
     boardModeUi.okBtn.addEventListener("click", () => {

@@ -254,12 +254,6 @@ const TRANSLATIONS = {
     it: "La modalità normale chiama transport.opendata.ch direttamente, utile per controlli occasionali.",
     en: "Normal mode calls transport.opendata.ch directly, good for occasional checks.",
   },
-  boardModeDontShow: {
-    fr: "Ne plus afficher",
-    de: "Nicht mehr anzeigen",
-    it: "Non mostrare più",
-    en: "Don't show again",
-  },
   boardModeOk: {
     fr: "OK",
     de: "OK",
@@ -543,7 +537,6 @@ export function applyStaticTranslations() {
     ["#board-mode-title", "boardModeTitle"],
     ["#board-mode-desc-1", "boardModeDesc1"],
     ["#board-mode-desc-2", "boardModeDesc2"],
-    ["#board-mode-dismiss", "boardModeDontShow"],
     ["#board-mode-ok", "boardModeOk"],
     ["#filters-open-label", "filterButton"],
     ["#filters-sheet-title", "filterButton"],
