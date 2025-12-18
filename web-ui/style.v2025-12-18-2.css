@@ -2134,4 +2134,31 @@ body {
   .col-line-cell {
     padding-right: 6px;
   }
+
+  .station-input-wrapper {
+    flex-wrap: nowrap;
+    gap: 6px;
+  }
+
+  .station-input-wrapper input {
+    flex: 1 1 0%;
+    min-width: 0;
+  }
+
+  .station-input-wrapper .language-switcher--inline {
+    margin-left: 0;
+  }
+
+  .station-input-wrapper button:not(.info-button) {
+    padding: 6px 10px;
+    font-size: 0.8rem;
+  }
+
+  .station-input-wrapper .info-button {
+    padding: 6px 8px;
+  }
+
+  .language-switcher--inline .language-select {
+    min-width: 52px;
+  }
 }
