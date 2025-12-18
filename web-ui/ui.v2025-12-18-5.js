@@ -1787,6 +1787,7 @@ function busBadgeClass(dep) {
   if (!simpleLineId) return "line-badge";
 
   const id = String(simpleLineId).trim().toUpperCase();
+  const idForClass = id.replace(/\+/g, "PLUS");
 
   const net = (dep.network || appState.currentNetwork || "").toLowerCase();
 
@@ -1804,10 +1805,10 @@ function busBadgeClass(dep) {
 
   // Prefer per-departure network (from logic), fallback to station network
   if (net) {
-    classes.push(`line-${net}-${id}`);
+    classes.push(`line-${net}-${idForClass}`);
   } else {
     // Generic fallback only when we have no network
-    classes.push(`line-generic-${id}`);
+    classes.push(`line-generic-${idForClass}`);
   }
 
   return classes.join(" ");
