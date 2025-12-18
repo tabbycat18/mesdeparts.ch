@@ -5,4 +5,7 @@
   <FilesMatch "\\.v[0-9].*\\.(js|css)$">
     Header set Cache-Control "public, max-age=31536000, immutable"
   </FilesMatch>
+  <Files "service-worker.js">
+    Header set Cache-Control "no-cache, must-revalidate"
+  </Files>
 </IfModule>
