@@ -32,6 +32,8 @@ body {
   align-items: center;
   justify-content: center;
   min-height: 100%;
+  width: 100%;
+  overflow-x: hidden;
 }
 
 /* ------------------------------------------------------------------ */
@@ -279,6 +281,13 @@ body {
   width: 100%;
   border-collapse: collapse;
   margin-top: 4px;
+  min-width: 540px; /* allow the table to scroll instead of pushing the viewport */
+}
+
+.board main {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .departures thead th {
