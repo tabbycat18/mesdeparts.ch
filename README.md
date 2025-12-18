@@ -72,7 +72,7 @@ python3 -m http.server 8000
 
 ## How it works
 - `index.html` is never cached so it always points to the latest versioned assets.
-- JS/CSS assets are versioned (e.g. `main.v2025-12-17.js`) and can be cached for 1 year.
+- JS/CSS assets are versioned (e.g. `main.v2025-12-18.js`) and can be cached for 1 year.
 - The UI fetches `/stationboard`, renders the table, and uses the stationboard `passList` directly for details.
 - If `passList` is missing, details fall back to `/journey?id=...` and finally `/connections`.
 - All API calls go through the Worker (`api.mesdeparts.ch`) to keep upstream load low and predictable.

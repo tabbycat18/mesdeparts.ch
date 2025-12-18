@@ -3,16 +3,16 @@
 // UI: clock, table render, filters, station search, view toggle
 // --------------------------------------------------------
 
-import { appState, VIEW_MODE_TIME, VIEW_MODE_LINE } from "./state.v2025-12-17.js";
-import { fetchStationSuggestions, fetchJourneyDetails, parseApiDate } from "./logic.v2025-12-17.js";
+import { appState, VIEW_MODE_TIME, VIEW_MODE_LINE } from "./state.v2025-12-18.js";
+import { fetchStationSuggestions, fetchJourneyDetails, parseApiDate } from "./logic.v2025-12-18.js";
 import {
   loadFavorites,
   addFavorite,
   removeFavorite,
   isFavorite,
   clearFavorites,
-} from "./favourites.v2025-12-17.js";
-import { t } from "./i18n.v2025-12-17.js";
+} from "./favourites.v2025-12-18.js";
+import { t } from "./i18n.v2025-12-18.js";
 
 
 
@@ -1399,7 +1399,14 @@ function renderJourneyStops(dep, detail) {
 
   passList.forEach((item, idx) => {
     const s = item.stop || item;
-    const name = s.station?.name || s.name || s.stop?.name || "—";
+    const fallbackOrigin =
+      idx === 0
+        ? dep.fromStationName ||
+          section?.departure?.station?.name ||
+          section?.departure?.name ||
+          ""
+        : "";
+    const name = s.station?.name || s.name || s.stop?.name || fallbackOrigin || "—";
     const arr = s.arrival || s.prognosis?.arrival || s.arrivalTime;
     const depTime = s.departure || s.prognosis?.departure || s.departureTime;
     const isFirst = idx === 0;

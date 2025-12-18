@@ -16,8 +16,8 @@ import {
   DEBUG_EARLY,
   VIEW_MODE_TIME,
   VIEW_MODE_LINE,
-} from "./state.v2025-12-17.js";
-import { t } from "./i18n.v2025-12-17.js";
+} from "./state.v2025-12-18.js";
+import { t } from "./i18n.v2025-12-18.js";
 
 // API base can be overridden by setting window.__MD_API_BASE__ before scripts load
 const API_BASE =
