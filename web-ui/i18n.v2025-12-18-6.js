@@ -393,10 +393,10 @@ const TRANSLATIONS = {
     en: "Clock: sbbUhr — © GoetteSebastian — Apache License 2.0",
   },
   creditsClockNote: {
-    fr: "Adaptation et intégration pour mesdeparts.ch. Aucune affiliation ni approbation officielle CFF/SBB.",
-    de: "Anpassung und Integration für mesdeparts.ch. Keine offizielle Partnerschaft oder Genehmigung durch SBB/CFF.",
-    it: "Adattamento e integrazione per mesdeparts.ch. Nessuna affiliazione o approvazione ufficiale CFF/SBB.",
-    en: "Adaptation and integration for mesdeparts.ch. No official affiliation or approval by CFF/SBB.",
+    fr: "Adaptation et intégration pour mesdeparts.ch. Version web inspirée par CFF-Clock (SlendyMilky). Aucune affiliation ni approbation officielle CFF/SBB.",
+    de: "Anpassung und Integration für mesdeparts.ch. Web-Version inspiriert von CFF-Clock (SlendyMilky). Keine offizielle Partnerschaft oder Genehmigung durch SBB/CFF.",
+    it: "Adattamento e integrazione per mesdeparts.ch. Versione web ispirata a CFF-Clock (SlendyMilky). Nessuna affiliazione o approvazione ufficiale CFF/SBB.",
+    en: "Adaptation and integration for mesdeparts.ch. Web version inspired by CFF-Clock (SlendyMilky). No official affiliation or approval by CFF/SBB.",
   },
   lineColorsNotice: {
     fr: "Les couleurs des lignes sont utilisées à des fins d’identification visuelle, selon les chartes publiques des exploitants.",

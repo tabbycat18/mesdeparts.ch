@@ -1,5 +1,7 @@
 mesdeparts.ch
 Copyright 2024 Mattia Pastore
 
-This product includes sbbUhr by GoetteSebastian, licensed under the
-Apache License 2.0.
+This product includes sbbUhr (Digital SBB Uhr) by Sebastian Goette and the
+SBB Design System team, licensed under the Apache License 2.0.
+This product includes the CFF-Clock web adaptation by SlendyMilky, also
+licensed under the Apache License 2.0.
