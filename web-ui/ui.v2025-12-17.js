@@ -3,16 +3,16 @@
 // UI: clock, table render, filters, station search, view toggle
 // --------------------------------------------------------
 
-import { appState, VIEW_MODE_TIME, VIEW_MODE_LINE } from "./state.js";
-import { fetchStationSuggestions, fetchJourneyDetails, parseApiDate } from "./logic.js";
+import { appState, VIEW_MODE_TIME, VIEW_MODE_LINE } from "./state.v2025-12-17.js";
+import { fetchStationSuggestions, fetchJourneyDetails, parseApiDate } from "./logic.v2025-12-17.js";
 import {
   loadFavorites,
   addFavorite,
   removeFavorite,
   isFavorite,
   clearFavorites,
-} from "./favourites.js";
-import { t } from "./i18n.js";
+} from "./favourites.v2025-12-17.js";
+import { t } from "./i18n.v2025-12-17.js";
 
 
 
@@ -1677,7 +1677,9 @@ export function renderDepartures(rows) {
   for (const dep of rows || []) {
     const tr = document.createElement("tr");
     tr.dataset.journeyId = dep.journeyId || "";
-    tr.classList.toggle("clickable", !!dep.journeyId);
+    const hasDetails =
+      !!dep.journeyId || (Array.isArray(dep.passList) && dep.passList.length > 0);
+    tr.classList.toggle("clickable", hasDetails);
     tr.addEventListener("click", () => openJourneyDetails(dep));
 
     // UI debug: log first rows only (avoid spamming)

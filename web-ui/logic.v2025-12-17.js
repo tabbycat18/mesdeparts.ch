@@ -16,8 +16,8 @@ import {
   DEBUG_EARLY,
   VIEW_MODE_TIME,
   VIEW_MODE_LINE,
-} from "./state.js";
-import { t } from "./i18n.js";
+} from "./state.v2025-12-17.js";
+import { t } from "./i18n.v2025-12-17.js";
 
 // API base can be overridden by setting window.__MD_API_BASE__ before scripts load
 const API_BASE =
@@ -189,6 +189,17 @@ function lineLooksLike(dep, journey) {
   const jCat = normalizeCat(journey?.category);
   if (dep?.mode === "train" && depCat && jCat && depCat !== jCat) return false;
   return true;
+}
+
+function buildSectionFromPassList(passList, journey = null) {
+  if (!Array.isArray(passList) || passList.length === 0) return null;
+  const first = passList[0] || {};
+  const last = passList[passList.length - 1] || {};
+  return {
+    journey: { ...(journey || {}), passList },
+    departure: first.stop || first || null,
+    arrival: last.stop || last || null,
+  };
 }
 
 // --------------------------------------------------------
@@ -508,6 +519,7 @@ export async function fetchDeparturesGrouped(viewMode = VIEW_MODE_LINE) {
       platformChanged: didChange,
       previousPlatform,
       journeyId,
+      passList: Array.isArray(entry.passList) ? entry.passList : null,
 
       // Column “Départ” always shows the planned time
       timeStr: plannedTimeStr,
@@ -683,9 +695,27 @@ export async function fetchDeparturesGrouped(viewMode = VIEW_MODE_LINE) {
   return flat;
 }
 
+async function fetchJourneyDetailsById(journeyId) {
+  if (!journeyId) return null;
+  const url = apiUrl(`/journey?id=${encodeURIComponent(journeyId)}&passlist=1`);
+  try {
+    const data = await fetchJson(url);
+    const journey = data?.journey || data;
+    const passList = journey?.passList || data?.passList;
+    const section = buildSectionFromPassList(passList, journey);
+    if (!section) return null;
+    return { section, connection: null };
+  } catch (_) {
+    return null;
+  }
+}
+
 // Journey details for a specific trip (bus or train) via /connections
 export async function fetchJourneyDetails(dep) {
   if (!dep) throw new Error("fetchJourneyDetails: missing dep");
+
+  const directSection = buildSectionFromPassList(dep?.passList);
+  if (directSection) return { section: directSection, connection: null };
 
   const from = dep.fromStationId || appState.stationId || appState.STATION;
   const to = dep.dest;
@@ -699,6 +729,11 @@ export async function fetchJourneyDetails(dep) {
   // Use CH timezone helpers to avoid UTC day-shift around midnight
   const date = toCHDateYYYYMMDD(dt.getTime());
   const time = toCHTimeHHMM(dt.getTime());
+
+  if (dep.journeyId) {
+    const viaId = await fetchJourneyDetailsById(dep.journeyId);
+    if (viaId) return viaId;
+  }
 
   const url =
     apiUrl("/connections") +
@@ -723,9 +758,6 @@ export async function fetchJourneyDetails(dep) {
   for (const conn of conns) {
     for (const section of conn?.sections || []) {
       const j = section?.journey;
-      const passList = j?.passList;
-      if (!Array.isArray(passList) || passList.length === 0) continue;
-
       const depTs = section?.departure?.departureTimestamp;
       if (typeof depTs !== "number") continue;
 
@@ -739,6 +771,15 @@ export async function fetchJourneyDetails(dep) {
   }
 
   if (!bestSection) throw new Error("No journey details available for this départ");
+
+  const passList = bestSection?.journey?.passList;
+  if (
+    (!Array.isArray(passList) || passList.length === 0) &&
+    bestSection?.journey?.id
+  ) {
+    const viaId = await fetchJourneyDetailsById(bestSection.journey.id);
+    if (viaId) return viaId;
+  }
 
   return { section: bestSection, connection: bestConn };
 }

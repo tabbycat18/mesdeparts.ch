@@ -9,13 +9,13 @@ import {
   REFRESH_DEPARTURES,
   DEBUG_FORCE_NOW,
   VIEW_MODE_LINE,
-} from "./state.js";
+} from "./state.v2025-12-17.js";
 
 import {
   detectNetworkFromStation,
   resolveStationId,
   fetchDeparturesGrouped,
-} from "./logic.js";
+} from "./logic.v2025-12-17.js";
 
 import {
   setupClock,
@@ -26,10 +26,10 @@ import {
   updateStationTitle,
   renderDepartures,
   setBoardLoadingState,
-} from "./ui.js";
+} from "./ui.v2025-12-17.js";
 
-import { setupInfoButton } from "./infoBTN.js";
-import { initI18n, applyStaticTranslations, setLanguage, LANGUAGE_OPTIONS } from "./i18n.js";
+import { setupInfoButton } from "./infoBTN.v2025-12-17.js";
+import { initI18n, applyStaticTranslations, setLanguage, LANGUAGE_OPTIONS } from "./i18n.v2025-12-17.js";
 
 // Persist station between reloads
 const STORAGE_KEY = "mesdeparts.station";

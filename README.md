@@ -52,7 +52,8 @@ python3 -m http.server 8000
 
 ## Deployment
 - The `web-ui/` folder is fully static: drop it on Netlify/Vercel/S3/nginx/Apache as-is.
-- `main.js` is loaded as an ES module from `index.html`; keep the relative file structure intact.
+- `main.*.js` is loaded as an ES module from `index.html`; keep the relative file structure intact.
+- Static assets are versioned (`*.vYYYY-MM-DD.js/css`): update filenames and `index.html` references on each release so caches can be long-lived.
 
 ## Edge cache (Cloudflare Worker)
 - What it does: serverless proxy in front of `transport.opendata.ch`, caches JSON at the edge (20–60 s) so many users share one upstream request per stop.
@@ -68,13 +69,13 @@ python3 -m http.server 8000
 
 ## Quick structure
 - `web-ui/index.html`: board markup, favorites/filters popovers, clocks.
-- `web-ui/main.js`: app bootstrap, refresh loop, station/URL persistence.
-- `web-ui/logic.js`: transport.opendata.ch calls + normalization (delays, platforms, modes, filters).
-- `web-ui/ui.js`: board rendering, stop search, favorites and filters handling.
-- `web-ui/state.js`: global config (horizons, views, thresholds) and shared state.
-- `web-ui/i18n.js`: tiny translation helper (FR/DE/IT/EN) + language switch.
-- `web-ui/favourites.js`: local storage for favorites (`md_favorites_v1`).
-- `web-ui/style.css`: board styling (modes, network colors, popovers).
+- `web-ui/main.*.js`: app bootstrap, refresh loop, station/URL persistence.
+- `web-ui/logic.*.js`: transport.opendata.ch calls + normalization (delays, platforms, modes, filters).
+- `web-ui/ui.*.js`: board rendering, stop search, favorites and filters handling.
+- `web-ui/state.*.js`: global config (horizons, views, thresholds) and shared state.
+- `web-ui/i18n.*.js`: tiny translation helper (FR/DE/IT/EN) + language switch.
+- `web-ui/favourites.*.js`: local storage for favorites (`md_favorites_v1`).
+- `web-ui/style.*.css`: board styling (modes, network colors, popovers).
 
 ## Technical notes
 - Default station: `Lausanne, motte`; name and id can be forced via URL or `localStorage`.
