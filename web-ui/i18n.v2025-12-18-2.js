@@ -64,7 +64,7 @@ const TRANSLATIONS = {
   },
   columnMinutes: {
     fr: "min",
-    de: "min",
+    de: "Min",
     it: "min",
     en: "min",
   },
@@ -189,10 +189,10 @@ const TRANSLATIONS = {
     en: "Enter favorites to remove (name or id), separated by comma/newline.",
   },
   viewOptionTime: {
-    fr: "Par heure",
-    de: "Nach Zeit",
-    it: "Per ora",
-    en: "By time",
+    fr: "Par min",
+    de: "Pro Min",
+    it: "Per min",
+    en: "By min",
   },
   viewOptionLine: {
     fr: "Par ligne",
@@ -243,10 +243,10 @@ const TRANSLATIONS = {
     en: "Search: type a stop or pick a favorite (star). Suggestions appear after 2 letters.",
   },
   infoLi2: {
-    fr: "Vues : “Par ligne” regroupe par ligne et destination ; “Par heure” liste tout chronologiquement. Les trains restent chronologiques.",
-    de: "Ansichten: „Nach Linie“ gruppiert nach Linie/Ziel; „Nach Zeit“ zeigt alles chronologisch. Züge bleiben chronologisch.",
-    it: "Viste: “Per linea” raggruppa per linea e destinazione; “Per ora” elenca in ordine cronologico. I treni restano cronologici.",
-    en: "Views: “By line” groups by line/destination; “By time” lists chronologically. Trains stay chronological.",
+    fr: "Vues : “Par ligne” regroupe par ligne et destination ; “Par min” liste tout chronologiquement. Les trains restent chronologiques.",
+    de: "Ansichten: „Nach Linie“ gruppiert nach Linie/Ziel; „Pro Min“ zeigt alles chronologisch. Züge bleiben chronologisch.",
+    it: "Viste: “Per linea” raggruppa per linea e destinazione; “Per min” elenca in ordine cronologico. I treni restano cronologici.",
+    en: "Views: “By line” groups by line/destination; “By min” lists chronologically. Trains stay chronological.",
   },
   infoLi3: {
     fr: "Filtres : bouton “Filtres” → pastilles Quai/Lignes. Le compteur indique les filtres actifs ; “Réinitialiser” efface tout.",
