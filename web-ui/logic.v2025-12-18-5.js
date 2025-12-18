@@ -135,11 +135,13 @@ function detectNetworkFromEntry(entry) {
   if (/\btl\b|transports publics de la région lausannoise|lausanne/.test(op)) return "tl";
   if (/vbz|zürcher verkehrsbetriebe|zuercher verkehrsbetriebe/.test(op)) return "zvv";
   if (/postauto|carpostal|autopostale/.test(op)) return "postauto";
-  if (/\btpn\b|transports publics nyonnais/.test(op)) return "tpn";
+  if (
+    /\btpn\b|transports publics nyonnais|transports publics de la r[ée]gion nyonnaise|nyonnaise/.test(op)
+  ) return "tpn";
   if (/\bmbc\b|morges-bière|morges-biere|cossonay/.test(op)) return "mbc";
   if (/\bvmcv\b|vevey-montreux/.test(op)) return "vmcv";
 
-  return "generic";
+  return "";
 }
 
 // Fix format "2025-11-25T21:35:00+0100" to ISO standard

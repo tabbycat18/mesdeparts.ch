@@ -80,6 +80,7 @@ function updateDebugPanel(rows) {
 let refreshTimer = null;
 let lastStationboardData = null;
 let autoBoardTimer = null;
+let emptyBoardRetryStation = null;
 
 function shouldAutoSwitchToBoard() {
   if (appState.apiMode !== API_MODE_DIRECT) return false;
@@ -168,6 +169,7 @@ function applyStation(name, id) {
   appState.platformFilter = null;
   appState.lineFilter = null;
   appState.lastPlatforms = {};
+  emptyBoardRetryStation = null;
 
   localStorage.setItem(STORAGE_KEY, stationName);
   updateUrlWithStation(stationName, appState.stationId);
@@ -189,8 +191,27 @@ async function refreshDepartures({ retried, showLoadingHint = true } = {}) {
     const rows = buildDeparturesGrouped(data, appState.viewMode);
     lastStationboardData = data;
 
-    // If nothing came back, try re-resolving the station once before declaring “Fin de service”.
-    if (!retried && (!rows || rows.length === 0)) {
+    const rawCount = Array.isArray(data?.stationboard) ? data.stationboard.length : 0;
+    const hasActiveFilters = !!(
+      (Array.isArray(appState.platformFilter)
+        ? appState.platformFilter.length
+        : appState.platformFilter) ||
+      (Array.isArray(appState.lineFilter)
+        ? appState.lineFilter.length
+        : appState.lineFilter)
+    );
+    const stationKey = appState.STATION || "";
+
+    // If nothing came back, try re-resolving the station once (per station),
+    // but avoid doing it when filters hide results or the API returned entries.
+    if (
+      !retried &&
+      (!rows || rows.length === 0) &&
+      rawCount === 0 &&
+      !hasActiveFilters &&
+      emptyBoardRetryStation !== stationKey
+    ) {
+      emptyBoardRetryStation = stationKey;
       try {
         await resolveStationId();
         const retryData = await fetchStationboardRaw();
@@ -286,7 +307,7 @@ function refreshDeparturesFromCache() {
   });
 
   setupViewToggle(() => {
-    refreshDepartures();
+    refreshDeparturesFromCache();
   });
 
   setupFilters(() => {
