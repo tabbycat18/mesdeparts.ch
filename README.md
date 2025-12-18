@@ -21,9 +21,10 @@ Personal project, independent, with no affiliation to transport operators (e.g. 
 
 ## Inspirations
 
-- Animated SBB clock (community project)  
-  https://cff-clock.slyc.ch/
-  Thanks to GoetteSebastian for sbbUhr — it's amazing !
+- Animated SBB clock (self-hosted, Apache 2.0)  
+  Source: https://github.com/sbb-design-systems/brand-elements/tree/main/digital-clock  
+  Web adaptation inspiration: https://github.com/SlendyMilky/CFF-Clock  
+  Demo: https://cff-clock.slyc.ch/
 
 - Reddit thread that sparked the idea  
   https://www.reddit.com/r/Switzerland/comments/1fxt48a/want_a_sbb_clock_on_your_computer/
@@ -39,7 +40,7 @@ Personal project, independent, with no affiliation to transport operators (e.g. 
 - Two bus views: by line (balanced by destination) or chronological; trains are always chronological.
 - Quick filters by platform/line + “My favorites” mode to narrow the list.
 - Board mode toggle (“Tableau”) for always‑on displays; normal mode for occasional checks.
-- Digital clock + embedded SBB clock; auto-refresh every 10-20 s depending on mode (~3 h horizon).
+- Digital clock + self-hosted SBB clock; auto-refresh every 10-20 s depending on mode (~3 h horizon).
 - Multilingual UI (FR/DE/IT/EN) and basic network detection (TL/TPG/VBZ/TPN/MBC/VMCV) for line colors.
 - Deep links: `?stationName=...&stationId=...` to open a stop directly.
 
@@ -87,6 +88,7 @@ python3 -m http.server 8000
 
 ## Quick structure
 - `web-ui/index.html`: board markup, favorites/filters popovers, clocks.
+- `web-ui/clock/`: self-hosted SBB clock (sbbUhr).
 - `web-ui/main.*.js`: app bootstrap, refresh loop, station/URL persistence.
 - `web-ui/logic.*.js`: transport.opendata.ch calls + normalization (delays, platforms, modes, filters).
 - `web-ui/ui.*.js`: board rendering, stop search, favorites and filters handling.
