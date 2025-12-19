@@ -235,6 +235,33 @@ export async function fetchStationSuggestions(query) {
     .map((s) => ({ id: s.id, name: s.name }));
 }
 
+export async function fetchStationsNearby(lat, lon, limit = 7) {
+  const latNum = Number(lat);
+  const lonNum = Number(lon);
+  if (!Number.isFinite(latNum) || !Number.isFinite(lonNum)) {
+    throw new Error("Invalid coordinates");
+  }
+
+  const url =
+    apiUrl(`/locations?type=station&x=${encodeURIComponent(lonNum)}&y=${encodeURIComponent(latNum)}`) +
+    `&limit=${encodeURIComponent(limit)}`;
+  const data = await fetchJson(url);
+
+  const list = data.stations || data.stops || data.locations || [];
+  return list
+    .filter((s) => s && s.name)
+    .map((s) => ({
+      id: s.id,
+      name: s.name,
+      distance:
+        typeof s.distance === "number"
+          ? s.distance
+          : typeof s.dist === "number"
+            ? s.dist
+            : null,
+    }));
+}
+
 // Normalize a “simple” line id used for CSS and grouping
 function normalizeSimpleLineId(rawNumber, rawCategory) {
   const trimmedNumber = rawNumber ? String(rawNumber).trim() : "";
@@ -425,6 +452,15 @@ export function buildDeparturesGrouped(data, viewMode = VIEW_MODE_LINE) {
     const isArriving =
       diffSec <= ARRIVAL_LEAD_SECONDS && diffSec >= -DEPARTED_GRACE_SECONDS;
 
+    const simpleLineId = normalizeSimpleLineId(rawNumber, rawCategory);
+    const entryNetwork = detectNetworkFromEntry(entry);
+    if (mode === "bus") {
+      busLines.add(simpleLineId);
+      if (simpleLineId && !lineNetworkMap.has(simpleLineId)) {
+        lineNetworkMap.set(simpleLineId, entryNetwork || appState.currentNetwork || "generic");
+      }
+    }
+
     if (DEBUG_EARLY && debugLogged < DEBUG_MAX) {
       debugLogged += 1;
       console.log("[MesDeparts][early-debug]", {
@@ -462,9 +498,6 @@ export function buildDeparturesGrouped(data, viewMode = VIEW_MODE_LINE) {
     if (!applyMotteFilter && platformFilters.length && mode === "bus") {
       if (!platform || !platformFilters.includes(platform)) continue;
     }
-
-    // Normalized line id (for bus grouping + CSS)
-    const simpleLineId = normalizeSimpleLineId(rawNumber, rawCategory);
 
     // Motte special filter (only in “down” view)
     if (applyMotteFilter && mode === "bus") {
@@ -519,7 +552,7 @@ export function buildDeparturesGrouped(data, viewMode = VIEW_MODE_LINE) {
     const depObj = {
       line: `${rawCategory}${rawNumber}`.trim(),
       name: entry.name || "",
-      network: detectNetworkFromEntry(entry),
+      network: entryNetwork,
 
       category: rawCategory,
       number: rawNumber,
@@ -552,7 +585,7 @@ export function buildDeparturesGrouped(data, viewMode = VIEW_MODE_LINE) {
 
       // operator info (for PostAuto styling)
       operator: rawOperator || null,
-      _debugNetwork: detectNetworkFromEntry(entry),
+      _debugNetwork: entryNetwork,
       isPostBus,
 
       // details lookup helpers
@@ -571,11 +604,7 @@ export function buildDeparturesGrouped(data, viewMode = VIEW_MODE_LINE) {
     allDeps.push(depObj);
 
     if (mode === "bus") {
-      busLines.add(simpleLineId);
-      if (depObj.network) busNetworks.add(depObj.network.toLowerCase());
-      if (simpleLineId) {
-        lineNetworkMap.set(simpleLineId, depObj.network || appState.currentNetwork || "generic");
-      }
+      if (entryNetwork) busNetworks.add(entryNetwork.toLowerCase());
 
       const groupKey = simpleLineId || depObj.line;
       if (!byLine.has(groupKey)) byLine.set(groupKey, []);

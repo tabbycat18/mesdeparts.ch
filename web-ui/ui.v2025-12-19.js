@@ -12,7 +12,12 @@ import {
   API_MODE_STORAGE_KEY,
   API_MODE_AUTO_OFF_KEY,
 } from "./state.v2025-12-19.js";
-import { fetchStationSuggestions, fetchJourneyDetails, parseApiDate } from "./logic.v2025-12-19.js";
+import {
+  fetchStationSuggestions,
+  fetchStationsNearby,
+  fetchJourneyDetails,
+  parseApiDate,
+} from "./logic.v2025-12-19.js";
 import {
   loadFavorites,
   addFavorite,
@@ -875,8 +880,10 @@ function applyLineBadgeFilter(lineId) {
   if (!allowed.includes(cleanId)) return;
 
   const current = normalizeFilterArray(appState.lineFilter, allowed);
-  const isSameSolo = current.length === 1 && current[0] === cleanId;
-  const next = isSameSolo ? [] : [cleanId];
+  const nextSet = new Set(current);
+  if (nextSet.has(cleanId)) nextSet.delete(cleanId);
+  else nextSet.add(cleanId);
+  const next = normalizeFilterArray(Array.from(nextSet), allowed);
 
   appState.lineFilter = next.length ? next : null;
   filterPending.lines = normalizeFilterArray(appState.lineFilter, allowed);
@@ -1340,6 +1347,7 @@ export function setupStationSearch(onStationPicked) {
   const input = document.getElementById("station-input");
   const list = document.getElementById("station-suggestions");
   const btn = document.getElementById("station-search-btn");
+  const geoBtn = btn; // single button handles geolocation
   const favBtn = getFavToggleEl();
   const favSel = getFavSelectEl();
   const favoritesChipList = filterUi.favoritesChips;
@@ -1498,6 +1506,29 @@ export function setupStationSearch(onStationPicked) {
     list.style.display = "none";
   }
 
+  function renderStatus(text) {
+    list.innerHTML = "";
+    active = [];
+    if (!text) {
+      list.style.display = "none";
+      return;
+    }
+    const li = document.createElement("li");
+    li.className = "station-suggestion-item is-hint";
+    li.textContent = text;
+    list.appendChild(li);
+    list.style.display = "";
+  }
+
+  function formatDistance(meters) {
+    if (!Number.isFinite(meters) || meters <= 0) return null;
+    if (meters >= 1000) {
+      const km = meters / 1000;
+      return `${km >= 10 ? Math.round(km) : km.toFixed(1)} km`;
+    }
+    return `${Math.round(meters)} m`;
+  }
+
   function renderSuggestions(items) {
     list.innerHTML = "";
     active = items;
@@ -1512,7 +1543,18 @@ export function setupStationSearch(onStationPicked) {
     for (const s of items) {
       const li = document.createElement("li");
       li.className = "station-suggestion-item";
-      li.textContent = s.name;
+      const nameSpan = document.createElement("span");
+      nameSpan.textContent = s.name;
+      li.appendChild(nameSpan);
+
+      const dist = formatDistance(typeof s.distance === "number" ? s.distance : null);
+      if (dist) {
+        const d = document.createElement("span");
+        d.className = "station-suggestion-distance";
+        d.textContent = dist;
+        li.appendChild(d);
+      }
+
       li.addEventListener("click", () => {
         input.value = s.name;
         clear();
@@ -1560,12 +1602,63 @@ export function setupStationSearch(onStationPicked) {
     }
   });
 
-  if (btn) {
-    btn.addEventListener("click", () => {
-      clear();
-      const q = input.value.trim();
-      if (q) setStationSelection(q, null, onStationPicked);
+function setGeoLoading(on) {
+  if (!geoBtn) return;
+  geoBtn.disabled = !!on;
+  geoBtn.classList.toggle("is-loading", !!on);
+  geoBtn.classList.toggle("is-active", !!on);
+  geoBtn.setAttribute("aria-busy", on ? "true" : "false");
+  geoBtn.setAttribute("aria-pressed", on ? "true" : "false");
+  if (!on) geoBtn.removeAttribute("aria-busy");
+}
+
+  async function findNearbyStations() {
+    if (!geoBtn) return;
+    if (!navigator.geolocation) {
+      renderStatus(t("nearbyNoGeo"));
+      setGeoLoading(false);
+      return;
+    }
+
+    applyFavoritesOnlyMode(false);
+    setGeoLoading(true);
+    renderStatus(t("nearbySearching"));
+
+    try {
+      const pos = await new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 12000,
+          maximumAge: 60000,
+        });
+      });
+
+      const items = await fetchStationsNearby(pos.coords.latitude, pos.coords.longitude, 10);
+      lastQuery = "";
+      input.value = "";
+      if (!items.length) {
+        renderStatus(t("nearbyNone"));
+        return;
+      }
+      renderSuggestions(items);
+    } catch (e) {
+      if (e && typeof e.code === "number" && e.code === 1) {
+        renderStatus(t("nearbyDenied"));
+      } else {
+        renderStatus(t("nearbyError"));
+      }
+    } finally {
+      setGeoLoading(false);
+    }
+  }
+
+  if (geoBtn) {
+    geoBtn.addEventListener("click", () => {
+      findNearbyStations();
     });
+    geoBtn.setAttribute("aria-label", t("nearbyButton"));
+    geoBtn.title = t("nearbyButton");
+    geoBtn.setAttribute("aria-pressed", "false");
   }
 
   // Init favourites UI (dropdown + star)

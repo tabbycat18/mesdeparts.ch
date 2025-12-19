@@ -26,6 +26,48 @@ const TRANSLATIONS = {
     it: "Ricerca fermata",
     en: "Search stop",
   },
+  searchAction: {
+    fr: "Rechercher un arrêt",
+    de: "Haltestelle suchen",
+    it: "Cerca fermata",
+    en: "Search stop",
+  },
+  nearbyButton: {
+    fr: "Autour de moi",
+    de: "In meiner Nähe",
+    it: "Vicino a me",
+    en: "Nearby",
+  },
+  nearbyNoGeo: {
+    fr: "La géolocalisation n'est pas disponible sur cet appareil.",
+    de: "Standortbestimmung ist auf diesem Gerät nicht verfügbar.",
+    it: "La geolocalizzazione non è disponibile su questo dispositivo.",
+    en: "Location is not available on this device.",
+  },
+  nearbyDenied: {
+    fr: "Accès à la localisation refusé.",
+    de: "Zugriff auf den Standort verweigert.",
+    it: "Accesso alla posizione negato.",
+    en: "Location access denied.",
+  },
+  nearbySearching: {
+    fr: "Recherche des arrêts proches…",
+    de: "Suche nach Haltestellen in der Nähe…",
+    it: "Ricerca delle fermate vicine…",
+    en: "Looking for nearby stops…",
+  },
+  nearbyNone: {
+    fr: "Aucun arrêt trouvé autour de vous.",
+    de: "Keine Haltestellen in Ihrer Nähe gefunden.",
+    it: "Nessuna fermata trovata nelle vicinanze.",
+    en: "No nearby stops found.",
+  },
+  nearbyError: {
+    fr: "Échec de la recherche autour de vous.",
+    de: "Suche in Ihrer Nähe fehlgeschlagen.",
+    it: "Ricerca nelle vicinanze non riuscita.",
+    en: "Nearby search failed.",
+  },
   servedByLines: {
     fr: "Desservi par les lignes :",
     de: "Bedient von den Linien:",
@@ -159,7 +201,7 @@ const TRANSLATIONS = {
     en: "My favorites",
   },
   filterFavoritesLabel: {
-    fr: "Mes favoris",
+    fr: "Favoris",
     de: "Favoriten",
     it: "Preferiti",
     en: "Favorites",
@@ -833,6 +875,12 @@ export function applyStaticTranslations() {
   for (const [selector, key] of pairs) {
     const el = document.querySelector(selector);
     if (el) el.textContent = t(key);
+  }
+
+  const geoBtn = document.getElementById("station-search-btn");
+  if (geoBtn) {
+    geoBtn.setAttribute("aria-label", t("nearbyButton"));
+    geoBtn.title = t("nearbyButton");
   }
 
   const quickToggle = document.getElementById("quick-controls-toggle");
