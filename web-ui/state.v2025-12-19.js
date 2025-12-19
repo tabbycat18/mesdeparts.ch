@@ -22,8 +22,8 @@ export const REFRESH_DIRECT = 10_000;
 export const BOARD_HORIZON_MINUTES = 210; // 3 hours
 
 // Arrival “blinking” window (for the icon in the minutes column)
-export const ARRIVAL_LEAD_SECONDS = 15;     // start blinking 15s before departure
-export const DEPARTED_GRACE_SECONDS = 30;   // keep blinking up to 45s after departure
+export const ARRIVAL_LEAD_SECONDS = 10;     // start blinking 10s before departure
+export const DEPARTED_GRACE_SECONDS = 45;   // keep blinking up to 45s after departure
 
 // Delay label thresholds (minutes)
 export const BUS_DELAY_LABEL_THRESHOLD_MIN = 2;   // buses: show delay text from 2 min
@@ -80,4 +80,7 @@ export const appState = {
   // Options detected on latest board (bus only)
   platformOptions: [],
   lineOptions: [],
+
+  // Display prefs
+  hideBusDeparture: false,
 };

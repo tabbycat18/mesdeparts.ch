@@ -16,11 +16,12 @@
       content="Tableau de départs avec horloge sbbUhr (Apache 2.0), sans affiliation officielle CFF/SBB."
     />
     <script>window.__MD_API_BASE__ = "https://api.mesdeparts.ch";</script>
-    <link rel="stylesheet" href="style.v2025-12-18-10.css" />
+    <link rel="stylesheet" href="style.v2025-12-19.css" />
   </head>
   <body>
     <div class="mobile-fullscreen-wrapper">
       <div class="board">
+        <div class="version-tag" aria-label="Version">v1.2</div>
         <header class="board-header">
           <div class="header-left">
             <div class="clock-block">
@@ -53,24 +54,8 @@
           <div class="header-right">
             <!-- Carte de sélection d'arrêt, plus discrète -->
             <section class="station-card station-card-inline">
-              <label for="station-input">Recherche d'arrêt</label>
-              <div class="station-input-block">
-                <div class="station-input-wrapper">
-                  <input
-                    id="station-input"
-                    type="text"
-                    placeholder="Lausanne, motte"
-                    autocomplete="off"
-                  />
-                  <button
-                    id="station-fav-toggle"
-                    class="fav-toggle"
-                    type="button"
-                    aria-label="Ajouter aux favoris"
-                    title="Ajouter aux favoris"
-                  >
-                    ☆
-                  </button>
+              <div class="station-card-topline">
+                <div class="station-card-topline-left">
                   <div class="language-switcher language-switcher--inline">
                     <label class="sr-only" for="language-select">Langue</label>
                     <select
@@ -93,102 +78,7 @@
                     <span class="info-button__icon">i</span>
                   </button>
                 </div>
-                <ul id="station-suggestions" class="station-suggestions"></ul>
-              </div>
-              <div class="quick-controls">
-                <div class="view-section">
-                  <div id="view-section-label" class="quick-controls__label">Affichage</div>
-                  <div class="segmented-control" id="view-segment">
-                    <button type="button" data-view="line" class="segmented-btn is-active">
-                      Par ligne
-                    </button>
-                    <button type="button" data-view="time" class="segmented-btn">
-                      Par min
-                    </button>
-                  </div>
-                </div>
-                <div class="quick-actions">
-                  <button
-                    id="favorites-only-toggle"
-                    class="fav-pill"
-                    type="button"
-                    aria-pressed="false"
-                    aria-expanded="false"
-                    aria-controls="favorites-popover"
-                  >
-                    <span class="fav-pill__icon" aria-hidden="true">★</span>
-                    <span id="favorites-only-label">Mes favoris</span>
-                  </button>
-                  <div
-                    id="favorites-popover"
-                    class="fav-popover is-hidden"
-                    role="dialog"
-                    aria-modal="false"
-                    aria-labelledby="favorites-popover-title"
-                  >
-                    <div class="fav-popover__header">
-                      <div class="fav-popover__title" id="favorites-popover-title">Mes favoris</div>
-                      <button class="fav-popover__close" type="button" data-fav-popover-close="true">×</button>
-                    </div>
-                    <div class="chip-row" id="favorites-chip-list"></div>
-                    <div class="filters-empty is-hidden" id="favorites-empty">Aucun favori pour l'instant</div>
-                    <div class="filters-section__actions">
-                      <button id="favorites-manage" class="ghost-button" type="button">
-                        Gérer mes favoris
-                      </button>
-                      <button id="favorites-delete" class="danger-button" type="button" disabled>
-                        Supprimer
-                      </button>
-                    </div>
-                  </div>
-                  <button id="filters-open" class="filters-pill" type="button">
-                    <span class="filters-pill__icon" aria-hidden="true">
-                      <svg viewBox="0 0 24 24" focusable="false">
-                        <path
-                          fill="currentColor"
-                          d="M4 7c0-.55.45-1 1-1h14a1 1 0 0 1 0 2H5c-.55 0-1-.45-1-1Zm3 5c0-.55.45-1 1-1h8a1 1 0 0 1 0 2H8c-.55 0-1-.45-1-1Zm3 5c0-.55.45-1 1-1h2a1 1 0 0 1 0 2h-2c-.55 0-1-.45-1-1Z"
-                        />
-                      </svg>
-                    </span>
-                    <span id="filters-open-label">Filtres</span>
-                    <span id="filters-open-count" class="pill-count is-hidden">0</span>
-                  </button>
-                  <div
-                    id="filters-popover"
-                    class="filters-popover is-hidden"
-                    role="dialog"
-                    aria-modal="false"
-                    aria-labelledby="filters-sheet-title"
-                  >
-                    <div class="filters-popover__header">
-                      <div class="filters-popover__title" id="filters-sheet-title">Filtres</div>
-                      <button
-                        class="filters-popover__close"
-                        type="button"
-                        aria-label="Fermer"
-                        data-filter-popover-close="true"
-                      >
-                        ×
-                      </button>
-                    </div>
-                    <div class="filters-popover__body">
-                      <section class="filters-section" id="filters-section-platforms">
-                        <div class="filters-section__title" id="filters-platforms-title">Quai</div>
-                        <div class="chip-row" id="platform-chip-list"></div>
-                        <div class="filters-empty is-hidden" id="platforms-empty">Aucun quai disponible</div>
-                      </section>
-
-                      <section class="filters-section" id="filters-section-lines">
-                        <div class="filters-section__title" id="filters-lines-title">Lignes</div>
-                        <div class="chip-row" id="line-chip-list"></div>
-                        <div class="filters-empty is-hidden" id="lines-empty">Aucune ligne disponible</div>
-                      </section>
-                    </div>
-                    <footer class="filters-popover__footer">
-                      <button id="filters-reset" class="ghost-button" type="button">Réinitialiser</button>
-                      <button id="filters-apply" class="primary-button" type="button">Appliquer</button>
-                    </footer>
-                  </div>
+                <div class="station-card-topline-right">
                   <button
                     id="board-mode-toggle"
                     class="filters-pill mode-pill"
@@ -199,40 +89,207 @@
                     <span id="board-mode-label">Tableau</span>
                     <span id="board-mode-state" class="mode-pill__state">OFF</span>
                   </button>
-                  <div
-                    id="board-mode-popover"
-                    class="mode-popover is-hidden"
-                    role="dialog"
-                    aria-modal="false"
-                    aria-labelledby="board-mode-title"
+                  <button
+                    id="quick-controls-toggle"
+                    class="quick-controls-toggle"
+                    type="button"
+                    aria-expanded="true"
+                    aria-controls="station-card-collapsible"
                   >
-                    <div class="mode-popover__header">
-                      <div class="mode-popover__title" id="board-mode-title">Tableau</div>
-                      <button
-                        class="mode-popover__close"
-                        type="button"
-                        aria-label="Fermer"
-                        data-board-popover-close="true"
+                    <span id="quick-controls-toggle-label">Masquer</span>
+                    <span class="quick-controls-toggle__chevron" aria-hidden="true">
+                      <svg viewBox="0 0 24 24" focusable="false">
+                        <path
+                          fill="currentColor"
+                          d="M7.41 16.59 12 12l4.59 4.59L18 15l-6-6-6 6z"
+                        />
+                      </svg>
+                    </span>
+                  </button>
+                </div>
+              </div>
+              <div
+                id="board-mode-popover"
+                class="mode-popover is-hidden"
+                role="dialog"
+                aria-modal="false"
+                aria-labelledby="board-mode-title"
+              >
+                <div class="mode-popover__header">
+                  <div class="mode-popover__title" id="board-mode-title">Tableau</div>
+                  <button
+                    class="mode-popover__close"
+                    type="button"
+                    aria-label="Fermer"
+                    data-board-popover-close="true"
+                  >
+                    ×
+                  </button>
+                </div>
+                <div class="mode-popover__body">
+                  <p class="mode-popover__lead" id="board-mode-desc-1">Mode tableau ON :</p>
+                  <p class="mode-popover__sub">
+                    <span id="board-mode-detail-1">
+                      Pour longue durée → Idéal quand l’écran reste ouvert. (Autoactivation dès 2 min)
+                    </span>
+                    <sup>1</sup>
+                  </p>
+                  <p class="mode-popover__lead" id="board-mode-desc-2">Mode tableau OFF :</p>
+                  <p class="mode-popover__sub">
+                    <span id="board-mode-detail-2">
+                      Pour courte durée → pratique pour des consultations ponctuelles.
+                    </span>
+                    <sup>2</sup>
+                  </p>
+                  <p class="mode-popover__footnote">
+                    <sup>1</sup>
+                    <span id="board-mode-footnote-1">
+                      Pour éviter de surcharger transport.opendata.ch, on passe par Cloudflare qui fait des appels moins
+                      fréquemment qu'en mode tableau OFF et met en cache les réponses pour que les utilisateurs se partagent
+                      un même fichier.
+                    </span>
+                  </p>
+                  <p class="mode-popover__footnote">
+                    <sup>2</sup>
+                    <span id="board-mode-footnote-2">
+                      Appelle transport.opendata.ch directement et plus fréquemment qu'en mode tableau ON pour garantir une
+                      meilleure précision de l'horaire à l'utilisateur.
+                    </span>
+                  </p>
+                </div>
+                <footer class="mode-popover__footer">
+                  <button id="board-mode-ok" class="primary-button" type="button">OK</button>
+                </footer>
+              </div>
+              <div id="station-card-collapsible" class="station-card-collapsible">
+                <label for="station-input">Recherche d'arrêt</label>
+                <div class="station-input-block">
+                  <div class="station-input-wrapper">
+                    <input
+                      id="station-input"
+                      type="text"
+                      placeholder="Lausanne, motte"
+                      autocomplete="off"
+                    />
+                    <button
+                    id="station-fav-toggle"
+                    class="fav-toggle"
+                    type="button"
+                    aria-label="Ajouter aux favoris"
+                    title="Ajouter aux favoris"
+                  >
+                    <span class="fav-toggle__icon" aria-hidden="true">☆</span>
+                  </button>
+                    <button
+                      id="favorites-only-toggle"
+                      class="fav-pill fav-pill--inline"
+                      type="button"
+                      aria-pressed="false"
+                      aria-expanded="false"
+                      aria-controls="favorites-popover"
+                    >
+                      <span class="fav-pill__icon" aria-hidden="true">★</span>
+                      <span id="favorites-only-label">Mes favoris</span>
+                    </button>
+                    <div
+                      id="favorites-popover"
+                      class="fav-popover is-hidden"
+                      role="dialog"
+                      aria-modal="false"
+                      aria-labelledby="favorites-popover-title"
+                    >
+                      <div class="fav-popover__header">
+                        <div class="fav-popover__title" id="favorites-popover-title">Mes favoris</div>
+                        <button class="fav-popover__close" type="button" data-fav-popover-close="true">×</button>
+                      </div>
+                      <div class="chip-row" id="favorites-chip-list"></div>
+                      <div class="filters-empty is-hidden" id="favorites-empty">Aucun favori pour l'instant</div>
+                      <div class="filters-section__actions">
+                        <button id="favorites-manage" class="ghost-button" type="button">
+                          Gérer mes favoris
+                        </button>
+                        <button id="favorites-delete" class="danger-button" type="button" disabled>
+                          Supprimer
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  <ul id="station-suggestions" class="station-suggestions"></ul>
+                </div>
+                <div class="quick-controls-shell">
+                  <div class="quick-controls" id="quick-controls">
+                    <div class="view-section">
+                      <div id="view-section-label" class="quick-controls__label">Affichage</div>
+                      <div class="segmented-control" id="view-segment">
+                        <button type="button" data-view="line" class="segmented-btn is-active">
+                          Par ligne
+                        </button>
+                        <button type="button" data-view="time" class="segmented-btn">
+                          Par min
+                        </button>
+                      </div>
+                    </div>
+                    <div class="quick-actions">
+                      <button id="filters-open" class="filters-pill" type="button">
+                        <span class="filters-pill__icon" aria-hidden="true">
+                          <svg viewBox="0 0 24 24" focusable="false">
+                            <path
+                              fill="currentColor"
+                              d="M4 7c0-.55.45-1 1-1h14a1 1 0 0 1 0 2H5c-.55 0-1-.45-1-1Zm3 5c0-.55.45-1 1-1h8a1 1 0 0 1 0 2H8c-.55 0-1-.45-1-1Zm3 5c0-.55.45-1 1-1h2a1 1 0 0 1 0 2h-2c-.55 0-1-.45-1-1Z"
+                            />
+                          </svg>
+                        </span>
+                        <span id="filters-open-label">Filtres</span>
+                      </button>
+                      <div
+                        id="filters-popover"
+                        class="filters-popover is-hidden"
+                        role="dialog"
+                        aria-modal="false"
+                        aria-labelledby="filters-sheet-title"
                       >
-                        ×
+                        <div class="filters-popover__header">
+                          <div class="filters-popover__title" id="filters-sheet-title">Filtres</div>
+                          <button
+                            class="filters-popover__close"
+                            type="button"
+                            aria-label="Fermer"
+                            data-filter-popover-close="true"
+                          >
+                            ×
+                          </button>
+                        </div>
+                        <div class="filters-popover__body">
+                          <section class="filters-section" id="filters-section-platforms">
+                            <div class="filters-section__title" id="filters-platforms-title">Quai</div>
+                            <div class="chip-row" id="platform-chip-list"></div>
+                            <div class="filters-empty is-hidden" id="platforms-empty">Aucun quai disponible</div>
+                          </section>
+
+                          <section class="filters-section" id="filters-section-lines">
+                            <div class="filters-section__title" id="filters-lines-title">Lignes</div>
+                            <div class="chip-row" id="line-chip-list"></div>
+                          <div class="filters-empty is-hidden" id="lines-empty">Aucune ligne disponible</div>
+                        </section>
+
+                        <section class="filters-section" id="filters-section-display">
+                          <div class="filters-section__title" id="filters-display-title">Affichage</div>
+                          <div class="switch-row">
+                            <label class="switch-label" for="filters-hide-departure">Masquer la colonne Départ (bus)</label>
+                            <input type="checkbox" id="filters-hide-departure" />
+                          </div>
+                        </section>
+                      </div>
+                      <footer class="filters-popover__footer">
+                        <button id="filters-reset" class="ghost-button" type="button">Réinitialiser</button>
+                        <button id="filters-apply" class="primary-button" type="button">Appliquer</button>
+                      </footer>
+                      </div>
+                      <button id="filters-reset-inline" class="link-button is-hidden" type="button">
+                        Réinitialiser
                       </button>
                     </div>
-                    <div class="mode-popover__body">
-                      <p id="board-mode-desc-1">
-                        Le mode tableau passe par Cloudflare et met en cache les réponses pour éviter de surcharger
-                        les serveurs publics.
-                      </p>
-                      <p id="board-mode-desc-2">
-                        Le mode normal appelle transport.opendata.ch directement.
-                      </p>
-                    </div>
-                    <footer class="mode-popover__footer">
-                      <button id="board-mode-ok" class="primary-button" type="button">OK</button>
-                    </footer>
                   </div>
-                  <button id="filters-reset-inline" class="link-button is-hidden" type="button">
-                    Réinitialiser
-                  </button>
                 </div>
               </div>
               <div id="loading-hint" class="loading-hint" role="status" aria-live="polite"></div>
@@ -281,24 +338,26 @@
             </div>
           </div>
 
-          <table class="departures">
-            <caption id="departures-caption" class="sr-only">
-              Vos prochains départs
-            </caption>
-            <thead>
-              <tr>
-                <th scope="col" class="col-line">Ligne</th>
-                <th scope="col" class="col-dest">Destination</th>
-                <th scope="col" class="col-time">Départ</th>
-                <th scope="col" class="col-platform">Voie</th>
-                <th scope="col" class="col-min col-min-header">min</th>
-                <th scope="col" class="col-remark">Remarque</th>
-              </tr>
-            </thead>
-            <tbody id="departures-body">
-              <!-- lignes injectées par main.*.js -->
-            </tbody>
-          </table>
+          <div class="departures-scroller">
+            <table class="departures">
+              <caption id="departures-caption" class="sr-only">
+                Vos prochains départs
+              </caption>
+              <thead>
+                <tr>
+                  <th scope="col" class="col-line">Ligne</th>
+                  <th scope="col" class="col-dest">Destination</th>
+                  <th scope="col" class="col-time">Départ</th>
+                  <th scope="col" class="col-platform">Voie</th>
+                  <th scope="col" class="col-min col-min-header">min</th>
+                  <th scope="col" class="col-remark">Remarque</th>
+                </tr>
+              </thead>
+              <tbody id="departures-body">
+                <!-- lignes injectées par main.*.js -->
+              </tbody>
+            </table>
+          </div>
         </main>
 
         <footer class="board-footer">
@@ -310,8 +369,8 @@
       </div>
     </div>
 
-    <!-- IMPORTANT: use main.v2025-12-18-10.js as an ES module -->
-    <script type="module" src="main.v2025-12-18-10.js"></script>
+    <!-- IMPORTANT: use main.v2025-12-19.js as an ES module -->
+    <script type="module" src="main.v2025-12-19.js"></script>
     <script>
       if ("serviceWorker" in navigator) {
         window.addEventListener("load", () => {

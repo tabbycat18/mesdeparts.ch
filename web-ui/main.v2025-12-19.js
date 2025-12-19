@@ -15,17 +15,18 @@ import {
   API_MODE_STORAGE_KEY,
   API_MODE_AUTO_OFF_KEY,
   API_MODE_AUTO_SWITCH_MS,
-} from "./state.v2025-12-18-10.js";
+} from "./state.v2025-12-19.js";
 
 import {
   detectNetworkFromStation,
   resolveStationId,
   fetchStationboardRaw,
   buildDeparturesGrouped,
-} from "./logic.v2025-12-18-10.js";
+} from "./logic.v2025-12-19.js";
 
 import {
   setupClock,
+  setupQuickControlsCollapse,
   setupViewToggle,
   setupFilters,
   setupBoardModeToggle,
@@ -36,10 +37,12 @@ import {
   updateStationTitle,
   renderDepartures,
   setBoardLoadingState,
-} from "./ui.v2025-12-18-10.js";
+  ensureBoardFitsViewport,
+  setupAutoFitWatcher,
+} from "./ui.v2025-12-19.js";
 
-import { setupInfoButton } from "./infoBTN.v2025-12-18-10.js";
-import { initI18n, applyStaticTranslations, setLanguage, LANGUAGE_OPTIONS } from "./i18n.v2025-12-18-10.js";
+import { setupInfoButton } from "./infoBTN.v2025-12-19.js";
+import { initI18n, applyStaticTranslations, setLanguage, LANGUAGE_OPTIONS } from "./i18n.v2025-12-19.js";
 
 // Persist station between reloads
 const STORAGE_KEY = "mesdeparts.station";
@@ -290,6 +293,7 @@ function refreshDeparturesFromCache() {
   appState.language = lang;
   appState.apiMode = getInitialApiMode();
   applyStaticTranslations();
+  ensureBoardFitsViewport();
 
   const urlStation = getStationFromUrl();
   // Station from storage
@@ -305,6 +309,8 @@ function refreshDeparturesFromCache() {
   setupLanguageSwitcher(() => {
     refreshDepartures();
   });
+  setupQuickControlsCollapse();
+  setupAutoFitWatcher();
 
   setupViewToggle(() => {
     refreshDeparturesFromCache();
@@ -354,6 +360,7 @@ function setupLanguageSwitcher(onChange) {
     applyStaticTranslations();
     refreshBoardModeToggleUi();
     renderFilterOptions();
+    ensureBoardFitsViewport();
     if (typeof appState._ensureViewSelectOptions === "function") {
       appState._ensureViewSelectOptions();
     }

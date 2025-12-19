@@ -11,18 +11,20 @@ import {
   API_MODE_DIRECT,
   API_MODE_STORAGE_KEY,
   API_MODE_AUTO_OFF_KEY,
-} from "./state.v2025-12-18-10.js";
-import { fetchStationSuggestions, fetchJourneyDetails, parseApiDate } from "./logic.v2025-12-18-10.js";
+} from "./state.v2025-12-19.js";
+import { fetchStationSuggestions, fetchJourneyDetails, parseApiDate } from "./logic.v2025-12-19.js";
 import {
   loadFavorites,
   addFavorite,
   removeFavorite,
   isFavorite,
   clearFavorites,
-} from "./favourites.v2025-12-18-10.js";
-import { t } from "./i18n.v2025-12-18-10.js";
+} from "./favourites.v2025-12-19.js";
+import { t } from "./i18n.v2025-12-19.js";
 
-
+const QUICK_CONTROLS_STORAGE_KEY = "mesdeparts.quickControlsCollapsed";
+let quickControlsCollapsed = false;
+let quickControlsInitialized = false;
 
 const pad2 = (n) => String(n).padStart(2, "0");
 const CH_TIMEZONE = "Europe/Zurich";
@@ -106,6 +108,47 @@ function uiDebugLog(...args) {
   console.log(...args);
 }
 
+// ---------------- LAYOUT AUTO-FIT ----------------
+
+const LAYOUT_TIGHT_CLASS = "layout-tight";
+const OVERFLOW_TOLERANCE_PX = 2;
+let ensureFitFrame = null;
+
+function isOverflowing(element) {
+  if (!element) return false;
+  const viewportWidth =
+    typeof window !== "undefined"
+      ? Math.max(window.innerWidth || 0, document.documentElement?.clientWidth || 0)
+      : 0;
+  const rect = element.getBoundingClientRect();
+  const overflowInside = element.scrollWidth - element.clientWidth;
+  const overflowViewport = viewportWidth ? rect.right - viewportWidth : 0;
+
+  return overflowInside > OVERFLOW_TOLERANCE_PX || overflowViewport > OVERFLOW_TOLERANCE_PX;
+}
+
+export function ensureBoardFitsViewport() {
+  if (ensureFitFrame) cancelAnimationFrame(ensureFitFrame);
+  ensureFitFrame = requestAnimationFrame(() => {
+    const body = document.body;
+    const board = document.querySelector(".board");
+    if (!body || !board) return;
+
+    // Disable auto-zoom/scale; just ensure we are not in tight mode
+    body.classList.remove(LAYOUT_TIGHT_CLASS);
+  });
+}
+
+export function setupAutoFitWatcher() {
+  window.addEventListener(
+    "resize",
+    () => {
+      ensureBoardFitsViewport();
+    },
+    { passive: true }
+  );
+}
+
 // ---------------- FAVORITES (UI) ----------------
 
 const FAV_CLEAR_VALUE = "__clear__";
@@ -122,7 +165,12 @@ function setFavToggleVisual(isOn) {
   const btn = getFavToggleEl();
   if (!btn) return;
 
-  btn.textContent = isOn ? "★" : "☆";
+  const icon = btn.querySelector(".fav-toggle__icon");
+  if (icon) {
+    icon.textContent = isOn ? "★" : "☆";
+  } else {
+    btn.textContent = isOn ? "★" : "☆";
+  }
   btn.setAttribute("aria-pressed", isOn ? "true" : "false");
 }
 
@@ -286,6 +334,8 @@ export function updateStationTitle() {
 
   const input = document.getElementById("station-input");
   if (input && !input.value) input.value = appState.STATION || "";
+
+  ensureBoardFitsViewport();
 }
 
 export function setBoardLoadingState(isLoading) {
@@ -299,6 +349,106 @@ export function setBoardLoadingState(isLoading) {
     hint.textContent = "";
     hint.classList.remove("is-visible");
   }
+}
+
+// ---------------- QUICK CONTROLS COLLAPSE ----------------
+
+function getQuickControlsEls() {
+  return {
+    toggle: document.getElementById("quick-controls-toggle"),
+    label: document.getElementById("quick-controls-toggle-label"),
+    panel: document.getElementById("station-card-collapsible"),
+  };
+}
+
+function applyStationCollapse(panel, collapsed, immediate = false) {
+  if (!panel) return;
+  const card = panel.closest(".station-card");
+  const setCardState = () => {
+    if (card) card.classList.toggle("station-card--collapsed", collapsed);
+  };
+
+  const finalize = () => {
+    if (quickControlsCollapsed !== collapsed) {
+      panel.removeEventListener("transitionend", finalize);
+      return;
+    }
+    panel.style.height = "";
+    panel.setAttribute("aria-hidden", collapsed ? "true" : "false");
+    panel.removeEventListener("transitionend", finalize);
+    setCardState();
+  };
+
+  if (immediate) {
+    panel.classList.toggle("is-collapsed", collapsed);
+    panel.style.height = collapsed ? "0px" : "";
+    panel.setAttribute("aria-hidden", collapsed ? "true" : "false");
+    setCardState();
+    return;
+  }
+
+  setCardState();
+
+  if (collapsed) {
+    const start = panel.scrollHeight;
+    panel.style.height = `${start}px`;
+    panel.classList.add("is-collapsed");
+    // force reflow before collapsing
+    void panel.offsetHeight;
+    panel.style.height = "0px";
+  } else {
+    panel.style.height = "0px";
+    panel.classList.remove("is-collapsed");
+    const target = panel.scrollHeight || 0;
+    void panel.offsetHeight;
+    panel.style.height = `${target}px`;
+  }
+
+  panel.addEventListener("transitionend", finalize);
+}
+
+function renderQuickControlsCollapsedState() {
+  const { toggle, label, panel } = getQuickControlsEls();
+  if (panel) {
+    applyStationCollapse(panel, quickControlsCollapsed, !quickControlsInitialized);
+    quickControlsInitialized = true;
+  }
+  if (label) {
+    label.textContent = t(quickControlsCollapsed ? "quickControlsShow" : "quickControlsHide");
+  }
+  if (toggle) {
+    toggle.setAttribute("aria-expanded", quickControlsCollapsed ? "false" : "true");
+    toggle.classList.toggle("is-collapsed", quickControlsCollapsed);
+    if (label) toggle.setAttribute("aria-label", label.textContent);
+  }
+}
+
+function setQuickControlsCollapsed(nextState) {
+  quickControlsCollapsed = !!nextState;
+  renderQuickControlsCollapsedState();
+  try {
+    localStorage.setItem(QUICK_CONTROLS_STORAGE_KEY, quickControlsCollapsed ? "1" : "0");
+  } catch {
+    // ignore storage errors
+  }
+  ensureBoardFitsViewport();
+}
+
+export function setupQuickControlsCollapse() {
+  const { toggle, panel } = getQuickControlsEls();
+  if (!toggle || !panel) return;
+
+  try {
+    quickControlsCollapsed = localStorage.getItem(QUICK_CONTROLS_STORAGE_KEY) === "1";
+  } catch {
+    quickControlsCollapsed = false;
+  }
+
+  renderQuickControlsCollapsedState();
+
+  toggle.addEventListener("click", () => {
+    setQuickControlsCollapsed(!quickControlsCollapsed);
+  });
 }
 
 // ---------------- VIEW MODE BUTTON ----------------
@@ -415,11 +565,13 @@ const filterUi = {
   favQuickToggle: null,
   platformSelect: null,
   lineSelect: null,
+  hideDepartureToggle: null,
 };
 
 const filterPending = {
   platforms: [],
   lines: [],
+  hideDeparture: false,
 };
 
 // ---------------- BOARD MODE (API) ----------------
@@ -515,11 +667,6 @@ export function setupBoardModeToggle(onChange) {
 
     if (typeof onChange === "function") onChange(next);
 
-    if (next === API_MODE_DIRECT) {
-      closeBoardModePopover();
-      return;
-    }
-
     maybeShowBoardModePopover();
   });
 
@@ -608,6 +755,7 @@ function closeFavoritesPopover() {
 function applyPendingFilters() {
   appState.platformFilter = filterPending.platforms.length ? filterPending.platforms.slice() : null;
   appState.lineFilter = filterPending.lines.length ? filterPending.lines.slice() : null;
+  appState.hideBusDeparture = !!filterPending.hideDeparture;
   applyFiltersToLegacySelects();
   updateFilterButtonState();
   if (typeof filtersOnChange === "function") filtersOnChange();
@@ -685,28 +833,20 @@ function updateFavoritesToggleUi() {
 function updateFilterButtonState() {
   const activePlatforms = normalizeFilterArray(appState.platformFilter);
   const activeLines = normalizeFilterArray(appState.lineFilter);
+  const activeHideDeparture = !appState.lastBoardIsTrain && appState.hideBusDeparture;
 
   const parts = [];
-  if (activePlatforms.length) parts.push(`${t("filterPlatforms")}: ${activePlatforms.join(", ")}`);
-  if (activeLines.length) parts.push(`${t("filterLines")}: ${activeLines.join(", ")}`);
+  if (activePlatforms.length) parts.push(`${t("filterPlatformsShort")} ${activePlatforms.join(", ")}`);
+  if (activeLines.length) parts.push(`${t("filterLinesShort")} ${activeLines.join(", ")}`);
+  if (activeHideDeparture) parts.push(t("filterHideDepartureShort"));
 
   const activeCount =
     (activePlatforms.length ? 1 : 0) +
-    (activeLines.length ? 1 : 0);
+    (activeLines.length ? 1 : 0) +
+    (activeHideDeparture ? 1 : 0);
 
   if (filterUi.label) {
-    filterUi.label.textContent = parts.length
-      ? `${t("filterButton")} · ${parts.join(" • ")}`
-      : t("filterButton");
-  }
-
-  if (filterUi.count) {
-    if (activeCount > 0) {
-      filterUi.count.textContent = String(activeCount);
-      filterUi.count.classList.remove("is-hidden");
-    } else {
-      filterUi.count.classList.add("is-hidden");
-    }
+    filterUi.label.textContent = parts.length ? parts.join(" • ") : t("filterButton");
   }
 
   if (filterUi.openBtn) {
@@ -767,6 +907,7 @@ function syncPendingFromState({ preserveSelections = false } = {}) {
   const currentLines = normalizeFilterArray(appState.lineFilter, lines);
   appState.platformFilter = currentPlatforms.length ? currentPlatforms : null;
   appState.lineFilter = currentLines.length ? currentLines : null;
+  filterPending.hideDeparture = !!appState.hideBusDeparture;
 
   filterPending.platforms = preserveSelections
     ? normalizeFilterArray(filterPending.platforms, platforms)
@@ -823,7 +964,8 @@ function renderFilterChips(type, options, container) {
 function updateSheetResetState() {
   const hasPending =
     filterPending.platforms.length > 0 ||
-    filterPending.lines.length > 0;
+    filterPending.lines.length > 0 ||
+    !!filterPending.hideDeparture;
 
   if (filterUi.resetBtn) {
     filterUi.resetBtn.disabled = !hasPending;
@@ -848,6 +990,10 @@ function renderFilterSheet() {
 
   renderFilterChips("platforms", platforms, filterUi.platformChips);
   renderFilterChips("lines", lines, filterUi.lineChips);
+
+  if (filterUi.hideDepartureToggle) {
+    filterUi.hideDepartureToggle.checked = !!filterPending.hideDeparture;
+  }
 
   updateSheetResetState();
 }
@@ -882,6 +1028,7 @@ function closeFiltersSheet(applyChanges = false) {
 function resetAppliedFilters() {
   filterPending.platforms = [];
   filterPending.lines = [];
+  filterPending.hideDeparture = false;
   closeFiltersSheet(true);
 }
 
@@ -900,6 +1047,8 @@ function updateFiltersVisibility() {
   const hideBecauseView = false;
   const hideBecauseTrain = appState.lastBoardIsTrain;
   const hasPlatforms = (appState.platformOptions || []).length > 0;
+  const displaySection = document.getElementById("filters-section-display");
+  const showDisplay = !hideBecauseTrain;
 
   const showPlatform =
     !hideBecauseView &&
@@ -923,7 +1072,14 @@ function updateFiltersVisibility() {
     filterPending.lines = [];
   }
 
-  const filtersAvailable = showPlatform || showLine;
+  if (!showDisplay) {
+    appState.hideBusDeparture = false;
+    filterPending.hideDeparture = false;
+  }
+
+  if (displaySection) displaySection.style.display = showDisplay ? "" : "none";
+
+  const filtersAvailable = showPlatform || showLine || showDisplay;
   if (filterUi.openBtn) {
     filterUi.openBtn.disabled = !filtersAvailable;
     filterUi.openBtn.style.opacity = filtersAvailable ? "1" : "0.65";
@@ -944,7 +1100,6 @@ export function setupFilters(onChange) {
   filtersOnChange = onChange;
   filterUi.openBtn = document.getElementById("filters-open");
   filterUi.label = document.getElementById("filters-open-label");
-  filterUi.count = document.getElementById("filters-open-count");
   filterUi.quickReset = document.getElementById("filters-reset-inline");
   filterUi.sheet = document.getElementById("filters-popover");
   filterUi.resetBtn = document.getElementById("filters-reset");
@@ -962,6 +1117,7 @@ export function setupFilters(onChange) {
   filterUi.favQuickToggle = document.getElementById("favorites-only-toggle");
   filterUi.platformSelect = document.getElementById("platform-filter");
   filterUi.lineSelect = document.getElementById("line-filter");
+  filterUi.hideDepartureToggle = document.getElementById("filters-hide-departure");
   const selectInteraction = { platform: false, line: false };
   if (filterUi.favPopover) {
     filterUi.favPopover.setAttribute("aria-hidden", "true");
@@ -1005,6 +1161,13 @@ export function setupFilters(onChange) {
 
   if (filterUi.applyBtn) {
     filterUi.applyBtn.addEventListener("click", () => closeFiltersSheet(true));
+  }
+
+  if (filterUi.hideDepartureToggle) {
+    filterUi.hideDepartureToggle.addEventListener("change", () => {
+      filterPending.hideDeparture = !!filterUi.hideDepartureToggle.checked;
+      renderFilterSheet();
+    });
   }
 
   if (filterUi.favQuickToggle) {
@@ -1842,12 +2005,19 @@ function updatePlatformHeader(isTrain) {
   if (thPlat) thPlat.textContent = isTrain ? t("columnPlatformTrain") : t("columnPlatformBus");
 }
 
+function setDepartureColumnVisibility(hide) {
+  const thTime = document.querySelector("th.col-time");
+  if (thTime) thTime.style.display = hide ? "none" : "";
+}
+
 export function renderDepartures(rows) {
   const tbody = document.getElementById("departures-body");
   if (!tbody) return;
 
   setMinColumnVisibility(appState.lastBoardIsTrain);
   updatePlatformHeader(appState.lastBoardIsTrain);
+  const hideDeparture = !!appState.hideBusDeparture && !appState.lastBoardIsTrain;
+  setDepartureColumnVisibility(hideDeparture);
 
   tbody.innerHTML = "";
 
@@ -1873,11 +2043,12 @@ export function renderDepartures(rows) {
     const tr = document.createElement("tr");
     tr.className = "empty-row";
     const td = document.createElement("td");
-    td.colSpan = 6;
+    td.colSpan = hideDeparture ? 5 : 6;
     td.className = "col-empty";
     td.textContent = t("serviceEndedToday");
     tr.appendChild(td);
     tbody.appendChild(tr);
+    ensureBoardFitsViewport();
     return;
   }
 
@@ -1988,6 +2159,7 @@ export function renderDepartures(rows) {
     const tdTime = document.createElement("td");
     tdTime.className = "col-time-cell";
     tdTime.textContent = dep.timeStr || "";
+    if (hideDeparture) tdTime.style.display = "none";
 
     // Platform
     const tdPlat = document.createElement("td");
@@ -2065,4 +2237,6 @@ export function renderDepartures(rows) {
 
     tbody.appendChild(tr);
   }
+
+  ensureBoardFitsViewport();
 }

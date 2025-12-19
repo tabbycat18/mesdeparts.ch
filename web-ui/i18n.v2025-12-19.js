@@ -92,17 +92,59 @@ const TRANSLATIONS = {
     it: "Applica",
     en: "Apply",
   },
+  quickControlsHide: {
+    fr: "Masquer",
+    de: "Ausblenden",
+    it: "Nascondi",
+    en: "Hide",
+  },
+  quickControlsShow: {
+    fr: "Afficher",
+    de: "Anzeigen",
+    it: "Mostra",
+    en: "Show",
+  },
   filterPlatforms: {
     fr: "Quai",
     de: "Gleis",
     it: "Banchina",
     en: "Platform",
   },
+  filterPlatformsShort: {
+    fr: "Quai",
+    de: "Gl.",
+    it: "Bin.",
+    en: "Pl.",
+  },
+  filterDisplay: {
+    fr: "Affichage",
+    de: "Anzeige",
+    it: "Display",
+    en: "Display",
+  },
+  filterHideDeparture: {
+    fr: "Masquer la colonne Départ (bus)",
+    de: "Abfahrts-Spalte ausblenden (Bus)",
+    it: "Nascondi la colonna Partenza (bus)",
+    en: "Hide Departure column (bus)",
+  },
+  filterHideDepartureShort: {
+    fr: "Départ–",
+    de: "Abfahrt–",
+    it: "Partenza–",
+    en: "Depart–",
+  },
   filterLines: {
     fr: "Lignes",
     de: "Linien",
     it: "Linee",
     en: "Lines",
+  },
+  filterLinesShort: {
+    fr: "Lig.",
+    de: "Lin.",
+    it: "Lin.",
+    en: "Ln.",
   },
   filterAll: {
     fr: "Tous",
@@ -249,16 +291,40 @@ const TRANSLATIONS = {
     en: "Board",
   },
   boardModeDesc1: {
-    fr: "Le mode tableau passe par Cloudflare et met en cache les réponses pour éviter de surcharger les serveurs publics. Idéal quand l’écran reste ouvert.",
-    de: "Der Board-Modus nutzt Cloudflare-Cache, um die öffentlichen Server nicht zu überlasten. Ideal, wenn der Bildschirm dauerhaft läuft.",
-    it: "La modalità tabellone usa la cache Cloudflare per evitare di sovraccaricare i server pubblici. Ideale quando lo schermo resta aperto.",
-    en: "Board mode uses Cloudflare cache to avoid overloading the public API servers. Best when the screen stays open.",
+    fr: "Mode tableau ON :",
+    de: "Board-Modus ON:",
+    it: "Modalità tabellone ON:",
+    en: "Board mode ON:",
   },
   boardModeDesc2: {
-    fr: "Le mode normal appelle transport.opendata.ch directement, pratique pour des consultations ponctuelles.",
-    de: "Der Normalmodus ruft transport.opendata.ch direkt auf, praktisch für gelegentliche Abfragen.",
-    it: "La modalità normale chiama transport.opendata.ch direttamente, utile per controlli occasionali.",
-    en: "Normal mode calls transport.opendata.ch directly, good for occasional checks.",
+    fr: "Mode tableau OFF :",
+    de: "Board-Modus OFF:",
+    it: "Modalità tabellone OFF:",
+    en: "Board mode OFF:",
+  },
+  boardModeDetail1: {
+    fr: "Pour longue durée → Idéal quand l’écran reste ouvert. (Autoactivation dès 2 min)",
+    de: "Für lange Nutzung → Ideal, wenn der Bildschirm offen bleibt. (Auto-Aktivierung nach 2 Min.)",
+    it: "Uso prolungato → Ideale quando lo schermo resta aperto. (Attivazione auto dopo 2 min)",
+    en: "For long usage → Best when the screen stays open. (Auto-activates after 2 min)",
+  },
+  boardModeDetail2: {
+    fr: "Pour courte durée → pratique pour des consultations ponctuelles.",
+    de: "Für kurze Nutzung → praktisch für gelegentliche Abfragen.",
+    it: "Uso breve → utile per consultazioni saltuarie.",
+    en: "For short usage → good for occasional checks.",
+  },
+  boardModeFootnote1: {
+    fr: "Pour éviter de surcharger transport.opendata.ch, on passe par Cloudflare qui fait des appels moins fréquemment qu'en mode tableau OFF et met en cache les réponses pour que les utilisateurs se partagent un même fichier.",
+    de: "Um transport.opendata.ch nicht zu überlasten, läuft Board ON über Cloudflare, ruft seltener ab als Board OFF und cached die Antworten, damit alle denselben Cache teilen.",
+    it: "Per evitare di sovraccaricare transport.opendata.ch, si passa da Cloudflare che effettua meno chiamate rispetto al tabellone OFF e mette in cache le risposte così gli utenti condividono lo stesso file.",
+    en: "To avoid overloading transport.opendata.ch, Board ON goes via Cloudflare, polls less often than Board OFF, and caches responses so users share the same file.",
+  },
+  boardModeFootnote2: {
+    fr: "Appelle transport.opendata.ch directement et plus fréquemment qu'en mode tableau ON pour garantir une meilleure précision de l'horaire à l'utilisateur.",
+    de: "Ruft transport.opendata.ch direkt und häufiger ab als Board ON, um eine genauere Fahrplananzeige zu liefern.",
+    it: "Chiama transport.opendata.ch direttamente e più frequentemente del tabellone ON per garantire una maggiore precisione dell'orario.",
+    en: "Calls transport.opendata.ch directly and more frequently than Board ON to give more accurate times.",
   },
   boardModeOk: {
     fr: "OK",
@@ -277,6 +343,60 @@ const TRANSLATIONS = {
     de: "Schließen",
     it: "Chiudi",
     en: "Close",
+  },
+  infoTabsLabel: {
+    fr: "Sections d’informations",
+    de: "Infobereiche",
+    it: "Sezioni informative",
+    en: "Info sections",
+  },
+  infoTabHelp: {
+    fr: "Aide",
+    de: "Hilfe",
+    it: "Aiuto",
+    en: "Help",
+  },
+  infoTabRealtime: {
+    fr: "Temps réel & retards",
+    de: "Echtzeit & Verspätungen",
+    it: "Tempo reale & ritardi",
+    en: "Realtime & delays",
+  },
+  infoTabCredits: {
+    fr: "Crédits",
+    de: "Credits",
+    it: "Crediti",
+    en: "Credits",
+  },
+  infoHelpItemSearch: {
+    fr: "Recherchez : tapez 2 lettres → choisissez un arrêt (⭐ favori).",
+    de: "Suchen: Tippen Sie 2 Buchstaben → Haltestelle wählen (⭐ Favorit).",
+    it: "Cercate: digitate 2 lettere → scegliete una fermata (⭐ preferito).",
+    en: "Search: type 2 letters → choose a stop (⭐ favorite).",
+  },
+  infoHelpItemViews: {
+    fr: "Vues : Par min = chronologique\nPar ligne = regroupé.",
+    de: "Ansichten: Nach min = chronologisch\nNach Linie = gruppiert.",
+    it: "Viste: Per min = cronologico\nPer linea = raggruppato.",
+    en: "Views: By min = chronological\nBy line = grouped.",
+  },
+  infoHelpItemFilters: {
+    fr: "Filtres : ouvrez Filtres, cochez les pastilles Quai/Ligne. Le bouton affiche « Quai: … • Lignes: … » ; « Réinitialiser » efface.",
+    de: "Filter: öffnen Sie „Filter“, wählen Sie Gleis/Linie (Chips). Die Schaltfläche zeigt „Gleis: … • Linien: …“; „Zurücksetzen“ löscht alles.",
+    it: "Filtri: aprite Filtri, selezionate le pillole Binario/Linea. Il pulsante mostra \"Binario: … • Linee: …\"; “Reimposta” azzera.",
+    en: "Filters: open Filters, tick the Platform/Line chips. The button shows “Platform: … • Lines: …”; “Reset” clears all.",
+  },
+  infoHelpItemRead: {
+    fr: "Lire l’écran : min = temps réel\nDépart = horaire officiel.",
+    de: "Anzeige lesen: min = Echtzeit\nAbfahrt = offizieller Fahrplan.",
+    it: "Leggere: min = tempo reale\nPartenza = orario ufficiale.",
+    en: "Read the screen: min = realtime\nDeparture = scheduled time.",
+  },
+  infoHelpItemData: {
+    fr: "Données : transport.opendata.ch (en cas de doute : affichage officiel/sur place).",
+    de: "Daten: transport.opendata.ch (bei Zweifel offizielle Anzeige/vor Ort prüfen).",
+    it: "Dati: transport.opendata.ch (in dubbio: display ufficiale/sul posto).",
+    en: "Data: transport.opendata.ch (if unsure: official display/on site).",
   },
   infoIntro: {
     fr: "mesdeparts.ch affiche les prochains départs en Suisse. Les noms avec virgule désignent un arrêt (bus/tram), ceux sans virgule une gare (train). Actualisation automatique toutes les 10-20 s selon le mode (~3 h d’horizon).",
@@ -338,17 +458,119 @@ const TRANSLATIONS = {
     it: "Ritardi e dati in tempo reale",
     en: "Delays and realtime data",
   },
+  infoRealtimeMinVsDepartureTitle: {
+    fr: "“min” vs “Départ”",
+    de: "„min“ vs. „Abfahrt“",
+    it: "“min” vs “Partenza”",
+    en: "“min” vs “Departure”",
+  },
+  infoRealtimeDeparture: {
+    fr: "Départ : horaire officiel (planifié).",
+    de: "Abfahrt: offizieller Fahrplan (geplant).",
+    it: "Partenza: orario ufficiale (pianificato).",
+    en: "Departure: official timetable (planned).",
+  },
+  infoRealtimeCountdown: {
+    fr: "min : compte à rebours en temps réel ; il peut bouger même si aucun retard n’est affiché.",
+    de: "min: Echtzeit-Countdown; kann sich bewegen, auch wenn kein Delay angezeigt wird.",
+    it: "min: conto alla rovescia in tempo reale; può cambiare anche senza ritardo visualizzato.",
+    en: "min: realtime countdown; it can move even if no delay is shown.",
+  },
   delaysBody: {
-    fr: "En Suisse, un retard est considéré comme officiel à partir de 3 minutes. Les écarts de 1 à 2 minutes peuvent apparaître dans l’horaire en temps réel, mais ne sont pas signalés comme des retards officiels.",
-    de: "In der Schweiz gilt eine Verspätung ab 3 Minuten als offiziell. Abweichungen von 1 bis 2 Minuten können in der Echtzeit-Anzeige erscheinen, werden aber nicht als offizielle Verspätung markiert.",
-    it: "In Svizzera un ritardo è considerato ufficiale a partire da 3 minuti. Scostamenti di 1–2 minuti possono comparire nell’orario in tempo reale, ma non sono segnalati come ritardi ufficiali.",
-    en: "In Switzerland a delay is official from 3 minutes. Deviations of 1–2 minutes may appear in realtime schedules but are not marked as official delays.",
+    fr: "En Suisse, un retard est considéré comme officiel à partir de 3 minutes. Les écarts de 1 à 2 minutes peuvent apparaître en temps réel sans être affichés comme retards officiels.",
+    de: "In der Schweiz gilt eine Verspätung ab 3 Minuten als offiziell. Abweichungen von 1–2 Minuten können in der Echtzeit erscheinen, ohne als offizielle Verspätung angezeigt zu werden.",
+    it: "In Svizzera un ritardo è ufficiale da 3 minuti. Scostamenti di 1–2 minuti possono apparire in tempo reale senza essere mostrati come ritardi ufficiali.",
+    en: "In Switzerland a delay is official from 3 minutes. Deviations of 1–2 minutes may appear in realtime without showing as official delays.",
   },
   delaysBus: {
     fr: "Pour les bus et trams, de légers écarts sont fréquents et reflètent l’adaptation du trafic en temps réel.",
     de: "Bei Bussen und Trams sind leichte Abweichungen häufig und spiegeln die Anpassung des Verkehrs in Echtzeit wider.",
     it: "Per bus e tram sono frequenti piccole variazioni che riflettono l’adattamento del traffico in tempo reale.",
     en: "For buses and trams, small shifts are common and reflect realtime traffic adjustments.",
+  },
+  delaysRuleThresholds: {
+    fr: "Seuils : bus/tram/metro dès +2 min, trains dès +1 min. En dessous, on laisse le compte à rebours clair.",
+    de: "Schwellen: Bus/Tram/Metro ab +2 Min, Züge ab +1 Min. Darunter bleibt der Countdown sauber.",
+    it: "Soglie: bus/tram/metro da +2 min, treni da +1 min. Sotto queste soglie il conto alla rovescia resta pulito.",
+    en: "Thresholds: bus/tram/metro from +2 min, trains from +1 min. Below that, the countdown stays uncluttered.",
+  },
+  delaysRuleCountdown: {
+    fr: "La ligne « min » est en temps réel : même 1 min de décalage peut apparaître, sans afficher un retard officiel pour les bus.",
+    de: "Die Zeile „min“ ist Echtzeit: Auch 1 Minute Abweichung kann erscheinen, ohne bei Bussen als offizielle Verspätung zu gelten.",
+    it: "La riga “min” è in tempo reale: anche 1 minuto di scarto può apparire lì, senza mostrare un ritardo ufficiale per i bus.",
+    en: "The “min” line is realtime: even a 1-minute shift can appear there, without marking an official delay for buses.",
+  },
+  infoRealtimeOfficialTitle: {
+    fr: "Retard officiel (Suisse)",
+    de: "Offizielle Verspätung (Schweiz)",
+    it: "Ritardo ufficiale (Svizzera)",
+    en: "Official delay (Switzerland)",
+  },
+  infoRealtimeThresholdsTitle: {
+    fr: "Seuils d’affichage sur mesdeparts.ch",
+    de: "Anzeigeschwellen auf mesdeparts.ch",
+    it: "Soglie di visualizzazione su mesdeparts.ch",
+    en: "Display thresholds on mesdeparts.ch",
+  },
+  infoRealtimeThresholdsBus: {
+    fr: "Bus / tram / métro : retard affiché dès +2 min",
+    de: "Bus/Tram/Metro: Verspätung ab +2 Min",
+    it: "Bus / tram / metro: ritardo mostrato da +2 min",
+    en: "Bus / tram / metro: delay shown from +2 min",
+  },
+  infoRealtimeThresholdsTrain: {
+    fr: "Trains : retard affiché dès +1 min",
+    de: "Züge: Verspätung ab +1 Min",
+    it: "Treni: ritardo mostrato da +1 min",
+    en: "Trains: delay shown from +1 min",
+  },
+  infoRealtimeThresholdsNote: {
+    fr: "En dessous, le compte à rebours reste “clair” (pas d’étiquette).",
+    de: "Darunter bleibt der Countdown klar (kein Label).",
+    it: "Sotto, il conto alla rovescia resta “pulito” (senza etichetta).",
+    en: "Below that, the countdown stays clear (no label).",
+  },
+  infoRealtimeColorsTitle: {
+    fr: "Couleurs",
+    de: "Farben",
+    it: "Colori",
+    en: "Colors",
+  },
+  infoRealtimeColorsInline: {
+    fr: "Jaune : retard • Rouge : annulation",
+    de: "Gelb: Verspätung • Rot: Ausfall",
+    it: "Giallo: ritardo • Rosso: soppressione",
+    en: "Yellow: delay • Red: cancellation",
+  },
+  infoRealtimeCancelTitle: {
+    fr: "Annulations / suppressions",
+    de: "Annullierungen / Ausfälle",
+    it: "Cancellazioni / soppressioni",
+    en: "Cancellations / suppressions",
+  },
+  delaysRuleColors: {
+    fr: "Affichage : la colonne « Remarque » passe en jaune pour un retard, rouge pour les annulations.",
+    de: "Anzeige: Die Spalte „Bemerkung“ wird gelb bei Verspätung, rot bei Ausfällen.",
+    it: "Visualizzazione: la colonna “Osservazioni” diventa gialla per ritardi, rossa per soppressioni.",
+    en: "Display: the “Remark” column turns yellow for delays, red for cancellations.",
+  },
+  delaysRuleCancelled: {
+    fr: "“Supprimé” : la suppression remplace le reste (texte rouge).",
+    de: "„Supprimé“: Ausfall ersetzt den Rest (roter Text).",
+    it: "“Soppresso”: la soppressione sostituisce il resto (testo rosso).",
+    en: "\"Cancelled\": the cancellation overrides everything else (red text).",
+  },
+  infoRealtimeWhyBusTitle: {
+    fr: "Pourquoi les bus bougent souvent",
+    de: "Warum Busse sich oft bewegen",
+    it: "Perché i bus si muovono spesso",
+    en: "Why buses move often",
+  },
+  infoRealtimeWhyBusBody: {
+    fr: "Pour les bus/trams, de légers écarts sont fréquents (trafic, priorités, régulation) et reflètent l’adaptation temps réel.",
+    de: "Bei Bussen/Trams sind kleine Abweichungen häufig (Verkehr, Prioritäten, Regulierung) und zeigen die Echtzeitanpassung.",
+    it: "Per bus/tram piccoli scostamenti sono frequenti (traffico, priorità, regolazione) e riflettono l’adattamento in tempo reale.",
+    en: "For buses/trams, small shifts are common (traffic, priority, regulation) and reflect realtime adjustments.",
   },
   platformChange: {
     fr: "Changement de voie",
@@ -374,11 +596,11 @@ const TRANSLATIONS = {
     it: "Ritardo ca. {min} min",
     en: "Delay approx. {min} min",
   },
-  creditsTitle: {
-    fr: "Crédits & licences",
-    de: "Credits & Lizenzen",
-    it: "Crediti e licenze",
-    en: "Credits & licenses",
+  infoCreditsDataTitle: {
+    fr: "Données",
+    de: "Daten",
+    it: "Dati",
+    en: "Data",
   },
   creditsData: {
     fr: "Données : transport.opendata.ch",
@@ -387,10 +609,16 @@ const TRANSLATIONS = {
     en: "Data: transport.opendata.ch",
   },
   creditsAuthor: {
-    fr: "© 2024 Mattia Pastore – mesdeparts.ch — Licence Apache 2.0.",
-    de: "© 2024 Mattia Pastore – mesdeparts.ch — Apache-Lizenz 2.0.",
-    it: "© 2024 Mattia Pastore – mesdeparts.ch — Licenza Apache 2.0.",
-    en: "© 2024 Mattia Pastore – mesdeparts.ch — Apache License 2.0.",
+    fr: "© 2025 tabbycat18 – mesdeparts.ch — Licence Apache 2.0.",
+    de: "© 2025 tabbycat18 – mesdeparts.ch — Apache-Lizenz 2.0.",
+    it: "© 2025 tabbycat18 – mesdeparts.ch — Licenza Apache 2.0.",
+    en: "© 2025 tabbycat18 – mesdeparts.ch — Apache License 2.0.",
+  },
+  infoCreditsClockTitle: {
+    fr: "Horloge",
+    de: "Uhr",
+    it: "Orologio",
+    en: "Clock",
   },
   creditsClock: {
     fr: "Horloge : sbbUhr — © GoetteSebastian — Apache License 2.0",
@@ -399,10 +627,22 @@ const TRANSLATIONS = {
     en: "Clock: sbbUhr — © GoetteSebastian — Apache License 2.0",
   },
   creditsClockNote: {
-    fr: "Adaptation et intégration pour mesdeparts.ch. Version web inspirée par CFF-Clock (SlendyMilky). Aucune affiliation ni approbation officielle CFF/SBB.",
-    de: "Anpassung und Integration für mesdeparts.ch. Web-Version inspiriert von CFF-Clock (SlendyMilky). Keine offizielle Partnerschaft oder Genehmigung durch SBB/CFF.",
-    it: "Adattamento e integrazione per mesdeparts.ch. Versione web ispirata a CFF-Clock (SlendyMilky). Nessuna affiliazione o approvazione ufficiale CFF/SBB.",
-    en: "Adaptation and integration for mesdeparts.ch. Web version inspired by CFF-Clock (SlendyMilky). No official affiliation or approval by CFF/SBB.",
+    fr: "Adaptation et intégration pour mesdeparts.ch (inspiré par CFF-Clock / SlendyMilky).",
+    de: "Anpassung und Integration für mesdeparts.ch (inspiriert von CFF-Clock / SlendyMilky).",
+    it: "Adattamento e integrazione per mesdeparts.ch (ispirato da CFF-Clock / SlendyMilky).",
+    en: "Adaptation and integration for mesdeparts.ch (inspired by CFF-Clock / SlendyMilky).",
+  },
+  infoCreditsAffiliationTitle: {
+    fr: "Affiliation",
+    de: "Zugehörigkeit",
+    it: "Affiliazione",
+    en: "Affiliation",
+  },
+  infoCreditsAffiliation: {
+    fr: "Aucune affiliation ni approbation officielle CFF/SBB.",
+    de: "Keine Zugehörigkeit oder offizielle Genehmigung der SBB/CFF.",
+    it: "Nessuna affiliazione o approvazione ufficiale CFF/SBB.",
+    en: "No affiliation or official approval from SBB/CFF.",
   },
   footerNote: {
     fr: "Données : transport.opendata.ch — Horloge : sbbUhr (Apache 2.0) — Non officiel, aucune affiliation avec CFF/SBB/FFS ou les exploitants.",
@@ -410,11 +650,23 @@ const TRANSLATIONS = {
     it: "Dati: transport.opendata.ch — Orologio: sbbUhr (Apache 2.0) — Non ufficiale, nessuna affiliazione con FFS/SBB/CFF o operatori.",
     en: "Data: transport.opendata.ch — Clock: sbbUhr (Apache 2.0) — Unofficial; no affiliation with SBB/CFF/FFS or operators.",
   },
+  infoCreditsLineColorsTitle: {
+    fr: "Couleurs de lignes",
+    de: "Linienfarben",
+    it: "Colori delle linee",
+    en: "Line colors",
+  },
   lineColorsNotice: {
     fr: "Les couleurs des lignes sont utilisées à des fins d’identification visuelle, selon les chartes publiques des exploitants.",
     de: "Die Linienfarben dienen der visuellen Identifikation gemäß den öffentlich zugänglichen Farbwelten der Betreiber.",
     it: "I colori delle linee sono usati solo per identificazione visiva, secondo le palette pubbliche degli operatori.",
     en: "Line colors are used for visual identification only, following operators’ public palettes.",
+  },
+  infoCreditsLicenseTitle: {
+    fr: "Licence du projet",
+    de: "Projektlizenz",
+    it: "Licenza del progetto",
+    en: "Project license",
   },
   serviceEndedToday: {
     fr: "Fin de service pour cet arrêt aujourd'hui",
@@ -549,9 +801,16 @@ export function applyStaticTranslations() {
     ["#board-mode-title", "boardModeTitle"],
     ["#board-mode-desc-1", "boardModeDesc1"],
     ["#board-mode-desc-2", "boardModeDesc2"],
+    ["#board-mode-detail-1", "boardModeDetail1"],
+    ["#board-mode-detail-2", "boardModeDetail2"],
+    ["#board-mode-footnote-1", "boardModeFootnote1"],
+    ["#board-mode-footnote-2", "boardModeFootnote2"],
     ["#board-mode-ok", "boardModeOk"],
     ["#filters-open-label", "filterButton"],
     ["#filters-sheet-title", "filterButton"],
+    ["#filters-display-title", "filterDisplay"],
+    ["label[for='filters-hide-departure']", "filterHideDeparture"],
+    ["#filters-hide-departure", "filterHideDeparture"],
     ["#filters-platforms-title", "filterPlatforms"],
     ["#filters-lines-title", "filterLines"],
     ["#favorites-only-label", "filterFavoritesLabel"],
@@ -574,5 +833,14 @@ export function applyStaticTranslations() {
   for (const [selector, key] of pairs) {
     const el = document.querySelector(selector);
     if (el) el.textContent = t(key);
+  }
+
+  const quickToggle = document.getElementById("quick-controls-toggle");
+  const quickToggleLabel = document.getElementById("quick-controls-toggle-label");
+  if (quickToggleLabel) {
+    const collapsed = quickToggle ? quickToggle.classList.contains("is-collapsed") : false;
+    const txt = t(collapsed ? "quickControlsShow" : "quickControlsHide");
+    quickToggleLabel.textContent = txt;
+    if (quickToggle) quickToggle.setAttribute("aria-label", txt);
   }
 }
