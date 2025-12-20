@@ -7,25 +7,28 @@ import {
   appState,
   VIEW_MODE_TIME,
   VIEW_MODE_LINE,
+  TRAIN_FILTER_ALL,
+  TRAIN_FILTER_REGIONAL,
+  TRAIN_FILTER_LONG_DISTANCE,
   API_MODE_BOARD,
   API_MODE_DIRECT,
   API_MODE_STORAGE_KEY,
   API_MODE_AUTO_OFF_KEY,
-} from "./state.v2025-12-19-1.js";
+} from "./state.v2025-12-20-1.js";
 import {
   fetchStationSuggestions,
   fetchStationsNearby,
   fetchJourneyDetails,
   parseApiDate,
-} from "./logic.v2025-12-19-1.js";
+} from "./logic.v2025-12-20-1.js";
 import {
   loadFavorites,
   addFavorite,
   removeFavorite,
   isFavorite,
   clearFavorites,
-} from "./favourites.v2025-12-19-1.js";
-import { t } from "./i18n.v2025-12-19-1.js";
+} from "./favourites.v2025-12-20-1.js";
+import { t } from "./i18n.v2025-12-20-1.js";
 
 const QUICK_CONTROLS_STORAGE_KEY = "mesdeparts.quickControlsCollapsed";
 let quickControlsCollapsed = false;
@@ -464,74 +467,113 @@ function viewModeLabel(mode) {
   return t("viewLabelFallback");
 }
 
+function trainFilterLabel(filter) {
+  if (filter === TRAIN_FILTER_REGIONAL) return t("trainFilterRegional");
+  if (filter === TRAIN_FILTER_LONG_DISTANCE) return t("trainFilterLongDistance");
+  return t("trainFilterAll");
+}
+
 export function setupViewToggle(onChange) {
   const segment = document.getElementById("view-segment");
-  const segmentButtons = segment ? Array.from(segment.querySelectorAll("[data-view]")) : [];
   const sel = document.getElementById("view-select");
   const legacyBtn = document.getElementById("filter-toggle");
 
-  function renderControls() {
-    if (sel) sel.value = appState.viewMode || VIEW_MODE_LINE;
-    if (segmentButtons.length) {
-      segmentButtons.forEach((b) => {
-        const mode = b.dataset.view === "time" ? VIEW_MODE_TIME : VIEW_MODE_LINE;
-        const isActive = mode === appState.viewMode;
-        b.classList.toggle("is-active", isActive);
-        b.setAttribute("aria-pressed", isActive ? "true" : "false");
-        b.textContent = mode === VIEW_MODE_TIME ? t("viewOptionTime") : t("viewOptionLine");
-      });
-    }
-    if (legacyBtn) {
-      const labelEl = legacyBtn.querySelector(".filter-label");
-      const txt = viewModeLabel(appState.viewMode);
-      if (labelEl) labelEl.textContent = txt;
-      else legacyBtn.textContent = txt;
-      legacyBtn.classList.remove("is-hidden");
-    }
+  const trainOptions = [
+    { v: TRAIN_FILTER_ALL, t: () => t("trainFilterAll") },
+    { v: TRAIN_FILTER_REGIONAL, t: () => t("trainFilterRegional") },
+    { v: TRAIN_FILTER_LONG_DISTANCE, t: () => t("trainFilterLongDistance") },
+  ];
+
+  const busOptions = [
+    { v: VIEW_MODE_LINE, t: () => t("viewOptionLine") },
+    { v: VIEW_MODE_TIME, t: () => t("viewOptionTime") },
+  ];
+
+  function setTrainFilter(next) {
+    const allowed = [TRAIN_FILTER_ALL, TRAIN_FILTER_REGIONAL, TRAIN_FILTER_LONG_DISTANCE];
+    if (!allowed.includes(next)) return;
+    if (appState.trainServiceFilter === next) return;
+    appState.trainServiceFilter = next;
+    renderControls();
+    if (typeof onChange === "function") onChange();
   }
 
   function setView(mode) {
     if (mode !== VIEW_MODE_TIME && mode !== VIEW_MODE_LINE) return;
+    if (appState.viewMode === mode) return;
     appState.viewMode = mode;
     renderControls();
     updateFiltersVisibility();
     if (typeof onChange === "function") onChange();
   }
 
-  if (!appState.viewMode) appState.viewMode = VIEW_MODE_LINE;
-
-  if (segmentButtons.length) {
-    segmentButtons.forEach((b) => {
+  function renderSegment(options, activeValue, isTrainBoard) {
+    if (!segment) return;
+    segment.innerHTML = "";
+    options.forEach((o) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "segmented-btn";
+      b.dataset.option = o.v;
+      const isActive = o.v === activeValue;
+      b.classList.toggle("is-active", isActive);
+      b.setAttribute("aria-pressed", isActive ? "true" : "false");
+      b.textContent = o.t();
       b.addEventListener("click", () => {
-        const mode = b.dataset.view === "time" ? VIEW_MODE_TIME : VIEW_MODE_LINE;
-        if (mode !== appState.viewMode) setView(mode);
+        if (isTrainBoard) setTrainFilter(o.v);
+        else setView(o.v);
       });
+      segment.appendChild(b);
     });
   }
 
+  function renderSelect(options, activeValue, isTrainBoard) {
+    if (!sel) return;
+    sel.innerHTML = "";
+    for (const o of options) {
+      const opt = document.createElement("option");
+      opt.value = o.v;
+      opt.textContent = o.t();
+      sel.appendChild(opt);
+    }
+    sel.value = activeValue;
+    sel.dataset.viewType = isTrainBoard ? "train" : "bus";
+  }
+
+  function renderLegacy(options, activeValue, isTrainBoard) {
+    if (!legacyBtn) return;
+    const labelEl = legacyBtn.querySelector(".filter-label");
+    const activeLabel = isTrainBoard ? trainFilterLabel(activeValue) : viewModeLabel(activeValue);
+    if (labelEl) labelEl.textContent = activeLabel;
+    else legacyBtn.textContent = activeLabel;
+    legacyBtn.classList.remove("is-hidden");
+  }
+
+  function renderControls() {
+    const isTrainBoard = !!appState.lastBoardIsTrain;
+    const options = isTrainBoard ? trainOptions : busOptions;
+    const active = isTrainBoard
+      ? appState.trainServiceFilter || TRAIN_FILTER_ALL
+      : appState.viewMode || VIEW_MODE_LINE;
+
+    renderSegment(options, active, isTrainBoard);
+    renderSelect(options, active, isTrainBoard);
+    renderLegacy(options, active, isTrainBoard);
+  }
+
+  if (!appState.viewMode) appState.viewMode = VIEW_MODE_LINE;
+  if (!appState.trainServiceFilter) appState.trainServiceFilter = TRAIN_FILTER_ALL;
+
   if (sel) {
     appState.viewSelect = sel;
+    sel.addEventListener("change", () => {
+      const isTrainBoard = sel.dataset.viewType === "train" || appState.lastBoardIsTrain;
+      const val = sel.value;
+      if (isTrainBoard) setTrainFilter(val);
+      else setView(val);
+    });
 
-    function ensureOptions() {
-      const options = [
-        { v: VIEW_MODE_TIME, t: t("viewOptionTime") },
-        { v: VIEW_MODE_LINE, t: t("viewOptionLine") },
-      ];
-
-      sel.innerHTML = "";
-      for (const o of options) {
-        const opt = document.createElement("option");
-        opt.value = o.v;
-        opt.textContent = o.t;
-        sel.appendChild(opt);
-      }
-      sel.value = appState.viewMode;
-    }
-
-    sel.addEventListener("change", () => setView(sel.value));
-    ensureOptions();
     appState._ensureViewSelectOptions = () => {
-      ensureOptions();
       renderControls();
     };
   }
@@ -539,12 +581,21 @@ export function setupViewToggle(onChange) {
   if (legacyBtn) {
     appState.viewButton = legacyBtn;
     legacyBtn.addEventListener("click", () => {
-      const next = appState.viewMode === VIEW_MODE_TIME ? VIEW_MODE_LINE : VIEW_MODE_TIME;
-      setView(next);
+      const isTrainBoard = !!appState.lastBoardIsTrain;
+      if (isTrainBoard) {
+        const order = [TRAIN_FILTER_ALL, TRAIN_FILTER_REGIONAL, TRAIN_FILTER_LONG_DISTANCE];
+        const idx = order.indexOf(appState.trainServiceFilter || TRAIN_FILTER_ALL);
+        const next = order[(idx + 1) % order.length];
+        setTrainFilter(next);
+      } else {
+        const next = appState.viewMode === VIEW_MODE_TIME ? VIEW_MODE_LINE : VIEW_MODE_TIME;
+        setView(next);
+      }
     });
   }
 
   renderControls();
+  appState._renderViewControls = renderControls;
   updateFiltersVisibility();
 }
 
@@ -1040,12 +1091,6 @@ function resetAppliedFilters() {
 }
 
 function updateFiltersVisibility() {
-  // Hide the view selector entirely on train-only boards
-  const viewSelect = document.getElementById("view-select");
-  const viewSegment = document.getElementById("view-segment");
-  if (viewSelect) viewSelect.style.display = appState.lastBoardIsTrain ? "none" : "";
-  if (viewSegment) viewSegment.style.display = appState.lastBoardIsTrain ? "none" : "";
-
   const platformSel = filterUi.platformSelect || document.getElementById("platform-filter");
   const platWrap = platformSel ? platformSel.closest(".platform-filter-container") : null;
   const lineSelect = filterUi.lineSelect || document.getElementById("line-filter");
@@ -1856,7 +1901,7 @@ function renderJourneyStops(dep, detail) {
   if (!passList.length) {
     const empty = document.createElement("div");
     empty.className = "journey-stop";
-    empty.textContent = "Aucun arrêt détaillé pour ce trajet.";
+    empty.textContent = t("journeyNoStops");
     stopsWrap.appendChild(empty);
     return stopsWrap;
   }
@@ -1913,6 +1958,8 @@ function renderJourneyStops(dep, detail) {
 
     const timeEl = document.createElement("div");
     timeEl.className = "journey-stop-times";
+    const timeStack = document.createElement("div");
+    timeStack.className = "journey-stop-time-stack";
 
     const arrStr = arr ? formatTimeCell(arr) : null;
     const depStr = depTime ? formatTimeCell(depTime) : null;
@@ -1954,7 +2001,7 @@ function renderJourneyStops(dep, detail) {
       val.textContent = arrStr || "--:--";
       rowArr.appendChild(lbl);
       rowArr.appendChild(val);
-      timeEl.appendChild(rowArr);
+      timeStack.appendChild(rowArr);
     }
 
     if (showDeparture) {
@@ -1968,13 +2015,14 @@ function renderJourneyStops(dep, detail) {
       val.textContent = depStr || arrStr || "--:--";
       rowDep.appendChild(lbl);
       rowDep.appendChild(val);
-      timeEl.appendChild(rowDep);
+      timeStack.appendChild(rowDep);
     }
 
-    // Add platform once per stop (right side) for trains
+    // Add platform once per stop (left side)
     if (platformPill) {
       timeEl.appendChild(platformPill);
     }
+    timeEl.appendChild(timeStack);
 
     content.appendChild(nameEl);
     content.appendChild(timeEl);
@@ -1995,8 +2043,8 @@ async function openJourneyDetails(dep) {
   const stopsEl = overlay.querySelector(".journey-stops");
 
   // Loading state
-  titleEl.textContent = "Détails du trajet";
-  metaEl.textContent = "Chargement…";
+  titleEl.textContent = t("journeyTitle");
+  metaEl.textContent = t("journeyLoading");
   stopsEl.innerHTML = "";
 
   try {
@@ -2018,31 +2066,30 @@ async function openJourneyDetails(dep) {
     dest.textContent = `→ ${dep.dest || section?.arrival?.station?.name || section?.journey?.to?.name || ""}`;
     titleEl.appendChild(dest);
 
-    const platformLabel = dep.mode === "train" ? t("columnPlatformTrain") : t("columnPlatformBus");
-    const hasPlatform = !!dep.platform;
-    const platformText = hasPlatform ? `${platformLabel} ${dep.platform}` : "";
+    const hasDelay = typeof dep.delayMin === "number" && dep.delayMin > 0;
+
     metaEl.textContent = "";
     const metaLine = document.createElement("span");
-    metaLine.textContent = `Départ prévu ${dep.timeStr || ""}`;
-    const platPill = hasPlatform
-      ? (() => {
-          const pill = document.createElement("span");
-          pill.className = "journey-meta-pill";
-          pill.textContent = platformText;
-          return pill;
-        })()
-      : null;
+    metaLine.className = "journey-meta-time";
+    metaLine.textContent = `${t("journeyPlannedDeparture")} ${dep.timeStr || ""}`;
+    const delayPill =
+      hasDelay && dep.delayMin > 0
+        ? (() => {
+            const pill = document.createElement("span");
+            pill.className = "journey-meta-pill journey-meta-pill--delay";
+            pill.textContent = `+${dep.delayMin} min`;
+            return pill;
+          })()
+        : null;
+
     metaEl.appendChild(metaLine);
-    if (platPill) {
-      metaEl.appendChild(document.createTextNode(" "));
-      metaEl.appendChild(platPill);
-    }
+    if (delayPill) metaEl.appendChild(delayPill);
 
     stopsEl.innerHTML = "";
     stopsEl.appendChild(renderJourneyStops(dep, detail));
   } catch (err) {
     console.error("[MesDeparts][journey] error", err);
-    metaEl.textContent = "Impossible de charger les arrêts pour ce trajet.";
+    metaEl.textContent = t("journeyStopsError");
     stopsEl.innerHTML = "";
   }
 }
@@ -2111,6 +2158,9 @@ export function renderDepartures(rows) {
   updatePlatformHeader(appState.lastBoardIsTrain);
   const hideDeparture = !!appState.hideBusDeparture && !appState.lastBoardIsTrain;
   setDepartureColumnVisibility(hideDeparture);
+  if (typeof appState._renderViewControls === "function") {
+    appState._renderViewControls();
+  }
 
   tbody.innerHTML = "";
 

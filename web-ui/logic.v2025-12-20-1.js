@@ -16,9 +16,12 @@ import {
   DEBUG_EARLY,
   VIEW_MODE_TIME,
   VIEW_MODE_LINE,
+  TRAIN_FILTER_ALL,
+  TRAIN_FILTER_REGIONAL,
+  TRAIN_FILTER_LONG_DISTANCE,
   API_MODE_DIRECT,
-} from "./state.v2025-12-19-1.js";
-import { t } from "./i18n.v2025-12-19-1.js";
+} from "./state.v2025-12-20-1.js";
+import { t } from "./i18n.v2025-12-20-1.js";
 
 // API base can be overridden by setting window.__MD_API_BASE__ before scripts load
 const DIRECT_API_BASE = "https://transport.opendata.ch/v1";
@@ -66,6 +69,11 @@ export function classifyMode(category) {
   // Fallback: treat unknown as urban so it still shows
   if (!cat) return "bus";
   return "bus";
+}
+
+function isRegionalTrainCategory(category) {
+  const cat = (category || "").toUpperCase().trim();
+  return cat === "S" || cat === "R";
 }
 
 // Motte special direction filter
@@ -350,6 +358,8 @@ export function buildDeparturesGrouped(data, viewMode = VIEW_MODE_LINE) {
       ? [appState.lineFilter]
       : [];
 
+  const trainFilter = appState.trainServiceFilter || TRAIN_FILTER_ALL;
+
   for (const entry of stationboard) {
     const rawNumber = entry.number ? String(entry.number) : "";
     const rawCategory = entry.category ? String(entry.category) : "";
@@ -381,6 +391,12 @@ export function buildDeparturesGrouped(data, viewMode = VIEW_MODE_LINE) {
 
     if (mode === "train") trainCount += 1;
     else busCount += 1;
+
+    if (mode === "train") {
+      const isRegional = isRegionalTrainCategory(rawCategory);
+      if (trainFilter === TRAIN_FILTER_REGIONAL && !isRegional) continue;
+      if (trainFilter === TRAIN_FILTER_LONG_DISTANCE && isRegional) continue;
+    }
 
     const dest = entry.to || "";
     const stop = entry.stop || {};

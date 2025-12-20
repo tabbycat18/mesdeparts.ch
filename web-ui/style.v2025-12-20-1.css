@@ -1512,7 +1512,7 @@ body.layout-tight .line-chips {
   align-items: flex-start;
   gap: 8px;
   margin-top: 0;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   justify-content: space-between;
   max-height: 500px;
   overflow: visible;
@@ -1553,23 +1553,28 @@ body.layout-tight .line-chips {
 .segmented-control {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
-  padding: 2px;
+  gap: 0;
+  padding: 0;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.12);
   border: 1px solid rgba(255, 255, 255, 0.28);
+  width: 100%;
+  overflow: hidden;
 }
 
 .segmented-btn {
   border: none;
   background: transparent;
   color: #ffffff;
-  padding: 6px 12px;
+  padding: 8px 12px;
   font-size: 0.85rem;
   font-weight: 750;
   border-radius: 999px;
   cursor: pointer;
-  min-width: 104px;
+  min-width: 93px;
+  flex: 1 1 0;
+  text-align: center;
+  height: 100%;
   transition:
     background 0.15s ease,
     color 0.15s ease,
@@ -1593,23 +1598,10 @@ body.layout-tight .line-chips {
   flex-wrap: nowrap;
   justify-content: flex-end;
   position: relative;
-  margin-top: 22px; /* align pill center with segmented control center */
-}
-
-@media (max-width: 720px) {
-  .segmented-btn {
-    min-width: 90px;
-    padding: 6px 10px;
-  }
+  margin-top: 12px; /* align pill center with segmented control center */
 }
 
 @media (max-width: 520px) {
-  .segmented-btn {
-    min-width: 84px;
-    padding: 6px 9px;
-    font-size: 0.82rem;
-  }
-
   .quick-actions {
     gap: 6px;
   }
@@ -1962,7 +1954,30 @@ body.layout-tight .line-chips {
 /* Station search card goes on the next line and takes width */
 .header-right .station-card {
   flex: 1 1 100%;
-  max-width: 420px;
+  max-width: 640px;
+}
+
+/* Stack controls above clock/title on mid-width viewports */
+@media (max-width: 830px) and (min-width: 521px) {
+  .board-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 14px;
+  }
+
+  .header-right {
+    order: 1;
+    justify-content: flex-start;
+  }
+
+  .header-left {
+    order: 2;
+  }
+
+  .header-right .station-card {
+    max-width: none;
+    width: 100%;
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -2415,6 +2430,11 @@ body.layout-tight .line-chips {
   flex-wrap: wrap;
 }
 
+.journey-meta-time {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
 .journey-meta-pill {
   display: inline-flex;
   align-items: center;
@@ -2422,6 +2442,14 @@ body.layout-tight .line-chips {
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.12);
   font-size: 0.85rem;
+}
+
+.journey-meta-pill--delay {
+  background: rgba(254, 228, 1, 0.2);
+  border: 1px solid rgba(254, 228, 1, 0.7);
+  color: var(--remark);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
 
 .journey-stops {
@@ -2460,15 +2488,25 @@ body.layout-tight .line-chips {
 
 .journey-stop-platform {
   display: inline-flex;
-  margin-left: 8px;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  margin-right: 8px;
   padding: 2px 6px;
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.12);
   font-size: 0.75rem;
-  font-weight: 600;
+  font-weight: 700;
+  flex-shrink: 0;
 }
 
 .journey-stop-times {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.journey-stop-time-stack {
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -2476,15 +2514,13 @@ body.layout-tight .line-chips {
 
   /* Keep a consistent right column, but not overly wide */
   min-width: 104px;
-  position: relative;
-  padding-right: 64px;
+  flex: 1;
 }
 
 .journey-stop-time-row {
   display: flex;
   align-items: baseline;
   gap: 10px;
-  width: 100%;
   justify-content: flex-end;
 }
 
@@ -2549,26 +2585,19 @@ body.layout-tight .line-chips {
   min-width: 26px;
   padding: 2px 6px;
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.12);
   font-size: 0.75rem;
   font-weight: 700;
-  margin-left: 6px;
+  margin-right: 8px;
+  flex-shrink: 0;
 }
 
 .journey-stop-platform.small {
-  position: absolute;
-  right: 0;
-  top: 0;
-
   display: inline-flex;
   align-items: center;
   padding: 2px 10px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.12);
-  font-size: 0.85rem;
-  font-weight: 700;
-  line-height: 1.2;
-  min-width: 26px;
 }
 
 @media (max-width: 520px) {
@@ -2613,9 +2642,8 @@ body.layout-tight .line-chips {
   }
 
   /* On small screens, the right column should feel like “just the times” */
-  .journey-stop-times {
+  .journey-stop-time-stack {
     min-width: 72px;
-    padding-right: 0;
   }
 
   .journey-stop-time-label {
@@ -2630,7 +2658,7 @@ body.layout-tight .line-chips {
   .journey-stop-platform.small {
     position: static;
     margin-top: 2px;
-    align-self: flex-end;
+    align-self: center;
   }
 }
 
@@ -2668,6 +2696,7 @@ body.layout-tight .line-chips {
 
   .header-right {
     align-items: center;
+    justify-content: center;
   }
 
   .title-block h1 {
@@ -2724,7 +2753,7 @@ body.layout-tight .line-chips {
     flex: 1 1 auto;
     min-width: 0;
     text-align: center;
-    padding: 6px 8px;
+    padding: 8px 12px;
   }
 
   .filters-popover,

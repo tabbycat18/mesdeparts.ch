@@ -15,14 +15,15 @@ import {
   API_MODE_STORAGE_KEY,
   API_MODE_AUTO_OFF_KEY,
   API_MODE_AUTO_SWITCH_MS,
-} from "./state.v2025-12-19-1.js";
+  TRAIN_FILTER_ALL,
+} from "./state.v2025-12-20-1.js";
 
 import {
   detectNetworkFromStation,
   resolveStationId,
   fetchStationboardRaw,
   buildDeparturesGrouped,
-} from "./logic.v2025-12-19-1.js";
+} from "./logic.v2025-12-20-1.js";
 
 import {
   setupClock,
@@ -39,23 +40,22 @@ import {
   setBoardLoadingState,
   ensureBoardFitsViewport,
   setupAutoFitWatcher,
-} from "./ui.v2025-12-19-1.js";
+} from "./ui.v2025-12-20-1.js";
 
-import { setupInfoButton } from "./infoBTN.v2025-12-19-1.js";
-import { initI18n, applyStaticTranslations, setLanguage, LANGUAGE_OPTIONS } from "./i18n.v2025-12-19-1.js";
+import { setupInfoButton } from "./infoBTN.v2025-12-20-1.js";
+import { initI18n, applyStaticTranslations, setLanguage, LANGUAGE_OPTIONS } from "./i18n.v2025-12-20-1.js";
 
 // Persist station between reloads
 const STORAGE_KEY = "mesdeparts.station";
-const DEFAULT_API_MODE = API_MODE_DIRECT;
+const DEFAULT_API_MODE = API_MODE_BOARD;
 
 function getInitialApiMode() {
   try {
-    const stored = localStorage.getItem(API_MODE_STORAGE_KEY);
-    if (stored === API_MODE_BOARD || stored === API_MODE_DIRECT) return stored;
+    localStorage.setItem(API_MODE_STORAGE_KEY, API_MODE_BOARD);
   } catch {
     // ignore
   }
-  return DEFAULT_API_MODE;
+  return API_MODE_BOARD;
 }
 
 function updateDebugPanel(rows) {
@@ -167,6 +167,7 @@ function applyStation(name, id) {
 
   // Default view: group by line
   appState.viewMode = VIEW_MODE_LINE;
+  appState.trainServiceFilter = TRAIN_FILTER_ALL;
 
   // Reset filters on station change
   appState.platformFilter = null;

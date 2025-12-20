@@ -39,6 +39,11 @@ export const VIEW_MODE_TIME = "time";   // chronological list
 export const VIEW_MODE_LINE = "line";   // grouped by line
 export const VIEW_MODE_DOWN = "down";   // Motte special filter (“Descendre” / centre-ville)
 
+// Train filters (service types)
+export const TRAIN_FILTER_ALL = "train_all";
+export const TRAIN_FILTER_REGIONAL = "train_regional";
+export const TRAIN_FILTER_LONG_DISTANCE = "train_long";
+
 export const API_MODE_BOARD = "board";
 export const API_MODE_DIRECT = "direct";
 export const API_MODE_STORAGE_KEY = "md_api_mode";
@@ -55,6 +60,7 @@ export const appState = {
 
   // View (controls bus display + Motte filter)
   viewMode: VIEW_MODE_LINE,
+  trainServiceFilter: TRAIN_FILTER_ALL,
 
   // API mode: board (Cloudflare) vs direct (transport.opendata.ch)
   apiMode: API_MODE_BOARD,
