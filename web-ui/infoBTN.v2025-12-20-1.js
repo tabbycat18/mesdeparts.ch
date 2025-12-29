@@ -95,6 +95,10 @@ function buildRealtimePanel() {
       ],
     },
     {
+      title: t("infoRealtimeOfficialTitle"),
+      lines: [t("delaysBody")],
+    },
+    {
       title: t("infoRealtimeThresholdsTitle"),
       lines: [
         t("infoRealtimeThresholdsBus"),

@@ -567,10 +567,10 @@ const TRANSLATIONS = {
     en: "min: realtime countdown; it can move even if no delay is shown.",
   },
   delaysBody: {
-    fr: "En Suisse, un retard est considéré comme officiel à partir de 3 minutes. Les écarts de 1 à 2 minutes peuvent apparaître en temps réel sans être affichés comme retards officiels.",
-    de: "In der Schweiz gilt eine Verspätung ab 3 Minuten als offiziell. Abweichungen von 1–2 Minuten können in der Echtzeit erscheinen, ohne als offizielle Verspätung angezeigt zu werden.",
-    it: "In Svizzera un ritardo è ufficiale da 3 minuti. Scostamenti di 1–2 minuti possono apparire in tempo reale senza essere mostrati come ritardi ufficiali.",
-    en: "In Switzerland a delay is official from 3 minutes. Deviations of 1–2 minutes may appear in realtime without showing as official delays.",
+    fr: "En Suisse, un retard est considéré comme officiel à partir de 3 minutes. Les écarts de 1 à 2 minutes peuvent apparaître en temps réel sans être considérés comme officiels.",
+    de: "In der Schweiz gilt eine Verspätung ab 3 Minuten als offiziell. Abweichungen von 1–2 Minuten können in der Echtzeit erscheinen, ohne als offiziell zu gelten.",
+    it: "In Svizzera un ritardo è ufficiale da 3 minuti. Scostamenti di 1–2 minuti possono apparire in tempo reale senza essere considerati ufficiali.",
+    en: "In Switzerland a delay is official from 3 minutes. Deviations of 1–2 minutes may appear in realtime without being considered official.",
   },
   delaysBus: {
     fr: "Pour les bus et trams, de légers écarts sont fréquents et reflètent l’adaptation du trafic en temps réel.",
