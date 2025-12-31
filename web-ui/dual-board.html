@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>ATB10 Lite Dual Board Wrapper</title>
+  <style>
+    /* Set your two URLs below (left and right). This file is meant to live on the tablet only. */
+    :root {
+      color-scheme: dark;
+    }
+    html, body {
+      margin: 0;
+      height: 100%;
+      background: #000;
+      overflow: hidden;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+    .wrap {
+      display: flex;
+      height: 100vh;
+      width: 100vw;
+      gap: 2px;
+      background: #000;
+    }
+    .pane {
+      flex: 1 1 50%;
+      border: none;
+      background: #000;
+    }
+    .warning {
+      color: #fff;
+      display: grid;
+      place-items: center;
+      text-align: center;
+      padding: 1.5rem;
+      gap: 0.5rem;
+    }
+    .warning code {
+      background: #111;
+      padding: 0.25rem 0.5rem;
+      border-radius: 6px;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap" id="wrapper">
+    <iframe class="pane" id="leftPane" title="Left board"></iframe>
+    <iframe class="pane" id="rightPane" title="Right board"></iframe>
+  </div>
+
+  <script>
+    // Replace these two URLs with the boards you want on the tablet.
+    // Example: const LEFT_DEFAULT = "https://mesdeparts.ch/?stationName=...&stationId=...";
+    const LEFT_DEFAULT = "https://mesdeparts.ch/?stationName=Lausanne%2C+Motte&stationId=8592082";
+    const RIGHT_DEFAULT = "https://mesdeparts.ch/?stationName=Lausanne";
+
+    const leftUrl = new URLSearchParams(location.search).get("left") || LEFT_DEFAULT;
+    const rightUrl = new URLSearchParams(location.search).get("right") || RIGHT_DEFAULT;
+
+    const leftFrame = document.getElementById("leftPane");
+    const rightFrame = document.getElementById("rightPane");
+    const wrapper = document.getElementById("wrapper");
+
+    if (!leftUrl || !rightUrl || leftUrl.includes("PASTE_") || rightUrl.includes("PASTE_")) {
+      wrapper.innerHTML = `
+        <div class="warning">
+          <div>Set your two board URLs inside <code>LEFT_DEFAULT</code> and <code>RIGHT_DEFAULT</code>.</div>
+          <div>You can also pass them via the address bar: <code>?left=...&right=...</code></div>
+        </div>
+      `;
+    } else {
+      leftFrame.src = leftUrl;
+      rightFrame.src = rightUrl;
+    }
+  </script>
+</body>
+</html>
