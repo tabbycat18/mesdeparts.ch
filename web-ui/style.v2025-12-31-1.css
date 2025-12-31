@@ -57,11 +57,11 @@ body {
   position: absolute;
   top: 8px;
   right: 10px;
-  font-size: 0.75rem;
+  font-size: 0.65rem;
   color: rgba(245, 247, 255, 0.7);
   background: rgba(0, 0, 0, 0.25);
-  padding: 4px 6px;
-  border-radius: 6px;
+  padding: 3px 5px;
+  border-radius: 5px;
   pointer-events: none;
   max-width: 45vw;
   white-space: nowrap;
