@@ -28,6 +28,91 @@
       border: none;
       background: #000;
     }
+    .controls {
+      position: fixed;
+      top: 8px;
+      left: 8px;
+      right: 8px;
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      background: rgba(0, 0, 0, 0.7);
+      border: 1px solid #222;
+      padding: 8px 10px;
+      border-radius: 10px;
+      color: #f5f5f5;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+    }
+    .controls__form {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      width: 100%;
+    }
+    .controls__group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex: 1 1 260px;
+      min-width: 0;
+    }
+    .controls label {
+      font-size: 0.85rem;
+      color: #cfd6e0;
+      white-space: nowrap;
+    }
+    .controls input[type="url"] {
+      flex: 1 1 auto;
+      min-width: 0;
+      background: #0d0d0d;
+      color: #fff;
+      border: 1px solid #333;
+      border-radius: 6px;
+      padding: 6px 8px;
+      font-size: 0.95rem;
+    }
+    .controls input[type="url"]::placeholder {
+      color: #7d8491;
+    }
+    .controls button {
+      background: #1f6feb;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 8px 10px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s ease;
+    }
+    .controls button:hover {
+      background: #2a7dfc;
+    }
+    .controls button.secondary {
+      background: #2b2f3a;
+      color: #d5d9e0;
+    }
+    .controls button.secondary:hover {
+      background: #3a3f4b;
+    }
+    .status {
+      font-size: 0.8rem;
+      color: #9ec4ff;
+      min-width: 160px;
+      flex: 0 0 auto;
+    }
+    .status[data-state="error"] {
+      color: #ff9aa2;
+    }
+    @media (max-width: 800px) {
+      .controls {
+        position: static;
+        border-radius: 0;
+        border-left: none;
+        border-right: none;
+      }
+    }
     .warning {
       color: #fff;
       display: grid;
@@ -44,6 +129,36 @@
   </style>
 </head>
 <body>
+  <div class="controls">
+    <form id="boardForm" class="controls__form">
+      <div class="controls__group">
+        <label for="leftUrl">Left</label>
+        <input
+          id="leftUrl"
+          name="left"
+          type="url"
+          inputmode="url"
+          placeholder="https://..."
+          required
+        />
+      </div>
+      <div class="controls__group">
+        <label for="rightUrl">Right</label>
+        <input
+          id="rightUrl"
+          name="right"
+          type="url"
+          inputmode="url"
+          placeholder="https://..."
+          required
+        />
+      </div>
+      <button type="submit">Load boards</button>
+      <button type="button" class="secondary" id="swapBtn">Swap</button>
+      <button type="button" class="secondary" id="resetBtn">Reset</button>
+      <div class="status" id="status" aria-live="polite"></div>
+    </form>
+  </div>
   <div class="wrap" id="wrapper">
     <iframe class="pane" id="leftPane" title="Left board"></iframe>
     <iframe class="pane" id="rightPane" title="Right board"></iframe>
@@ -54,25 +169,113 @@
     // Example: const LEFT_DEFAULT = "https://mesdeparts.ch/?stationName=...&stationId=...";
     const LEFT_DEFAULT = "https://mesdeparts.ch/?stationName=Lausanne%2C+Motte&stationId=8592082";
     const RIGHT_DEFAULT = "https://mesdeparts.ch/?stationName=Lausanne";
+    const STORAGE_KEY = "dualBoardUrls.v1";
 
-    const leftUrl = new URLSearchParams(location.search).get("left") || LEFT_DEFAULT;
-    const rightUrl = new URLSearchParams(location.search).get("right") || RIGHT_DEFAULT;
+    const params = new URLSearchParams(location.search);
+    const saved = (() => {
+      try {
+        return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {};
+      } catch {
+        return {};
+      }
+    })();
+
+    const sanitizeUrl = (url) => {
+      if (!url) return "";
+      try {
+        const parsed = new URL(url);
+        if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return "";
+        return parsed.toString();
+      } catch {
+        return "";
+      }
+    };
+
+    const leftUrl =
+      sanitizeUrl(params.get("left")) ||
+      sanitizeUrl(saved.left) ||
+      LEFT_DEFAULT;
+    const rightUrl =
+      sanitizeUrl(params.get("right")) ||
+      sanitizeUrl(saved.right) ||
+      RIGHT_DEFAULT;
 
     const leftFrame = document.getElementById("leftPane");
     const rightFrame = document.getElementById("rightPane");
     const wrapper = document.getElementById("wrapper");
+    const form = document.getElementById("boardForm");
+    const leftInput = document.getElementById("leftUrl");
+    const rightInput = document.getElementById("rightUrl");
+    const statusEl = document.getElementById("status");
+    const swapBtn = document.getElementById("swapBtn");
+    const resetBtn = document.getElementById("resetBtn");
 
-    if (!leftUrl || !rightUrl || leftUrl.includes("PASTE_") || rightUrl.includes("PASTE_")) {
+    leftInput.value = leftUrl;
+    rightInput.value = rightUrl;
+
+    const setStatus = (msg, state = "info") => {
+      statusEl.textContent = msg;
+      statusEl.dataset.state = state;
+    };
+
+    const applyBoards = (l, r, { updateQuery = true, showStatus = true } = {}) => {
+      const cleanLeft = sanitizeUrl(l);
+      const cleanRight = sanitizeUrl(r);
+      if (!cleanLeft || !cleanRight) {
+        if (showStatus) setStatus("Please enter valid http(s) URLs.", "error");
+        return false;
+      }
+
+      leftFrame.src = cleanLeft;
+      rightFrame.src = cleanRight;
+
+      if (updateQuery) {
+        const nextParams = new URLSearchParams();
+        nextParams.set("left", cleanLeft);
+        nextParams.set("right", cleanRight);
+        history.replaceState({}, "", `${location.pathname}?${nextParams.toString()}`);
+      }
+
+      try {
+        localStorage.setItem(
+          STORAGE_KEY,
+          JSON.stringify({ left: cleanLeft, right: cleanRight }),
+        );
+      } catch {
+        /* ignore */
+      }
+
+      if (showStatus) setStatus("Boards updated.");
+      return true;
+    };
+
+    const initialApplied = applyBoards(leftUrl, rightUrl, { updateQuery: !!(params.get("left") || params.get("right")), showStatus: false });
+    if (!initialApplied) {
       wrapper.innerHTML = `
         <div class="warning">
-          <div>Set your two board URLs inside <code>LEFT_DEFAULT</code> and <code>RIGHT_DEFAULT</code>.</div>
+          <div>Enter two valid URLs below.</div>
           <div>You can also pass them via the address bar: <code>?left=...&right=...</code></div>
         </div>
       `;
-    } else {
-      leftFrame.src = leftUrl;
-      rightFrame.src = rightUrl;
     }
+
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      applyBoards(leftInput.value.trim(), rightInput.value.trim());
+    });
+
+    swapBtn.addEventListener("click", () => {
+      const currentLeft = leftInput.value.trim();
+      leftInput.value = rightInput.value.trim();
+      rightInput.value = currentLeft;
+      applyBoards(leftInput.value, rightInput.value);
+    });
+
+    resetBtn.addEventListener("click", () => {
+      leftInput.value = LEFT_DEFAULT;
+      rightInput.value = RIGHT_DEFAULT;
+      applyBoards(LEFT_DEFAULT, RIGHT_DEFAULT);
+    });
   </script>
 </body>
 </html>
