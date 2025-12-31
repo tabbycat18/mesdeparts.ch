@@ -48,6 +48,7 @@ import { initI18n, applyStaticTranslations, setLanguage, LANGUAGE_OPTIONS } from
 // Persist station between reloads
 const STORAGE_KEY = "mesdeparts.station";
 const DEFAULT_API_MODE = API_MODE_BOARD;
+const COUNTDOWN_REFRESH_MS = 5_000;
 
 function getInitialApiMode() {
   try {
@@ -81,6 +82,7 @@ function updateDebugPanel(rows) {
 }
 
 let refreshTimer = null;
+let countdownTimer = null;
 let lastStationboardData = null;
 let autoBoardTimer = null;
 let emptyBoardRetryStation = null;
@@ -117,6 +119,14 @@ function startRefreshLoop() {
   if (refreshTimer) clearInterval(refreshTimer);
   const interval = appState.apiMode === API_MODE_DIRECT ? REFRESH_DIRECT : REFRESH_DEPARTURES;
   refreshTimer = setInterval(() => refreshDepartures({ showLoadingHint: false }), interval);
+}
+
+function startCountdownLoop() {
+  if (countdownTimer) clearInterval(countdownTimer);
+  countdownTimer = setInterval(() => {
+    if (!lastStationboardData) return;
+    refreshDeparturesFromCache({ allowFetch: false, skipFilters: true, skipDebug: true });
+  }, COUNTDOWN_REFRESH_MS);
 }
 
 function normalizeStationName(name) {
@@ -268,17 +278,17 @@ async function refreshDepartures({ retried, showLoadingHint = true } = {}) {
   }
 }
 
-function refreshDeparturesFromCache() {
+function refreshDeparturesFromCache({ allowFetch = true, skipFilters = false, skipDebug = false } = {}) {
   if (!lastStationboardData) {
-    refreshDepartures();
+    if (allowFetch) refreshDepartures();
     return;
   }
 
   try {
     const rows = buildDeparturesGrouped(lastStationboardData, appState.viewMode);
-    renderFilterOptions();
+    if (!skipFilters) renderFilterOptions();
     renderDepartures(rows);
-    updateDebugPanel(rows);
+    if (!skipDebug) updateDebugPanel(rows);
   } catch (err) {
     console.error("[MesDeparts] cached refresh error:", err);
     refreshDepartures();
@@ -337,6 +347,7 @@ function refreshDeparturesFromCache() {
 
   // Periodic refresh
   startRefreshLoop();
+  startCountdownLoop();
   scheduleAutoBoardModeSwitch();
 })();
 function setupLanguageSwitcher(onChange) {
