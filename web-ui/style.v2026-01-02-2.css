@@ -311,7 +311,7 @@ body {
 /* Keep table usable on mobile: clamp width to ~iPhone 16 Pro Max */
 @media (max-width: 540px) {
   .departures {
-    min-width: 440px;
+    min-width: min(440px, 100%);
   }
 }
 
@@ -344,23 +344,27 @@ body {
 }
 
 .col-time {
-  width: 80px;
+  width: 70px;
   text-align: left;
 }
 
 .col-platform {
-  width: 5rem;
+  width: 4rem;
   text-align: center;
 }
 
 .col-min {
-  width: 70px;
+  width: 60px;
   text-align: center;
 }
 
 .col-remark {
   width: 160px;
+  max-width: 180px;
+  min-width: 0;
   text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
 
   /* avoid wrapping in the remark column */
   white-space: nowrap;
@@ -528,11 +532,11 @@ body {
 }
 
 .col-time-cell {
-  width: 80px;
+  width: 70px;
 }
 
 .col-min-cell {
-  width: 70px;
+  width: 60px;
   text-align: center;
 }
 
@@ -547,6 +551,30 @@ body {
 .col-platform-cell {
   text-align: center;
   opacity: 0.9;
+}
+
+.col-dest,
+.col-to-cell {
+  width: clamp(118px, 42vw, 160px);
+  max-width: 160px;
+  min-width: 0;
+  white-space: normal;
+  line-height: 1.18;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.departures.is-hide-departure .col-dest,
+.departures.is-hide-departure .col-to-cell {
+  width: clamp(140px, 46vw, 186px);
+  max-width: 186px;
+}
+
+.departures.is-hide-departure .col-platform,
+.departures.is-hide-departure .col-platform-cell,
+.departures.is-hide-departure .col-min,
+.departures.is-hide-departure .col-min-cell {
+  width: 56px;
 }
 
 .platform-change-wrap {
@@ -566,6 +594,48 @@ body {
   font-weight: 400;
   background: transparent;
   color: #ffffff;
+}
+
+/* Mobile: tighten spacing between Départ / Quai / min to avoid empty gaps */
+@media (max-width: 760px) {
+  .col-line {
+    padding-right: 6px;
+  }
+
+  .col-time,
+  .col-time-cell {
+    width: 64px;
+  }
+
+  .col-platform,
+  .col-platform-cell {
+    width: 52px;
+  }
+
+  .col-min,
+  .col-min-cell {
+    width: 54px;
+  }
+
+  .col-dest,
+  .col-to-cell {
+    max-width: 44vw;
+  }
+
+  .departures.is-hide-departure .col-dest,
+  .departures.is-hide-departure .col-to-cell {
+    max-width: 52vw;
+  }
+
+  .departures.is-hide-departure .col-platform,
+  .departures.is-hide-departure .col-platform-cell {
+    width: 50px;
+  }
+
+  .departures.is-hide-departure .col-min,
+  .departures.is-hide-departure .col-min-cell {
+    width: 50px;
+  }
 }
 
 .platform-badge--current {
@@ -628,6 +698,10 @@ body {
 .col-remark-cell {
   font-weight: 600;
   font-size: 0.9rem;
+  max-width: 180px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 
   /* keep delay/early values readable and aligned */
   white-space: nowrap;
@@ -696,9 +770,6 @@ body.layout-tight .col-line,
 body.layout-tight .col-line-cell,
 body.layout-tight .col-time,
 body.layout-tight .col-min,
-body.layout-tight .col-remark,
-body.layout-tight .col-remark-cell,
-body.layout-tight .col-to-cell,
 body.layout-tight .line-chips {
   /* no-op: auto-tight mode disabled */
 }

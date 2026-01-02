@@ -11,7 +11,6 @@ import {
   BOARD_HORIZON_MINUTES,
   ARRIVAL_LEAD_SECONDS,
   DEPARTED_GRACE_SECONDS,
-  BUS_DEPARTED_GRACE_SECONDS,
   BUS_DELAY_LABEL_THRESHOLD_MIN,
   TRAIN_DELAY_LABEL_THRESHOLD_MIN,
   DEBUG_EARLY,
@@ -21,8 +20,8 @@ import {
   TRAIN_FILTER_REGIONAL,
   TRAIN_FILTER_LONG_DISTANCE,
   API_MODE_DIRECT,
-} from "./state.v2026-01-02.js";
-import { t } from "./i18n.v2026-01-02.js";
+} from "./state.v2026-01-02-2.js";
+import { t } from "./i18n.v2026-01-02-2.js";
 
 // API base can be overridden by setting window.__MD_API_BASE__ before scripts load
 const DIRECT_API_BASE = "https://transport.opendata.ch/v1";
@@ -486,9 +485,7 @@ export function buildDeparturesGrouped(data, viewMode = VIEW_MODE_LINE) {
     if (diffSec > BOARD_HORIZON_MINUTES * 60) continue;
 
     // hide vehicles that already left (beyond the grace window)
-    const departedGrace =
-      mode === "bus" ? Math.max(DEPARTED_GRACE_SECONDS, BUS_DEPARTED_GRACE_SECONDS) : DEPARTED_GRACE_SECONDS;
-    if (diffSec < -departedGrace) continue;
+    if (diffSec < -DEPARTED_GRACE_SECONDS) continue;
 
     // countdown minutes (for bus boards only)
     let inMin;

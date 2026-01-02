@@ -14,21 +14,21 @@ import {
   API_MODE_DIRECT,
   API_MODE_STORAGE_KEY,
   API_MODE_AUTO_OFF_KEY,
-} from "./state.v2026-01-02.js";
+} from "./state.v2026-01-02-2.js";
 import {
   fetchStationSuggestions,
   fetchStationsNearby,
   fetchJourneyDetails,
   parseApiDate,
-} from "./logic.v2026-01-02.js";
+} from "./logic.v2026-01-02-2.js";
 import {
   loadFavorites,
   addFavorite,
   removeFavorite,
   isFavorite,
   clearFavorites,
-} from "./favourites.v2026-01-02.js";
-import { t } from "./i18n.v2026-01-02.js";
+} from "./favourites.v2026-01-02-2.js";
+import { t } from "./i18n.v2026-01-02-2.js";
 
 const QUICK_CONTROLS_STORAGE_KEY = "mesdeparts.quickControlsCollapsed";
 let quickControlsCollapsed = false;
@@ -1059,6 +1059,9 @@ function renderFilterSheet() {
 function openFiltersSheet() {
   if (!filterUi.sheet) return;
   filterSheetOpen = true;
+  if ("inert" in filterUi.sheet) {
+    filterUi.sheet.inert = false;
+  }
   filterUi.sheet.classList.remove("is-hidden");
   filterUi.sheet.setAttribute("aria-hidden", "false");
   if (filterUi.openBtn) filterUi.openBtn.setAttribute("aria-expanded", "true");
@@ -1074,6 +1077,17 @@ function closeFiltersSheet(applyChanges = false) {
   }
 
   if (filterUi.sheet) {
+    const active = document.activeElement;
+    if (active && filterUi.sheet.contains(active)) {
+      if (filterUi.openBtn && typeof filterUi.openBtn.focus === "function") {
+        filterUi.openBtn.focus();
+      } else if (typeof document.activeElement.blur === "function") {
+        document.activeElement.blur();
+      }
+    }
+    if ("inert" in filterUi.sheet) {
+      filterUi.sheet.inert = true;
+    }
     filterUi.sheet.classList.add("is-hidden");
     filterUi.sheet.setAttribute("aria-hidden", "true");
   }
@@ -2200,7 +2214,9 @@ function updatePlatformHeader(isTrain) {
 
 function setDepartureColumnVisibility(hide) {
   const thTime = document.querySelector("th.col-time");
+  const departuresTable = document.querySelector("table.departures");
   if (thTime) thTime.style.display = hide ? "none" : "";
+  if (departuresTable) departuresTable.classList.toggle("is-hide-departure", !!hide);
 }
 
 export function renderDepartures(rows) {
