@@ -65,17 +65,31 @@ self.addEventListener("fetch", (event) => {
   if (request.mode === "navigate") {
     event.respondWith(
       (async () => {
-        try {
-          const networkResponse = await fetch(request);
-          const cache = await caches.open(CACHE_NAME);
-          cache.put(FALLBACK_HTML, networkResponse.clone());
-          return networkResponse;
-        } catch (err) {
-          const cache = await caches.open(CACHE_NAME);
-          const cached = await cache.match(FALLBACK_HTML);
-          if (cached) return cached;
-          throw err;
+        const cache = await caches.open(CACHE_NAME);
+        const isDualBoard = pathname.endsWith("/dual-board.html");
+        const cachedPath = isDualBoard ? "./dual-board.html" : "./index.html";
+        const cachedUrl = new URL(cachedPath, self.registration.scope).pathname;
+
+        // Serve the cached shell immediately (stale-while-revalidate for navigations)
+        const cached = await cache.match(cachedUrl);
+        if (cached) {
+          // Background refresh (ignore result)
+          event.waitUntil(
+            fetch(request)
+              .then((res) => {
+                if (res && res.ok) cache.put(cachedUrl, res.clone());
+              })
+              .catch(() => {}),
+          );
+          return cached;
         }
+
+        // First visit: fall back to network, then cache
+        const networkResponse = await fetch(request);
+        if (networkResponse && networkResponse.ok) {
+          cache.put(cachedUrl, networkResponse.clone());
+        }
+        return networkResponse;
       })(),
     );
     return;
