@@ -70,21 +70,12 @@ self.addEventListener("fetch", (event) => {
         const cachedPath = isDualBoard ? "./dual-board.html" : "./index.html";
         const cachedUrl = new URL(cachedPath, self.registration.scope).pathname;
 
-        // Serve the cached shell immediately (stale-while-revalidate for navigations)
+        // Serve the cached shell if available; otherwise fetch once and cache.
         const cached = await cache.match(cachedUrl);
         if (cached) {
-          // Background refresh (ignore result)
-          event.waitUntil(
-            fetch(request)
-              .then((res) => {
-                if (res && res.ok) cache.put(cachedUrl, res.clone());
-              })
-              .catch(() => {}),
-          );
           return cached;
         }
 
-        // First visit: fall back to network, then cache
         const networkResponse = await fetch(request);
         if (networkResponse && networkResponse.ok) {
           cache.put(cachedUrl, networkResponse.clone());
