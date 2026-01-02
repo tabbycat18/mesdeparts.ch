@@ -6,9 +6,9 @@ const RATE_LIMIT_WINDOW_SEC = 60;
 const GLOBAL_LIMIT_WINDOW_SEC = 86400;
 
 const ttlFor = (path) => {
-  if (path.startsWith("/stationboard")) return 25;      // board refresh
-  if (path.startsWith("/connections")) return 45;       // journey details overlay (trips)
-  if (path.startsWith("/locations")) return 86400;      // stop search cache
+  if (path.startsWith("/stationboard")) return 10;       // tighter refresh for delays
+  if (path.startsWith("/connections")) return 25;        // journey details overlay (trips)
+  if (path.startsWith("/locations")) return 86400;       // stop search cache
   return 30;
 };
 
@@ -65,6 +65,7 @@ export default {
     }
 
     const url = new URL(request.url);
+    const ttl = ttlFor(url.pathname);
     // Preserve the /v1 prefix when forwarding to the upstream API
     const upstream = new URL(`/v1${url.pathname}${url.search}`, ORIGIN_BASE);
     const cache = caches.default;
@@ -115,7 +116,7 @@ export default {
     const res = await fetch(upstream.toString(), {
       method: "GET",
       headers: { accept: "application/json" },
-      cf: { cacheEverything: true },
+      cf: { cacheEverything: true, cacheTtl: ttl },
     });
 
     // Do not cache error responses; just pass them through
@@ -123,7 +124,6 @@ export default {
       return addCors(res, { "x-md-cache": "BYPASS" });
     }
 
-    const ttl = ttlFor(url.pathname);
     const proxyRes = new Response(res.body, res);
     // Force short edge cache and minimal browser cache to avoid sticky errors
     proxyRes.headers.set("Cache-Control", `public, s-maxage=${ttl}, max-age=0`);
