@@ -423,13 +423,24 @@
     <script type="module" src="main.v2026-01-03.js"></script>
     <script>
       if ("serviceWorker" in navigator) {
-        window.addEventListener("load", () => {
-          navigator.serviceWorker
-            .register("./service-worker.js")
-            .catch((err) => {
-              console.error("Service worker registration failed", err);
-            });
-        });
+        const path = window.location.pathname || "/";
+        const isClock = path.startsWith("/clock");
+        const allowed =
+          path === "/" ||
+          path === "/index.html" ||
+          path === "/dual-board.html" ||
+          path.startsWith("/?") ||
+          path.startsWith("/dual-board.html?");
+
+        if (!isClock && allowed) {
+          window.addEventListener("load", () => {
+            navigator.serviceWorker
+              .register("/service-worker.js")
+              .catch((err) => {
+                console.error("Service worker registration failed", err);
+              });
+          });
+        }
       }
     </script>
 
