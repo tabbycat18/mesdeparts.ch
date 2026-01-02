@@ -244,6 +244,7 @@
     const STORAGE_KEY = "dualBoardUrls.v1";
 
     const params = new URLSearchParams(location.search);
+    const autoFullscreen = params.get("fs") === "1" || params.get("fullscreen") === "1";
     const saved = (() => {
       try {
         return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {};
@@ -371,6 +372,22 @@
     document.addEventListener("fullscreenchange", syncFullscreenLabel);
     document.addEventListener("webkitfullscreenchange", syncFullscreenLabel);
     syncFullscreenLabel();
+    if (autoFullscreen) {
+      const enterFs = async () => {
+        try {
+          await requestFullscreen();
+        } catch {
+          /* ignored */
+        } finally {
+          syncFullscreenLabel();
+          document.removeEventListener("pointerdown", enterFs);
+          document.removeEventListener("keydown", enterFs);
+        }
+      };
+      document.addEventListener("pointerdown", enterFs, { once: true });
+      document.addEventListener("keydown", enterFs, { once: true });
+      setStatus("Tap/click once to enter fullscreen (fs=1).");
+    }
 
     const applyBoards = (l, r, { updateQuery = true, showStatus = true } = {}) => {
       const cleanLeft = sanitizeUrl(l);
