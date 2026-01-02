@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>ATB10 Lite Dual Board Wrapper</title>
+  <title>mesdepart.ch Dual Board</title>
   <style>
     /* Set your two URLs below (left and right). This file is meant to live on the tablet only. */
     :root {
@@ -66,7 +66,7 @@
       color: #cfd6e0;
       white-space: nowrap;
     }
-    .controls input[type="url"] {
+    .controls input[type="search"] {
       flex: 1 1 auto;
       min-width: 0;
       background: #0d0d0d;
@@ -76,7 +76,7 @@
       padding: 6px 8px;
       font-size: 0.95rem;
     }
-    .controls input[type="url"]::placeholder {
+    .controls input[type="search"]::placeholder {
       color: #7d8491;
     }
     .controls button {
@@ -108,22 +108,63 @@
     .status[data-state="error"] {
       color: #ff9aa2;
     }
-    .controls-toggle {
-      position: fixed;
-      top: 8px;
-      left: 8px;
-      z-index: 9;
-      background: rgba(0, 0, 0, 0.7);
-      color: #f5f5f5;
+    .suggestions {
+      position: relative;
+      width: 100%;
+    }
+    .suggestions__list {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      background: rgba(0, 0, 0, 0.92);
       border: 1px solid #222;
       border-radius: 8px;
+      margin-top: 4px;
+      padding: 4px;
+      list-style: none;
+      max-height: 220px;
+      overflow-y: auto;
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+      z-index: 20;
+      display: none;
+    }
+    .suggestions__item {
+      margin: 0;
+      padding: 0;
+    }
+    .suggestions__button {
+      width: 100%;
+      text-align: left;
+      background: transparent;
+      border: none;
+      color: #f5f5f5;
       padding: 8px 10px;
-      font-weight: 600;
+      border-radius: 6px;
       cursor: pointer;
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+      font-size: 0.95rem;
+    }
+    .suggestions__button:hover,
+    .suggestions__button:focus {
+      background: rgba(255, 255, 255, 0.08);
+      outline: none;
+    }
+    .controls-toggle {
+      position: fixed;
+      bottom: 12px;
+      right: 12px;
+      z-index: 9;
+      background: rgba(0, 0, 0, 0.8);
+      color: #f5f5f5;
+      border: 1px solid #222;
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
     }
     .controls-toggle:hover {
-      background: rgba(20, 20, 20, 0.9);
+      background: rgba(20, 20, 20, 0.95);
     }
     @media (max-width: 800px) {
       .controls {
@@ -154,30 +195,39 @@
     <form id="boardForm" class="controls__form">
       <div class="controls__group">
         <label for="leftUrl">Left</label>
-        <input
-          id="leftUrl"
-          name="left"
-          type="url"
-          inputmode="url"
-          placeholder="https://..."
-          required
-        />
+        <div class="suggestions">
+          <input
+            id="leftUrl"
+            name="left"
+            type="search"
+            inputmode="search"
+            placeholder="Search station or paste URL"
+            autocomplete="off"
+            required
+          />
+          <ul class="suggestions__list" id="leftSuggestions" aria-label="Left station suggestions"></ul>
+        </div>
       </div>
       <div class="controls__group">
         <label for="rightUrl">Right</label>
-        <input
-          id="rightUrl"
-          name="right"
-          type="url"
-          inputmode="url"
-          placeholder="https://..."
-          required
-        />
+        <div class="suggestions">
+          <input
+            id="rightUrl"
+            name="right"
+            type="search"
+            inputmode="search"
+            placeholder="Search station or paste URL"
+            autocomplete="off"
+            required
+          />
+          <ul class="suggestions__list" id="rightSuggestions" aria-label="Right station suggestions"></ul>
+        </div>
       </div>
       <button type="submit">Load boards</button>
       <button type="button" class="secondary" id="swapBtn">Swap</button>
       <button type="button" class="secondary" id="resetBtn">Reset</button>
       <button type="button" class="secondary" id="hideBtn">Hide</button>
+      <button type="button" class="secondary" id="fullscreenBtn">Go fullscreen</button>
       <div class="status" id="status" aria-live="polite"></div>
     </form>
   </div>
@@ -213,6 +263,16 @@
       }
     };
 
+    const getStationNameFromUrl = (url) => {
+      try {
+        const params = new URL(url).searchParams;
+        const name = params.get("stationName");
+        return name ? decodeURIComponent(name) : "";
+      } catch {
+        return "";
+      }
+    };
+
     const leftUrl =
       sanitizeUrl(params.get("left")) ||
       sanitizeUrl(saved.left) ||
@@ -228,15 +288,21 @@
     const form = document.getElementById("boardForm");
     const leftInput = document.getElementById("leftUrl");
     const rightInput = document.getElementById("rightUrl");
+    const leftSuggest = document.getElementById("leftSuggestions");
+    const rightSuggest = document.getElementById("rightSuggestions");
     const statusEl = document.getElementById("status");
     const swapBtn = document.getElementById("swapBtn");
     const resetBtn = document.getElementById("resetBtn");
     const hideBtn = document.getElementById("hideBtn");
     const showBtn = document.getElementById("showControls");
+    const fullscreenBtn = document.getElementById("fullscreenBtn");
     const controls = document.querySelector(".controls");
 
-    leftInput.value = leftUrl;
-    rightInput.value = rightUrl;
+    const initialLeftName = getStationNameFromUrl(leftUrl);
+    const initialRightName = getStationNameFromUrl(rightUrl);
+
+    leftInput.value = initialLeftName || leftUrl;
+    rightInput.value = initialRightName || rightUrl;
 
     const setStatus = (msg, state = "info") => {
       statusEl.textContent = msg;
@@ -254,6 +320,57 @@
     };
 
     showBtn.addEventListener("click", showControls);
+
+    const isUrlish = (value) => /^https?:\/\//i.test(value.trim());
+
+    const buildBoardUrl = (station) =>
+      `https://mesdeparts.ch/?stationName=${encodeURIComponent(station.name)}&stationId=${encodeURIComponent(station.id)}`;
+
+    const API_BASE =
+      (typeof window !== "undefined" && window.__MD_API_BASE__) ||
+      "https://transport.opendata.ch/v1";
+    const LOCATIONS_ENDPOINT = `${API_BASE}/locations`;
+
+    const isFullscreen = () =>
+      !!(document.fullscreenElement || document.webkitFullscreenElement);
+
+    const syncFullscreenLabel = () => {
+      fullscreenBtn.textContent = isFullscreen() ? "Exit fullscreen" : "Go fullscreen";
+    };
+
+    const requestFullscreen = async () => {
+      const el = document.documentElement;
+      const fn = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
+      if (fn) {
+        await fn.call(el);
+        return true;
+      }
+      return false;
+    };
+
+    const exitFullscreen = async () => {
+      const fn = document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen;
+      if (fn) await fn.call(document);
+    };
+
+    fullscreenBtn.addEventListener("click", async () => {
+      try {
+        if (isFullscreen()) {
+          await exitFullscreen();
+        } else {
+          const ok = await requestFullscreen();
+          if (!ok) setStatus("Fullscreen not supported.", "error");
+        }
+      } catch (err) {
+        setStatus("Fullscreen request blocked.", "error");
+      } finally {
+        syncFullscreenLabel();
+      }
+    });
+
+    document.addEventListener("fullscreenchange", syncFullscreenLabel);
+    document.addEventListener("webkitfullscreenchange", syncFullscreenLabel);
+    syncFullscreenLabel();
 
     const applyBoards = (l, r, { updateQuery = true, showStatus = true } = {}) => {
       const cleanLeft = sanitizeUrl(l);
@@ -286,6 +403,100 @@
       return true;
     };
 
+    const debounce = (fn, delay) => {
+      let t;
+      return (...args) => {
+        clearTimeout(t);
+        t = setTimeout(() => fn(...args), delay);
+      };
+    };
+
+    const fetchStationsList = async (q, limit = 7) => {
+      if (!q || q.length < 2 || isUrlish(q)) return [];
+      try {
+        const url = `${LOCATIONS_ENDPOINT}?query=${encodeURIComponent(q)}&limit=${encodeURIComponent(limit)}`;
+        const res = await fetch(url, { mode: "cors", headers: { accept: "application/json" } });
+        if (!res.ok) throw new Error("Network error");
+        const data = await res.json();
+        const list = data.stations || data.stops || data.locations || [];
+        return list
+          .filter((s) => s && s.id && s.name)
+          .map((s) => ({ id: s.id, name: s.name }));
+      } catch {
+        return [];
+      }
+    };
+
+    const renderSuggestions = (container, stations, onSelect) => {
+      container.innerHTML = "";
+      if (!stations || !stations.length) {
+        container.style.display = "none";
+        return;
+      }
+      const frag = document.createDocumentFragment();
+      stations.forEach((station) => {
+        const li = document.createElement("li");
+        li.className = "suggestions__item";
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "suggestions__button";
+        btn.textContent = station.name;
+        btn.addEventListener("click", () => onSelect(station));
+        li.appendChild(btn);
+        frag.appendChild(li);
+      });
+      container.appendChild(frag);
+      container.style.display = "block";
+    };
+
+    const setupStationSearch = (inputEl, listEl, side) => {
+      const setStation = (station) => {
+        const url = buildBoardUrl(station);
+        inputEl.value = station.name;
+        if (side === "left") {
+          applyBoards(url, rightFrame.src || rightUrl);
+        } else {
+          applyBoards(leftFrame.src || leftUrl, url);
+        }
+        renderSuggestions(listEl, []);
+        setStatus(`${station.name} loaded on ${side}.`);
+      };
+
+      const fetchStations = async (q) => {
+        if (!q || q.length < 2) {
+          renderSuggestions(listEl, []);
+          return;
+        }
+        try {
+          const stations = await fetchStationsList(q, 7);
+          renderSuggestions(listEl, stations, setStation);
+          if (!stations.length) {
+            setStatus("No stations found, try another name.", "error");
+          } else {
+            setStatus("", "info");
+          }
+        } catch (err) {
+          renderSuggestions(listEl, []);
+          setStatus("Station lookup failed. Check connection.", "error");
+        }
+      };
+
+      const debouncedFetch = debounce(fetchStations, 200);
+      inputEl.addEventListener("input", (e) => {
+        debouncedFetch(e.target.value.trim());
+      });
+      inputEl.addEventListener("focus", () => {
+        inputEl.select();
+        const val = inputEl.value.trim();
+        if (val.length >= 2) {
+          fetchStations(val);
+        }
+      });
+      inputEl.addEventListener("blur", () => {
+        setTimeout(() => renderSuggestions(listEl, []), 150);
+      });
+    };
+
     const initialApplied = applyBoards(leftUrl, rightUrl, { updateQuery: !!(params.get("left") || params.get("right")), showStatus: false });
     if (!initialApplied) {
       wrapper.innerHTML = `
@@ -296,25 +507,51 @@
       `;
     }
 
-    form.addEventListener("submit", (event) => {
+    const resolveValueToUrl = async (value) => {
+      const trimmed = value.trim();
+      if (!trimmed) return "";
+      if (isUrlish(trimmed)) return sanitizeUrl(trimmed);
+      const stations = await fetchStationsList(trimmed, 1);
+      if (!stations.length) return "";
+      return buildBoardUrl(stations[0]);
+    };
+
+    const applyFromInputs = async () => {
+      const [resolvedLeft, resolvedRight] = await Promise.all([
+        resolveValueToUrl(leftInput.value),
+        resolveValueToUrl(rightInput.value),
+      ]);
+      if (!resolvedLeft || !resolvedRight) {
+        setStatus("Please pick stations (select from suggestions) or paste full URLs.", "error");
+        return;
+      }
+      leftInput.value = getStationNameFromUrl(resolvedLeft) || leftInput.value;
+      rightInput.value = getStationNameFromUrl(resolvedRight) || rightInput.value;
+      applyBoards(resolvedLeft, resolvedRight);
+    };
+
+    form.addEventListener("submit", async (event) => {
       event.preventDefault();
-      applyBoards(leftInput.value.trim(), rightInput.value.trim());
+      applyFromInputs();
     });
 
     swapBtn.addEventListener("click", () => {
       const currentLeft = leftInput.value.trim();
       leftInput.value = rightInput.value.trim();
       rightInput.value = currentLeft;
-      applyBoards(leftInput.value, rightInput.value);
+      applyFromInputs();
     });
 
     resetBtn.addEventListener("click", () => {
-      leftInput.value = LEFT_DEFAULT;
-      rightInput.value = RIGHT_DEFAULT;
-      applyBoards(LEFT_DEFAULT, RIGHT_DEFAULT);
+      leftInput.value = getStationNameFromUrl(LEFT_DEFAULT) || LEFT_DEFAULT;
+      rightInput.value = getStationNameFromUrl(RIGHT_DEFAULT) || RIGHT_DEFAULT;
+      applyFromInputs();
     });
 
     hideBtn.addEventListener("click", hideControls);
+
+    setupStationSearch(leftInput, leftSuggest, "left");
+    setupStationSearch(rightInput, rightSuggest, "right");
   </script>
 </body>
 </html>
