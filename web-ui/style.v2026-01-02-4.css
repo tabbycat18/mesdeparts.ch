@@ -1704,6 +1704,7 @@ body.layout-tight .line-chips {
   font-weight: 750;
   font-size: 0.85rem;
   cursor: pointer;
+  text-decoration: none;
   transition:
     background 0.15s ease,
     color 0.15s ease,
@@ -2070,7 +2071,9 @@ body.layout-tight .line-chips {
 .platform-select:focus-visible,
 .line-select:focus-visible,
 .station-input-wrapper input:focus-visible,
-.station-input-wrapper button:focus-visible {
+.station-input-wrapper button:focus-visible,
+.filters-pill:focus-visible,
+.fav-pill:focus-visible {
   outline: 2px solid #fee401;
   outline-offset: 2px;
 }
@@ -2092,6 +2095,190 @@ body.layout-tight .line-chips {
   border-radius: 12px;
   padding: 10px 12px 12px;
   border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.filters-section + .filters-section {
+  margin-top: 10px;
+}
+
+/* ------------------------------------------------------------------ */
+/* DUAL BOARD                                                          */
+/* ------------------------------------------------------------------ */
+
+body.dual-body {
+  background: #000;
+  color: var(--fg);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  min-height: 100vh;
+  padding: 0;
+}
+
+.dual-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1 1 auto;
+  min-height: 100vh;
+  width: 100%;
+}
+
+.dual-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.dual-title {
+  font-size: 1.05rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+
+.dual-title-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.dual-version {
+  font-size: 0.8rem;
+  color: rgba(245, 247, 255, 0.7);
+  letter-spacing: 0.01em;
+}
+
+.dual-status {
+  font-size: 0.85rem;
+  opacity: 0.82;
+  margin-top: 4px;
+  min-height: 1.2em;
+}
+
+.dual-status[data-state="error"] {
+  color: #ffb3b3;
+}
+
+.dual-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.dual-lang-switcher .language-select {
+  min-width: 86px;
+}
+
+.dual-action {
+  background: rgba(0, 0, 0, 0.24);
+}
+
+.dual-controls {
+  background: rgba(1, 21, 127, 0.72);
+  border: none;
+  border-radius: 0;
+  padding: 12px;
+  box-shadow: none;
+}
+
+.dual-controls.is-collapsed {
+  display: none;
+}
+
+.dual-body.dual-controls-hidden .dual-header,
+.dual-body.dual-controls-hidden .dual-controls {
+  display: none;
+}
+
+.show-controls-button {
+  position: fixed;
+  bottom: 14px;
+  right: 14px;
+  padding: 10px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  background: #000;
+  color: #fff;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  display: none;
+  align-items: center;
+  gap: 6px;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+  z-index: 60;
+}
+
+.show-controls-button:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 3px;
+}
+
+.dual-body.dual-controls-hidden .show-controls-button {
+  display: inline-flex;
+}
+
+.dual-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 12px;
+}
+
+.dual-picker .station-card {
+  width: 100%;
+}
+
+.dual-picker .station-card-topline {
+  justify-content: space-between;
+  align-items: center;
+}
+
+.dual-picker .station-card-topline-right {
+  gap: 8px;
+}
+
+.dual-inline-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.dual-wrap {
+  flex: 1 1 auto;
+  display: flex;
+  gap: 0;
+  background: #000;
+  border-radius: 0;
+  overflow: hidden;
+  min-height: 360px;
+}
+
+.dual-pane {
+  flex: 1 1 50%;
+  border: none;
+  outline: none;
+  background: #000;
+  min-height: 320px;
+}
+
+.dual-picker .station-input-wrapper {
+  flex-wrap: wrap;
+}
+
+.dual-picker .station-input-wrapper input {
+  flex: 1 1 100%;
+}
+
+.dual-picker .station-input-wrapper .fav-pill,
+.dual-picker .station-input-wrapper .filters-pill {
+  height: 32px;
 }
 
 .filters-section__title {
@@ -2806,7 +2993,8 @@ body.layout-tight .line-chips {
 
   .station-input-wrapper .search-button,
   .station-input-wrapper .fav-toggle,
-  .station-input-wrapper .fav-pill {
+  .station-input-wrapper .fav-pill,
+  .station-input-wrapper .filters-pill {
     height: 32px;
     min-width: 32px;
     padding: 6px 10px;
@@ -2910,4 +3098,74 @@ body.layout-tight .line-chips {
     justify-content: flex-start;
     margin-top: 6px;
   }
+}
+
+@media (max-width: 900px) {
+  body.dual-body {
+    padding: 8px;
+  }
+
+  .dual-wrap {
+    flex-direction: column;
+  }
+
+  .dual-pane {
+    min-height: 260px;
+  }
+}
+
+/* Board embed (inside dual iframes) */
+html.dual-embed .header-right,
+body.dual-embed .header-right,
+html.dual-embed .station-card,
+body.dual-embed .station-card,
+html.dual-embed .station-card-inline,
+body.dual-embed .station-card-inline,
+html.dual-embed .station-card-topline,
+body.dual-embed .station-card-topline,
+html.dual-embed #station-card-collapsible,
+body.dual-embed #station-card-collapsible,
+html.dual-embed .station-input-block,
+body.dual-embed .station-input-block,
+html.dual-embed .quick-controls-shell,
+body.dual-embed .quick-controls-shell,
+html.dual-embed .quick-controls,
+body.dual-embed .quick-controls,
+html.dual-embed .quick-controls-toggle,
+body.dual-embed .quick-controls-toggle,
+html.dual-embed .mode-popover,
+body.dual-embed .mode-popover,
+html.dual-embed .line-chips,
+body.dual-embed .line-chips,
+html.dual-embed .legacy-filters,
+body.dual-embed .legacy-filters,
+html.dual-embed .board-footer,
+body.dual-embed .board-footer,
+html.dual-embed .version-tag,
+body.dual-embed .version-tag,
+html.dual-embed .fav-popover,
+body.dual-embed .fav-popover,
+html.dual-embed .filters-popover,
+body.dual-embed .filters-popover,
+html.dual-embed .loading-hint,
+body.dual-embed .loading-hint {
+  display: none !important;
+}
+
+html.dual-embed .board,
+body.dual-embed .board {
+  max-width: none;
+  width: 100%;
+  padding: 12px 14px;
+}
+
+html.dual-embed .mobile-fullscreen-wrapper,
+body.dual-embed .mobile-fullscreen-wrapper {
+  padding: 0;
+  max-width: none;
+}
+
+html.dual-embed .board-header,
+body.dual-embed .board-header {
+  justify-content: flex-start;
 }

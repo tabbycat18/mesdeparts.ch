@@ -146,6 +146,138 @@ const TRANSLATIONS = {
     it: "Mostra",
     en: "Show",
   },
+  dualBoardLabel: {
+    fr: "Dual board",
+    de: "Dual board",
+    it: "Dual board",
+    en: "Dual board",
+  },
+  dualBoardOpen: {
+    fr: "Ouvrir le dual board",
+    de: "Dual board öffnen",
+    it: "Aprire il dual board",
+    en: "Open dual board",
+  },
+  dualSwap: {
+    fr: "Échanger",
+    de: "Tauschen",
+    it: "Scambia",
+    en: "Swap",
+  },
+  dualReset: {
+    fr: "Réinitialiser",
+    de: "Zurücksetzen",
+    it: "Reimposta",
+    en: "Reset",
+  },
+  dualHideControls: {
+    fr: "Masquer les contrôles",
+    de: "Bedienelemente ausblenden",
+    it: "Nascondi i controlli",
+    en: "Hide controls",
+  },
+  dualShowControls: {
+    fr: "Afficher les contrôles",
+    de: "Bedienelemente anzeigen",
+    it: "Mostra i controlli",
+    en: "Show controls",
+  },
+  dualFullscreen: {
+    fr: "Plein écran",
+    de: "Vollbild",
+    it: "Schermo intero",
+    en: "Fullscreen",
+  },
+  dualExitFullscreen: {
+    fr: "Quitter le plein écran",
+    de: "Vollbild beenden",
+    it: "Esci da schermo intero",
+    en: "Exit fullscreen",
+  },
+  dualInfoLabel: {
+    fr: "Informations",
+    de: "Informationen",
+    it: "Informazioni",
+    en: "Info",
+  },
+  dualStatusEnterStation: {
+    fr: "Merci d'entrer une station valide",
+    de: "Bitte einen gültigen Halt eingeben",
+    it: "Inserisci una fermata valida",
+    en: "Please enter a valid stop",
+  },
+  dualStatusNoNearby: {
+    fr: "aucun arrêt proche",
+    de: "keine Haltestelle in der Nähe",
+    it: "nessuna fermata vicina",
+    en: "no nearby stop",
+  },
+  dualStatusGeoUnavailable: {
+    fr: "géolocalisation indisponible",
+    de: "Standortbestimmung nicht verfügbar",
+    it: "geolocalizzazione non disponibile",
+    en: "location unavailable",
+  },
+  dualStatusSelectBeforeFavorite: {
+    fr: "sélectionne un arrêt avant d'ajouter aux favoris.",
+    de: "bitte wähle eine Haltestelle, bevor du sie zu den Favoriten hinzufügst.",
+    it: "seleziona una fermata prima di aggiungerla ai preferiti.",
+    en: "select a stop before adding to favorites.",
+  },
+  dualStatusFillBoth: {
+    fr: "Merci de renseigner les deux tableaux.",
+    de: "Bitte beide Tafeln ausfüllen.",
+    it: "Compila entrambi i pannelli.",
+    en: "Please fill both boards.",
+  },
+  dualStatusLoadedSuffix: {
+    fr: "chargés.",
+    de: "geladen.",
+    it: "caricati.",
+    en: "loaded.",
+  },
+  dualStatusSwapped: {
+    fr: "Les tableaux ont été échangés.",
+    de: "Die Tafeln wurden vertauscht.",
+    it: "I tabelloni sono stati scambiati.",
+    en: "Boards have been swapped.",
+  },
+  dualStatusReset: {
+    fr: "Réinitialisé sur les arrêts par défaut.",
+    de: "Auf Standardhaltestellen zurückgesetzt.",
+    it: "Reimpostato sulle fermate predefinite.",
+    en: "Reset to default stops.",
+  },
+  dualStatusFullscreenUnavailable: {
+    fr: "Le plein écran n'est pas disponible ici.",
+    de: "Vollbild ist hier nicht verfügbar.",
+    it: "La modalità schermo intero non è disponibile qui.",
+    en: "Fullscreen is not available here.",
+  },
+  dualStatusFullscreenFailed: {
+    fr: "Impossible d'activer le plein écran.",
+    de: "Vollbild konnte nicht aktiviert werden.",
+    it: "Impossibile attivare lo schermo intero.",
+    en: "Could not enable fullscreen.",
+  },
+  dualStatusTapFullscreen: {
+    fr: "Touchez pour activer le plein écran (fs=1).",
+    de: "Tippen, um Vollbild zu aktivieren (fs=1).",
+    it: "Tocca per attivare lo schermo intero (fs=1).",
+    en: "Tap to enable fullscreen (fs=1).",
+  },
+  dualSideLeft: {
+    fr: "Gauche",
+    de: "Links",
+    it: "Sinistra",
+    en: "Left",
+  },
+  dualSideRight: {
+    fr: "Droite",
+    de: "Rechts",
+    it: "Destra",
+    en: "Right",
+  },
   filterPlatforms: {
     fr: "Quai",
     de: "Gleis",
@@ -918,6 +1050,7 @@ export function applyStaticTranslations() {
     ["#view-section-label", "viewSectionLabel"],
     ["#view-segment [data-view='line']", "viewOptionLine"],
     ["#view-segment [data-view='time']", "viewOptionTime"],
+    ["#dual-board-label", "dualBoardLabel"],
   ];
 
   for (const [selector, key] of pairs) {
@@ -938,5 +1071,12 @@ export function applyStaticTranslations() {
     const txt = t(collapsed ? "quickControlsShow" : "quickControlsHide");
     quickToggleLabel.textContent = txt;
     if (quickToggle) quickToggle.setAttribute("aria-label", txt);
+  }
+
+  const dualBoardLink = document.getElementById("dual-board-link");
+  if (dualBoardLink) {
+    const dualLabel = t("dualBoardOpen");
+    dualBoardLink.setAttribute("aria-label", dualLabel);
+    dualBoardLink.title = dualLabel;
   }
 }

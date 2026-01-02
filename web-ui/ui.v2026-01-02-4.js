@@ -14,21 +14,21 @@ import {
   API_MODE_DIRECT,
   API_MODE_STORAGE_KEY,
   API_MODE_AUTO_OFF_KEY,
-} from "./state.v2026-01-02-2.js";
+} from "./state.v2026-01-02-4.js";
 import {
   fetchStationSuggestions,
   fetchStationsNearby,
   fetchJourneyDetails,
   parseApiDate,
-} from "./logic.v2026-01-02-2.js";
+} from "./logic.v2026-01-02-4.js";
 import {
   loadFavorites,
   addFavorite,
   removeFavorite,
   isFavorite,
   clearFavorites,
-} from "./favourites.v2026-01-02-2.js";
-import { t } from "./i18n.v2026-01-02-2.js";
+} from "./favourites.v2026-01-02-4.js";
+import { t } from "./i18n.v2026-01-02-4.js";
 
 const QUICK_CONTROLS_STORAGE_KEY = "mesdeparts.quickControlsCollapsed";
 let quickControlsCollapsed = false;
@@ -861,6 +861,36 @@ function applyFiltersToLegacySelects() {
       ? appState.lineFilter[0] || ""
       : appState.lineFilter || "";
     filterUi.lineSelect.value = val;
+  }
+}
+
+// ---------------- EMBED STATE BROADCAST ----------------
+
+export function publishEmbedState() {
+  if (typeof window === "undefined" || window.parent === window) return;
+  const isDualEmbed =
+    document.documentElement.classList.contains("dual-embed") ||
+    (document.body && document.body.classList.contains("dual-embed"));
+  if (!isDualEmbed) return;
+
+  const payload = {
+    type: "md-board-state",
+    station: appState.STATION || "",
+    stationId: appState.stationId || null,
+    isTrain: !!appState.lastBoardIsTrain,
+    view: appState.lastBoardIsTrain
+      ? appState.trainServiceFilter || TRAIN_FILTER_ALL
+      : appState.viewMode || VIEW_MODE_LINE,
+    hideDeparture: !!appState.hideBusDeparture,
+    apiMode: appState.apiMode,
+    favoritesOnly: !!appState.favoritesOnly,
+    timestamp: Date.now(),
+  };
+
+  try {
+    window.parent.postMessage(payload, "*");
+  } catch {
+    // ignore
   }
 }
 

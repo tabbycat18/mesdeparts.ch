@@ -16,14 +16,14 @@ import {
   API_MODE_AUTO_OFF_KEY,
   API_MODE_AUTO_SWITCH_MS,
   TRAIN_FILTER_ALL,
-} from "./state.v2026-01-02-2.js";
+} from "./state.v2026-01-02-4.js";
 
 import {
   detectNetworkFromStation,
   resolveStationId,
   fetchStationboardRaw,
   buildDeparturesGrouped,
-} from "./logic.v2026-01-02-2.js";
+} from "./logic.v2026-01-02-4.js";
 
 import {
   setupClock,
@@ -40,17 +40,71 @@ import {
   setBoardLoadingState,
   ensureBoardFitsViewport,
   setupAutoFitWatcher,
-} from "./ui.v2026-01-02-2.js";
+  publishEmbedState,
+} from "./ui.v2026-01-02-4.js";
 
-import { setupInfoButton } from "./infoBTN.v2026-01-02-2.js";
-import { initI18n, applyStaticTranslations, setLanguage, LANGUAGE_OPTIONS } from "./i18n.v2026-01-02-2.js";
+import { setupInfoButton } from "./infoBTN.v2026-01-02-4.js";
+import { initI18n, applyStaticTranslations, setLanguage, LANGUAGE_OPTIONS } from "./i18n.v2026-01-02-4.js";
 
 // Persist station between reloads
 const STORAGE_KEY = "mesdeparts.station";
 const DEFAULT_API_MODE = API_MODE_BOARD;
 const COUNTDOWN_REFRESH_MS = 5_000;
 
+function markEmbedIfNeeded() {
+  if (typeof window === "undefined") return;
+  if (window.parent === window) return;
+  try {
+    document.documentElement.classList.add("dual-embed");
+    if (document.body) document.body.classList.add("dual-embed");
+  } catch {
+    // ignore
+  }
+}
+
+function parseApiModeParam(params) {
+  if (!params) return null;
+  const raw = (params.get("mode") || params.get("apiMode") || "").toLowerCase();
+  if (raw === "direct" || raw === "off") return API_MODE_DIRECT;
+  if (raw === "board" || raw === "on") return API_MODE_BOARD;
+  return null;
+}
+
 function getInitialApiMode() {
+  let params = null;
+  try {
+    params = new URLSearchParams(window.location.search || "");
+  } catch {
+    params = null;
+  }
+
+  const urlMode = parseApiModeParam(params);
+  if (urlMode) {
+    try {
+      localStorage.setItem(API_MODE_STORAGE_KEY, urlMode);
+      if (urlMode === API_MODE_DIRECT) {
+        localStorage.setItem(API_MODE_AUTO_OFF_KEY, "1");
+      } else {
+        localStorage.removeItem(API_MODE_AUTO_OFF_KEY);
+      }
+    } catch {
+      // ignore
+    }
+    return urlMode;
+  }
+
+  try {
+    const stored = localStorage.getItem(API_MODE_STORAGE_KEY);
+    if (stored === API_MODE_DIRECT || stored === API_MODE_BOARD) {
+      if (stored === API_MODE_DIRECT) {
+        localStorage.setItem(API_MODE_AUTO_OFF_KEY, "1");
+      }
+      return stored;
+    }
+  } catch {
+    // ignore
+  }
+
   try {
     localStorage.setItem(API_MODE_STORAGE_KEY, API_MODE_BOARD);
   } catch {
@@ -164,6 +218,29 @@ function getStationFromUrl() {
   return null;
 }
 
+function applyUrlPreferences() {
+  try {
+    const params = new URLSearchParams(window.location.search || "");
+    const viewParam = (params.get("view") || "").toLowerCase();
+    if (viewParam === VIEW_MODE_LINE || viewParam === VIEW_MODE_TIME) {
+      appState.viewMode = viewParam;
+    } else if (
+      viewParam === TRAIN_FILTER_ALL ||
+      viewParam === TRAIN_FILTER_REGIONAL ||
+      viewParam === TRAIN_FILTER_LONG_DISTANCE
+    ) {
+      appState.trainServiceFilter = viewParam;
+    }
+
+    if (params.has("hideDeparture")) {
+      const raw = (params.get("hideDeparture") || "").toLowerCase();
+      appState.hideBusDeparture = raw === "1" || raw === "true" || raw === "on" || raw === "yes";
+    }
+  } catch (err) {
+    console.warn("[MesDeparts] failed to read URL prefs", err);
+  }
+}
+
 function applyStation(name, id) {
   const stationName = normalizeStationName(name) || DEFAULT_STATION;
 
@@ -253,6 +330,7 @@ async function refreshDepartures({ retried, showLoadingHint = true } = {}) {
 
     renderDepartures(rows);
     updateDebugPanel(rows);
+    publishEmbedState();
   } catch (err) {
     console.error("[MesDeparts] refresh error:", err);
 
@@ -275,6 +353,7 @@ async function refreshDepartures({ retried, showLoadingHint = true } = {}) {
     if (showLoadingHint) {
       setBoardLoadingState(false);
     }
+    publishEmbedState();
   }
 }
 
@@ -289,6 +368,7 @@ function refreshDeparturesFromCache({ allowFetch = true, skipFilters = false, sk
     if (!skipFilters) renderFilterOptions();
     renderDepartures(rows);
     if (!skipDebug) updateDebugPanel(rows);
+    publishEmbedState();
   } catch (err) {
     console.error("[MesDeparts] cached refresh error:", err);
     refreshDepartures();
@@ -300,6 +380,7 @@ function refreshDeparturesFromCache({ allowFetch = true, skipFilters = false, sk
 // --------------------------------------------------------
 
 (function boot() {
+  markEmbedIfNeeded();
   const lang = initI18n();
   appState.language = lang;
   appState.apiMode = getInitialApiMode();
@@ -314,6 +395,7 @@ function refreshDeparturesFromCache({ allowFetch = true, skipFilters = false, sk
   } else {
     applyStation(stored || DEFAULT_STATION);
   }
+  applyUrlPreferences();
 
   setupClock();
   setupInfoButton();

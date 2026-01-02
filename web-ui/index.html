@@ -16,13 +16,26 @@
       name="description"
       content="Tableau de départs avec horloge sbbUhr (Apache 2.0), sans affiliation officielle CFF/SBB."
     />
+    <script>
+      (function markEmbed() {
+        if (window.self === window.top) return;
+        document.documentElement.classList.add("dual-embed");
+        if (document.body) {
+          document.body.classList.add("dual-embed");
+        } else {
+          document.addEventListener("DOMContentLoaded", () => {
+            document.body && document.body.classList.add("dual-embed");
+          });
+        }
+      })();
+    </script>
     <script>window.__MD_API_BASE__ = "https://api.mesdeparts.ch";</script>
-    <link rel="stylesheet" href="style.v2026-01-02-2.css" />
+    <link rel="stylesheet" href="style.v2026-01-02-4.css" />
   </head>
   <body>
     <div class="mobile-fullscreen-wrapper">
       <div class="board">
-        <div class="version-tag" aria-label="Version">v1.4.2</div>
+        <div class="version-tag" aria-label="Version">v1.5</div>
         <header class="board-header">
           <div class="header-left">
             <div class="clock-block">
@@ -228,6 +241,24 @@
                         </button>
                       </div>
                     </div>
+                    <a
+                      id="dual-board-link"
+                      class="filters-pill dual-board-pill"
+                      href="dual-board.html"
+                      target="_blank"
+                      rel="noopener"
+                      aria-label="Ouvrir le dual board"
+                    >
+                      <span class="filters-pill__icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" focusable="false">
+                          <path
+                            fill="currentColor"
+                            d="M3 5.5C3 4.67 3.67 4 4.5 4h6C11.33 4 12 4.67 12 5.5v6c0 .83-.67 1.5-1.5 1.5h-6C3.67 13 3 12.33 3 11.5zm10 0C13 4.67 13.67 4 14.5 4h5c.83 0 1.5.67 1.5 1.5v4c0 .83-.67 1.5-1.5 1.5h-5c-.83 0-1.5-.67-1.5-1.5zm-10 9C3 13.67 3.67 13 4.5 13h6c.83 0 1.5.67 1.5 1.5v4c0 .83-.67 1.5-1.5 1.5h-6C3.67 20 3 19.33 3 18.5zm10 0c0-.83.67-1.5 1.5-1.5h5c.83 0 1.5.67 1.5 1.5v3c0 .83-.67 1.5-1.5 1.5h-5c-.83 0-1.5-.67-1.5-1.5z"
+                          />
+                        </svg>
+                      </span>
+                      <span id="dual-board-label">Dual board</span>
+                    </a>
                   </div>
                   <ul id="station-suggestions" class="station-suggestions"></ul>
                 </div>
@@ -384,8 +415,8 @@
       </div>
     </div>
 
-    <!-- IMPORTANT: use main.v2026-01-02-2.js as an ES module -->
-    <script type="module" src="main.v2026-01-02-2.js"></script>
+    <!-- IMPORTANT: use main.v2026-01-02-4.js as an ES module -->
+    <script type="module" src="main.v2026-01-02-4.js"></script>
     <script>
       if ("serviceWorker" in navigator) {
         window.addEventListener("load", () => {
