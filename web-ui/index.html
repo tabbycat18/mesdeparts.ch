@@ -30,7 +30,7 @@
       })();
     </script>
     <script>window.__MD_API_BASE__ = "https://api.mesdeparts.ch";</script>
-    <link rel="stylesheet" href="style.v2026-01-02-4.css" />
+    <link rel="stylesheet" href="style.v2026-01-03.css" />
   </head>
   <body>
     <div class="mobile-fullscreen-wrapper">
@@ -93,6 +93,41 @@
                   </button>
                 </div>
                 <div class="station-card-topline-right">
+                  <div class="favorites-inline">
+                    <button
+                      id="favorites-only-toggle"
+                      class="fav-pill fav-pill--inline"
+                      type="button"
+                      aria-pressed="false"
+                      aria-expanded="false"
+                      aria-controls="favorites-popover"
+                    >
+                      <span class="fav-pill__icon" aria-hidden="true">★</span>
+                      <span id="favorites-only-label">Mes favoris</span>
+                    </button>
+                    <div
+                      id="favorites-popover"
+                      class="fav-popover is-hidden"
+                      role="dialog"
+                      aria-modal="false"
+                      aria-labelledby="favorites-popover-title"
+                    >
+                      <div class="fav-popover__header">
+                        <div class="fav-popover__title" id="favorites-popover-title">Mes favoris</div>
+                        <button class="fav-popover__close" type="button" data-fav-popover-close="true">×</button>
+                      </div>
+                      <div class="chip-row" id="favorites-chip-list"></div>
+                      <div class="filters-empty is-hidden" id="favorites-empty">Aucun favori pour l'instant</div>
+                      <div class="filters-section__actions">
+                        <button id="favorites-manage" class="ghost-button" type="button">
+                          Gérer mes favoris
+                        </button>
+                        <button id="favorites-delete" class="danger-button" type="button" disabled>
+                          Supprimer
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                   <button
                     id="board-mode-toggle"
                     class="filters-pill mode-pill"
@@ -200,47 +235,14 @@
                       </svg>
                     </button>
                     <button
-                    id="station-fav-toggle"
-                    class="fav-toggle"
-                    type="button"
-                    aria-label="Ajouter aux favoris"
-                    title="Ajouter aux favoris"
-                  >
-                    <span class="fav-toggle__icon" aria-hidden="true">☆</span>
-                  </button>
-                    <button
-                      id="favorites-only-toggle"
-                      class="fav-pill fav-pill--inline"
+                      id="station-fav-toggle"
+                      class="fav-toggle"
                       type="button"
-                      aria-pressed="false"
-                      aria-expanded="false"
-                      aria-controls="favorites-popover"
+                      aria-label="Ajouter aux favoris"
+                      title="Ajouter aux favoris"
                     >
-                      <span class="fav-pill__icon" aria-hidden="true">★</span>
-                      <span id="favorites-only-label">Mes favoris</span>
+                      <span class="fav-toggle__icon" aria-hidden="true">☆</span>
                     </button>
-                    <div
-                      id="favorites-popover"
-                      class="fav-popover is-hidden"
-                      role="dialog"
-                      aria-modal="false"
-                      aria-labelledby="favorites-popover-title"
-                    >
-                      <div class="fav-popover__header">
-                        <div class="fav-popover__title" id="favorites-popover-title">Mes favoris</div>
-                        <button class="fav-popover__close" type="button" data-fav-popover-close="true">×</button>
-                      </div>
-                      <div class="chip-row" id="favorites-chip-list"></div>
-                      <div class="filters-empty is-hidden" id="favorites-empty">Aucun favori pour l'instant</div>
-                      <div class="filters-section__actions">
-                        <button id="favorites-manage" class="ghost-button" type="button">
-                          Gérer mes favoris
-                        </button>
-                        <button id="favorites-delete" class="danger-button" type="button" disabled>
-                          Supprimer
-                        </button>
-                      </div>
-                    </div>
                     <a
                       id="dual-board-link"
                       class="filters-pill dual-board-pill"
@@ -415,8 +417,8 @@
       </div>
     </div>
 
-    <!-- IMPORTANT: use main.v2026-01-02-4.js as an ES module -->
-    <script type="module" src="main.v2026-01-02-4.js"></script>
+    <!-- IMPORTANT: use main.v2026-01-03.js as an ES module -->
+    <script type="module" src="main.v2026-01-03.js"></script>
     <script>
       if ("serviceWorker" in navigator) {
         window.addEventListener("load", () => {

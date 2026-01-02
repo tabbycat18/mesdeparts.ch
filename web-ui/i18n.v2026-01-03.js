@@ -147,10 +147,10 @@ const TRANSLATIONS = {
     en: "Show",
   },
   dualBoardLabel: {
-    fr: "Dual board",
-    de: "Dual board",
-    it: "Dual board",
-    en: "Dual board",
+    fr: "Dual",
+    de: "Dual",
+    it: "Dual",
+    en: "Dual",
   },
   dualBoardOpen: {
     fr: "Ouvrir le dual board",

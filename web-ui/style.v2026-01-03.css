@@ -1387,6 +1387,12 @@ body.layout-tight .line-chips {
   flex-wrap: wrap;
 }
 
+.favorites-inline {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
 .station-card-topline-right {
   display: inline-flex;
   align-items: center;

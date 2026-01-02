@@ -10,20 +10,23 @@ import {
   REFRESH_DIRECT,
   DEBUG_FORCE_NOW,
   VIEW_MODE_LINE,
+  VIEW_MODE_TIME,
   API_MODE_BOARD,
   API_MODE_DIRECT,
   API_MODE_STORAGE_KEY,
   API_MODE_AUTO_OFF_KEY,
   API_MODE_AUTO_SWITCH_MS,
   TRAIN_FILTER_ALL,
-} from "./state.v2026-01-02-4.js";
+  TRAIN_FILTER_REGIONAL,
+  TRAIN_FILTER_LONG_DISTANCE,
+} from "./state.v2026-01-03.js";
 
 import {
   detectNetworkFromStation,
   resolveStationId,
   fetchStationboardRaw,
   buildDeparturesGrouped,
-} from "./logic.v2026-01-02-4.js";
+} from "./logic.v2026-01-03.js";
 
 import {
   setupClock,
@@ -41,10 +44,10 @@ import {
   ensureBoardFitsViewport,
   setupAutoFitWatcher,
   publishEmbedState,
-} from "./ui.v2026-01-02-4.js";
+} from "./ui.v2026-01-03.js";
 
-import { setupInfoButton } from "./infoBTN.v2026-01-02-4.js";
-import { initI18n, applyStaticTranslations, setLanguage, LANGUAGE_OPTIONS } from "./i18n.v2026-01-02-4.js";
+import { setupInfoButton } from "./infoBTN.v2026-01-03.js";
+import { initI18n, applyStaticTranslations, setLanguage, LANGUAGE_OPTIONS } from "./i18n.v2026-01-03.js";
 
 // Persist station between reloads
 const STORAGE_KEY = "mesdeparts.station";
@@ -222,12 +225,18 @@ function applyUrlPreferences() {
   try {
     const params = new URLSearchParams(window.location.search || "");
     const viewParam = (params.get("view") || "").toLowerCase();
-    if (viewParam === VIEW_MODE_LINE || viewParam === VIEW_MODE_TIME) {
+    const viewLine = typeof VIEW_MODE_LINE === "string" ? VIEW_MODE_LINE : "line";
+    const viewTime = typeof VIEW_MODE_TIME === "string" ? VIEW_MODE_TIME : "time";
+    const trainAll = typeof TRAIN_FILTER_ALL === "string" ? TRAIN_FILTER_ALL : "train_all";
+    const trainRegional = typeof TRAIN_FILTER_REGIONAL === "string" ? TRAIN_FILTER_REGIONAL : "train_regional";
+    const trainLong = typeof TRAIN_FILTER_LONG_DISTANCE === "string" ? TRAIN_FILTER_LONG_DISTANCE : "train_long";
+
+    if (viewParam === viewLine || viewParam === viewTime) {
       appState.viewMode = viewParam;
     } else if (
-      viewParam === TRAIN_FILTER_ALL ||
-      viewParam === TRAIN_FILTER_REGIONAL ||
-      viewParam === TRAIN_FILTER_LONG_DISTANCE
+      viewParam === trainAll ||
+      viewParam === trainRegional ||
+      viewParam === trainLong
     ) {
       appState.trainServiceFilter = viewParam;
     }
