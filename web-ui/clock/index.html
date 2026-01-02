@@ -22,7 +22,7 @@
         background: transparent;
       }
     </style>
-    <script src="js/sbbUhr-1.3.js"></script>
+    <script src="/clock/js/sbbUhr-1.3.js"></script>
   </head>
   <body>
     <div id="sbb_uhr_container" aria-hidden="true"></div>
@@ -30,8 +30,8 @@
       (function () {
         var urlParams = new URLSearchParams(window.location.search);
         var scriptCandidates = [
-          "js/sbbUhr-1.3.js",
           "/clock/js/sbbUhr-1.3.js",
+          "js/sbbUhr-1.3.js",
         ];
 
         function bootClock() {

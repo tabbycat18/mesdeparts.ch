@@ -58,6 +58,11 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  // Let the clock sub-app fetch directly (no SW handling)
+  if (url.pathname.startsWith("/clock")) {
+    return;
+  }
+
   // Keep API requests network-only; cache only our shell assets and navigations.
   const pathname = url.pathname;
   const isAssetRequest = ASSET_PATHS.has(pathname);
