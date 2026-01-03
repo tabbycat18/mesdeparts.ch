@@ -443,19 +443,11 @@
             });
         };
 
-        const scheduleRegister = () => {
-          if (typeof requestIdleCallback === "function") {
-            requestIdleCallback(() => registerSW(), { timeout: 2500 });
-          } else {
-            setTimeout(registerSW, 1200);
-          }
-        };
-
         if (!isClock && allowed) {
           if (document.readyState === "complete") {
-            scheduleRegister();
+            registerSW();
           } else {
-            window.addEventListener("load", scheduleRegister, { once: true });
+            window.addEventListener("load", registerSW, { once: true });
           }
         }
       }
