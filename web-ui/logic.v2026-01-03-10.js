@@ -22,8 +22,8 @@ import {
   TRAIN_FILTER_LONG_DISTANCE,
   API_MODE_DIRECT,
   STATION_ID_STORAGE_KEY,
-} from "./state.v2026-01-03-9.js";
-import { t } from "./i18n.v2026-01-03-9.js";
+} from "./state.v2026-01-03-10.js";
+import { t } from "./i18n.v2026-01-03-10.js";
 
 // API base can be overridden by setting window.__MD_API_BASE__ before scripts load
 const DIRECT_API_BASE = "https://transport.opendata.ch/v1";
@@ -191,7 +191,12 @@ async function fetchJson(url, { signal, timeoutMs = FETCH_TIMEOUT_MS } = {}) {
     if (!res.ok) {
       let body = "";
       try { body = await res.text(); } catch (_) {}
-      throw new Error(`HTTP ${res.status} ${res.statusText} for ${url}${body ? `\n${body.slice(0, 300)}` : ""}`);
+      const err = new Error(`HTTP ${res.status} ${res.statusText} for ${url}${body ? `\n${body.slice(0, 300)}` : ""}`);
+      err.status = res.status;
+      err.statusText = res.statusText;
+      err.url = url;
+      err.body = body ? body.slice(0, 300) : "";
+      throw err;
     }
     return res.json();
   } finally {
@@ -399,7 +404,17 @@ function formatPlannedTime(d) {
   });
 }
 
-export async function fetchStationboardRaw() {
+function isInvalidStationboardError(err) {
+  const status = typeof err?.status === "number" ? err.status : null;
+  if (status === 400 || status === 404) return true;
+  const msg = String(err?.message || "").toLowerCase();
+  if (!msg) return false;
+  if (msg.includes("station") && msg.includes("not found")) return true;
+  return msg.includes("404");
+}
+
+export async function fetchStationboardRaw(options = {}) {
+  const { allowRetry = true } = options;
   if (!appState.stationId) {
     await resolveStationId();
   }
@@ -421,6 +436,27 @@ export async function fetchStationboardRaw() {
   const req = (async () => {
     try {
       return await fetchJson(url);
+    } catch (err) {
+      const canRetry =
+        allowRetry &&
+        appState.stationId &&
+        isInvalidStationboardError(err);
+
+      if (canRetry) {
+        console.warn("[MesDeparts] stationboard retry with resolved id", {
+          station: appState.STATION,
+          badId: appState.stationId,
+          error: err?.message || String(err),
+        });
+        try {
+          appState.stationId = null;
+          await resolveStationId();
+          return await fetchStationboardRaw({ allowRetry: false });
+        } catch (resolveErr) {
+          console.warn("[MesDeparts] stationboard retry failed", resolveErr);
+        }
+      }
+      throw err;
     } finally {
       fetchStationboardRaw._inflight.delete(inflightKey);
     }
