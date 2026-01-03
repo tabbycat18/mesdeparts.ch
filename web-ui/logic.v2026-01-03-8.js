@@ -11,6 +11,7 @@ import {
   BOARD_HORIZON_MINUTES,
   ARRIVAL_LEAD_SECONDS,
   DEPARTED_GRACE_SECONDS,
+  CHRONO_VIEW_MIN_MINUTES,
   BUS_DELAY_LABEL_THRESHOLD_MIN,
   TRAIN_DELAY_LABEL_THRESHOLD_MIN,
   DEBUG_EARLY,
@@ -785,11 +786,20 @@ export function buildDeparturesGrouped(data, viewMode = VIEW_MODE_LINE) {
   // Bus boards:
   // - Heure view: simply sort by baseTime (realtime)
   if (chronoBuses) {
-    return allDeps
+    const nowMs = Date.now();
+    const sortedBuses = allDeps
       .filter((d) => d.mode === "bus")
       .slice()
-      .sort((a, b) => a.baseTime - b.baseTime)
-      .slice(0, MIN_ROWS);
+      .sort((a, b) => a.baseTime - b.baseTime);
+
+    const horizonMs = CHRONO_VIEW_MIN_MINUTES * 60 * 1000;
+    const withinHorizon = sortedBuses.filter((d) => (d.baseTime || 0) - nowMs <= horizonMs);
+
+    if (withinHorizon.length >= MIN_ROWS) {
+      return withinHorizon;
+    }
+
+    return sortedBuses.slice(0, Math.max(MIN_ROWS, withinHorizon.length));
   }
 
   // Group-by-line view (default)
