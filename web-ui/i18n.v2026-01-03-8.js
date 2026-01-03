@@ -116,6 +116,12 @@ const TRANSLATIONS = {
     it: "Nota",
     en: "Info",
   },
+  remarkEarly: {
+    fr: "En avance",
+    de: "Früh",
+    it: "In anticipo",
+    en: "Early",
+  },
   filterButton: {
     fr: "Filtres",
     de: "Filter",

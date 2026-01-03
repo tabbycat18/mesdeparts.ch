@@ -54,6 +54,8 @@ import { initI18n, applyStaticTranslations, setLanguage, LANGUAGE_OPTIONS } from
 
 // Persist station between reloads
 const STORAGE_KEY = "mesdeparts.station";
+// Legacy wrong default id (Genève Cornavin) that was used for “Lausanne, motte”
+const LEGACY_DEFAULT_STATION_ID = "8587057";
 const DEFAULT_API_MODE = API_MODE_BOARD;
 const COUNTDOWN_REFRESH_MS = 5_000;
 const DEBUG_PERF =
@@ -379,11 +381,15 @@ function applyStation(name, id) {
   const stationName = normalizeStationName(name) || DEFAULT_STATION;
   const storedMeta = readStoredStationMeta();
   const explicitId = typeof id === "string" ? id.trim() : null;
-  const cachedId =
+  const cachedIdRaw =
     storedMeta && storedMeta.name && storedMeta.name.toLowerCase() === stationName.toLowerCase()
       ? storedMeta.id
       : null;
   const isDefaultStation = stationName.toLowerCase() === DEFAULT_STATION.toLowerCase();
+  const cachedId =
+    isDefaultStation && cachedIdRaw === LEGACY_DEFAULT_STATION_ID
+      ? null
+      : cachedIdRaw;
   const inferredId = isDefaultStation ? DEFAULT_STATION_ID : null;
 
   appState.STATION = stationName;

@@ -4,7 +4,7 @@
 // --------------------------------------------------------
 
 export const DEFAULT_STATION = "Lausanne, motte";
-export const DEFAULT_STATION_ID = "8587057";
+export const DEFAULT_STATION_ID = "8592082";
 export const STATION_ID_STORAGE_KEY = "mesdeparts.stationMeta";
 
 // Legacy (kept for compatibility with older imports)

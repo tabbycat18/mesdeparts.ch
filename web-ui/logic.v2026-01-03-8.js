@@ -354,10 +354,10 @@ export async function fetchStationsNearby(lat, lon, limit = 7) {
       name: s.name,
       distance:
         typeof s.distance === "number"
-          ? s.distance
-          : typeof s.dist === "number"
-            ? s.dist
-            : null,
+        ? s.distance
+        : typeof s.dist === "number"
+          ? s.dist
+          : null,
     }));
 }
 
@@ -671,11 +671,11 @@ export function buildDeparturesGrouped(data, viewMode = VIEW_MODE_LINE) {
         status = "delay";
       }
     } else if (!status && delayMin < 0) {
-      // You decided: early only for bus/tram/metro, not for trains
-      if (mode === "bus") {
-        remark = `-${Math.abs(delayMin)} min`;
-        status = "early";
-      }
+      const earlyMin = Math.abs(delayMin);
+      const earlyLabel =
+        earlyMin >= 1 ? `${t("remarkEarly")} (${earlyMin} min)` : t("remarkEarly");
+      remark = earlyLabel;
+      status = "early";
     }
 
     const depObj = {

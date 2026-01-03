@@ -1959,6 +1959,8 @@ function renderLineChips(lines) {
     badge.setAttribute("aria-pressed", activeLines.has(ln) ? "true" : "false");
     badge.classList.toggle("is-active-filter", activeLines.has(ln));
 
+    badge.title = `${t("filterLines")}: ${ln}`;
+
     const activate = (e) => {
       e.preventDefault();
       applyLineBadgeFilter(ln);
