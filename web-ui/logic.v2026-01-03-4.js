@@ -356,7 +356,7 @@ export async function fetchStationboardRaw() {
     return fetchStationboardRaw._inflight.get(inflightKey);
   }
 
-  const url = apiUrl(`/stationboard?station=${encodeURIComponent(stationKey)}&limit=300`);
+  const url = apiUrl(`/stationboard?station=${encodeURIComponent(stationKey)}&limit=180`);
   const req = (async () => {
     try {
       return await fetchJson(url);

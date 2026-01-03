@@ -9,6 +9,8 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="preconnect" href="https://api.mesdeparts.ch" crossorigin />
     <link rel="modulepreload" href="main.v2026-01-03-4.js" />
+    <link rel="prefetch" href="clock/index.html" as="document" />
+    <link rel="prefetch" href="clock/js/sbbUhr-1.3.js" as="script" />
     <meta name="theme-color" content="#01157f" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -433,14 +435,20 @@
           path.startsWith("/?") ||
           path.startsWith("/dual-board.html?");
 
+        const registerSW = () => {
+          navigator.serviceWorker
+            .register("/service-worker.js")
+            .catch((err) => {
+              console.error("Service worker registration failed", err);
+            });
+        };
+
         if (!isClock && allowed) {
-          window.addEventListener("load", () => {
-            navigator.serviceWorker
-              .register("/service-worker.js")
-              .catch((err) => {
-                console.error("Service worker registration failed", err);
-              });
-          });
+          if (document.readyState === "complete" || document.readyState === "interactive") {
+            registerSW();
+          } else {
+            document.addEventListener("DOMContentLoaded", registerSW, { once: true });
+          }
         }
       }
     </script>
