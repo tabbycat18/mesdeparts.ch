@@ -21,7 +21,7 @@ import {
   TRAIN_FILTER_LONG_DISTANCE,
   DEFAULT_STATION_ID,
   STATION_ID_STORAGE_KEY,
-} from "./state.v2026-01-03-13.js";
+} from "./state.v2026-01-04.js";
 
 import {
   detectNetworkFromStation,
@@ -29,7 +29,7 @@ import {
   fetchStationboardRaw,
   buildDeparturesGrouped,
   stationboardLooksStale,
-} from "./logic.v2026-01-03-13.js";
+} from "./logic.v2026-01-04.js";
 
 import {
   setupClock,
@@ -48,10 +48,10 @@ import {
   setupAutoFitWatcher,
   publishEmbedState,
   updateCountdownRows,
-} from "./ui.v2026-01-03-13.js";
+} from "./ui.v2026-01-04.js";
 
-import { setupInfoButton } from "./infoBTN.v2026-01-03-13.js";
-import { initI18n, applyStaticTranslations, setLanguage, LANGUAGE_OPTIONS } from "./i18n.v2026-01-03-13.js";
+import { setupInfoButton } from "./infoBTN.v2026-01-04.js";
+import { initI18n, applyStaticTranslations, setLanguage, LANGUAGE_OPTIONS } from "./i18n.v2026-01-04.js";
 
 // Persist station between reloads
 const STORAGE_KEY = "mesdeparts.station";
@@ -237,6 +237,7 @@ let staleBoardRetryStation = null;
 let staleBoardRetryAt = 0;
 let staleBoardEmptySince = null;
 let staleBoardDirectRescueAt = 0;
+let lastNonEmptyStationboardAt = 0;
 
 function shouldAutoSwitchToBoard() {
   if (appState.apiMode !== API_MODE_DIRECT) return false;
@@ -441,6 +442,9 @@ async function refreshDepartures({ retried, showLoadingHint = true } = {}) {
     lastStationboardData = data;
 
     const rawCount = Array.isArray(data?.stationboard) ? data.stationboard.length : 0;
+    if (rawCount > 0) {
+      lastNonEmptyStationboardAt = Date.now();
+    }
     const hasActiveFilters = !!(
       (Array.isArray(appState.platformFilter)
         ? appState.platformFilter.length
@@ -535,6 +539,35 @@ async function refreshDepartures({ retried, showLoadingHint = true } = {}) {
         return;
       } catch (e) {
         console.warn("[MesDeparts][stale-direct-rescue] failed", e);
+      } finally {
+        appState.apiMode = prevMode;
+      }
+    }
+
+    if (
+      !retried &&
+      rawCount === 0 &&
+      lastNonEmptyStationboardAt &&
+      Date.now() - lastNonEmptyStationboardAt >= STALE_EMPTY_MAX_MS &&
+      Date.now() - staleBoardDirectRescueAt >= STALE_EMPTY_MAX_MS
+    ) {
+      staleBoardDirectRescueAt = Date.now();
+      const prevMode = appState.apiMode;
+      appState.apiMode = API_MODE_DIRECT;
+      try {
+        const directData = await fetchStationboardRaw({ allowRetry: false, bustCache: true });
+        const directRows = buildDeparturesGrouped(directData, appState.viewMode);
+        lastStationboardData = directData;
+        if (Array.isArray(directData?.stationboard) && directData.stationboard.length > 0) {
+          lastNonEmptyStationboardAt = Date.now();
+        }
+        renderFilterOptions();
+        renderDepartures(directRows);
+        updateDebugPanel(directRows);
+        publishEmbedState();
+        return;
+      } catch (e) {
+        console.warn("[MesDeparts][stale-direct-rescue-empty] failed", e);
       } finally {
         appState.apiMode = prevMode;
       }

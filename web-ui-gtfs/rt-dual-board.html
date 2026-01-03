@@ -10,11 +10,11 @@
     <script>window.__MD_API_BASE__ = "https://api.mesdeparts.ch";</script>
     <link rel="preload" href="rt-style.css" as="style" />
     <link rel="modulepreload" href="rt-logic.js" as="script" />
-    <link rel="modulepreload" href="ui.v2026-01-03-13.js" />
+    <link rel="modulepreload" href="ui.v2026-01-04.js" />
     <link rel="modulepreload" href="rt-state.js" />
-    <link rel="modulepreload" href="i18n.v2026-01-03-13.js" />
-    <link rel="modulepreload" href="infoBTN.v2026-01-03-13.js" />
-    <link rel="modulepreload" href="favourites.v2026-01-03-13.js" />
+    <link rel="modulepreload" href="i18n.v2026-01-04.js" />
+    <link rel="modulepreload" href="infoBTN.v2026-01-04.js" />
+    <link rel="modulepreload" href="favourites.v2026-01-04.js" />
     <link rel="preconnect" href="https://api.mesdeparts.ch" crossorigin />
     <link rel="stylesheet" href="rt-style.css" />
   </head>
@@ -371,8 +371,8 @@
 
     <script type="module">
       import { fetchStationSuggestions, fetchStationsNearby } from "./rt-logic.js";
-      import { loadFavorites, addFavorite, removeFavorite, isFavorite } from "./favourites.v2026-01-03-13.js";
-      import { LANGUAGE_OPTIONS, initI18n, setLanguage, t } from "./i18n.v2026-01-03-13.js";
+      import { loadFavorites, addFavorite, removeFavorite, isFavorite } from "./favourites.v2026-01-04.js";
+      import { LANGUAGE_OPTIONS, initI18n, setLanguage, t } from "./i18n.v2026-01-04.js";
       import {
         appState,
         API_MODE_BOARD,
@@ -383,7 +383,7 @@
         TRAIN_FILTER_REGIONAL,
         TRAIN_FILTER_LONG_DISTANCE,
       } from "./rt-state.js";
-      import { setupInfoButton } from "./infoBTN.v2026-01-03-13.js";
+      import { setupInfoButton } from "./infoBTN.v2026-01-04.js";
 
       const DEFAULT_LANG = initI18n();
       appState.apiMode = API_MODE_BOARD;

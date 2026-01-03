@@ -4,7 +4,7 @@
 // --------------------------------------------------------
 
 import { appState } from "./rt-state.js";
-import { t } from "./i18n.v2026-01-03-13.js";
+import { t } from "./i18n.v2026-01-04.js";
 
 const INFO_TAB_STORAGE_KEY = "infoOverlayLastTab";
 const TAB_KEYS = ["help", "realtime", "credits"];

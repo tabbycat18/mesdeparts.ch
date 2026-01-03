@@ -47,10 +47,10 @@ import {
   setupAutoFitWatcher,
   publishEmbedState,
   updateCountdownRows,
-} from "./ui.v2026-01-03-13.js";
+} from "./ui.v2026-01-04.js";
 
-import { setupInfoButton } from "./infoBTN.v2026-01-03-13.js";
-import { initI18n, applyStaticTranslations, setLanguage, LANGUAGE_OPTIONS } from "./i18n.v2026-01-03-13.js";
+import { setupInfoButton } from "./infoBTN.v2026-01-04.js";
+import { initI18n, applyStaticTranslations, setLanguage, LANGUAGE_OPTIONS } from "./i18n.v2026-01-04.js";
 
 // Persist station between reloads
 const STORAGE_KEY = "mesdeparts.station";

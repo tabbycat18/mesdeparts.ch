@@ -27,8 +27,8 @@ import {
   removeFavorite,
   isFavorite,
   clearFavorites,
-} from "./favourites.v2026-01-03-13.js";
-import { t } from "./i18n.v2026-01-03-13.js";
+} from "./favourites.v2026-01-04.js";
+import { t } from "./i18n.v2026-01-04.js";
 
 const QUICK_CONTROLS_STORAGE_KEY = "mesdeparts.quickControlsCollapsed";
 let quickControlsCollapsed = false;
