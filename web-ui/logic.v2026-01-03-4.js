@@ -20,6 +20,7 @@ import {
   TRAIN_FILTER_REGIONAL,
   TRAIN_FILTER_LONG_DISTANCE,
   API_MODE_DIRECT,
+  STATION_ID_STORAGE_KEY,
 } from "./state.v2026-01-03-4.js";
 import { t } from "./i18n.v2026-01-03-4.js";
 
@@ -262,6 +263,15 @@ export async function resolveStationId() {
   const first = list[0];
   if (!first) throw new Error("No station found");
   appState.stationId = first.id;
+  try {
+    const name = typeof appState.STATION === "string" ? appState.STATION : "";
+    localStorage.setItem(
+      STATION_ID_STORAGE_KEY,
+      JSON.stringify({ name, id: first.id }),
+    );
+  } catch {
+    // ignore storage errors
+  }
   return first.id;
 }
 

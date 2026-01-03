@@ -4,6 +4,7 @@
 // --------------------------------------------------------
 
 export const DEFAULT_STATION = "Lausanne, motte";
+export const STATION_ID_STORAGE_KEY = "mesdeparts.stationMeta";
 
 // Legacy (kept for compatibility with older imports)
 export const MAX_LINES_BUS = 15;

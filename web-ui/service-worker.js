@@ -1,6 +1,8 @@
 // Bump the cache name to force-refresh cached assets (e.g. main.js) after fixes
-const CACHE_NAME = "md-static-v2026-01-03-4";
-const ASSETS = [
+const CACHE_NAME = "md-static-v2026-01-03-5";
+
+// Core assets: required for the shell to work offline.
+const CORE_ASSETS = [
   "./index.html",
   "./dual-board.html",
   "./manifest.webmanifest",
@@ -14,9 +16,15 @@ const ASSETS = [
   "./infoBTN.v2026-01-03-4.js",
   "./bus-icon-1.png",
   "./bus-icon-1.svg",
+];
+
+// Optional assets that can be warmed in the background.
+const LAZY_ASSETS = [
   "./clock/index.html",
   "./clock/js/sbbUhr-1.3.js",
 ];
+
+const ASSETS = [...CORE_ASSETS, ...LAZY_ASSETS];
 
 const ASSET_PATHS = new Set(
   ASSETS.map((asset) => new URL(asset, self.registration.scope).pathname),
@@ -27,7 +35,8 @@ self.addEventListener("install", (event) => {
   event.waitUntil(
     (async () => {
       const cache = await caches.open(CACHE_NAME);
-      await cache.addAll(ASSETS);
+      await cache.addAll(CORE_ASSETS);
+      cache.addAll(LAZY_ASSETS).catch(() => {});
     })(),
   );
   self.skipWaiting();

@@ -443,11 +443,19 @@
             });
         };
 
-        if (!isClock && allowed) {
-          if (document.readyState === "complete" || document.readyState === "interactive") {
-            registerSW();
+        const scheduleRegister = () => {
+          if (typeof requestIdleCallback === "function") {
+            requestIdleCallback(() => registerSW(), { timeout: 2500 });
           } else {
-            document.addEventListener("DOMContentLoaded", registerSW, { once: true });
+            setTimeout(registerSW, 1200);
+          }
+        };
+
+        if (!isClock && allowed) {
+          if (document.readyState === "complete") {
+            scheduleRegister();
+          } else {
+            window.addEventListener("load", scheduleRegister, { once: true });
           }
         }
       }

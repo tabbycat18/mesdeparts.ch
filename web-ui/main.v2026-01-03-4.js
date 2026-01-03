@@ -19,6 +19,7 @@ import {
   TRAIN_FILTER_ALL,
   TRAIN_FILTER_REGIONAL,
   TRAIN_FILTER_LONG_DISTANCE,
+  STATION_ID_STORAGE_KEY,
 } from "./state.v2026-01-03-4.js";
 
 import {
@@ -107,6 +108,33 @@ function loadClockIframe() {
   const src = clock.getAttribute("data-clock-src");
   if (!src) return;
   clock.setAttribute("src", src);
+}
+
+function readStoredStationMeta() {
+  try {
+    const raw = localStorage.getItem(STATION_ID_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const name = typeof parsed?.name === "string" ? parsed.name.trim() : "";
+    const id = typeof parsed?.id === "string" ? parsed.id.trim() : "";
+    if (!name || !id) return null;
+    return { name, id };
+  } catch {
+    return null;
+  }
+}
+
+function persistStationSelection(name, id) {
+  try {
+    localStorage.setItem(STORAGE_KEY, name);
+    if (id) {
+      localStorage.setItem(STATION_ID_STORAGE_KEY, JSON.stringify({ name, id }));
+    } else {
+      localStorage.removeItem(STATION_ID_STORAGE_KEY);
+    }
+  } catch {
+    // ignore storage errors
+  }
 }
 
 function markEmbedIfNeeded() {
@@ -307,11 +335,17 @@ function applyUrlPreferences() {
 
 function applyStation(name, id) {
   const stationName = normalizeStationName(name) || DEFAULT_STATION;
+  const storedMeta = readStoredStationMeta();
+  const explicitId = typeof id === "string" ? id.trim() : null;
+  const cachedId =
+    storedMeta && storedMeta.name && storedMeta.name.toLowerCase() === stationName.toLowerCase()
+      ? storedMeta.id
+      : null;
 
   appState.STATION = stationName;
   // If a station id is provided (from suggestion/favourite), keep it.
   // Otherwise leave as null; it will be resolved later from the name.
-  appState.stationId = (typeof id === "string" && id.trim()) ? id.trim() : null;
+  appState.stationId = explicitId || cachedId || null;
 
   appState.stationIsMotte = stationName.toLowerCase().includes("motte");
   appState.currentNetwork = detectNetworkFromStation(stationName);
@@ -326,7 +360,7 @@ function applyStation(name, id) {
   appState.lastPlatforms = {};
   emptyBoardRetryStation = null;
 
-  localStorage.setItem(STORAGE_KEY, stationName);
+  persistStationSelection(stationName, appState.stationId);
   updateUrlWithStation(stationName, appState.stationId);
 
   updateStationTitle();
