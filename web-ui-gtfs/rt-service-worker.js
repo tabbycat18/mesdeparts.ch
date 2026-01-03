@@ -1,13 +1,13 @@
 // Core assets: required for the shell to work offline.
 const CORE_ASSETS = [
-  "./index.html",
+  "./rt-index.html",
   "./dual-board.html",
   "./manifest.webmanifest",
-  "./style.v2026-01-03-13.css",
-  "./main.v2026-01-03-13.js",
-  "./logic.v2026-01-03-13.js",
+  "./rt-style.css",
+  "./rt-main.js",
+  "./rt-logic.js",
   "./ui.v2026-01-03-13.js",
-  "./state.v2026-01-03-13.js",
+  "./rt-state.js",
   "./i18n.v2026-01-03-13.js",
   "./favourites.v2026-01-03-13.js",
   "./infoBTN.v2026-01-03-13.js",

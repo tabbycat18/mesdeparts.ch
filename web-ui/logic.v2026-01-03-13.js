@@ -22,8 +22,8 @@ import {
   TRAIN_FILTER_LONG_DISTANCE,
   API_MODE_DIRECT,
   STATION_ID_STORAGE_KEY,
-} from "./state.v2026-01-03-12.js";
-import { t } from "./i18n.v2026-01-03-12.js";
+} from "./state.v2026-01-03-13.js";
+import { t } from "./i18n.v2026-01-03-13.js";
 
 // API base can be overridden by setting window.__MD_API_BASE__ before scripts load
 const DIRECT_API_BASE = "https://transport.opendata.ch/v1";
@@ -170,7 +170,7 @@ export function parseApiDate(str) {
 
 const FETCH_TIMEOUT_MS = 12_000;
 
-async function fetchJson(url, { signal, timeoutMs = FETCH_TIMEOUT_MS } = {}) {
+async function fetchJson(url, { signal, timeoutMs = FETCH_TIMEOUT_MS, cache = "default" } = {}) {
   const controller = new AbortController();
   const timeout =
     typeof timeoutMs === "number" && timeoutMs > 0
@@ -187,7 +187,7 @@ async function fetchJson(url, { signal, timeoutMs = FETCH_TIMEOUT_MS } = {}) {
   }
 
   try {
-    const res = await fetch(url, { signal: controller.signal });
+    const res = await fetch(url, { signal: controller.signal, cache });
     if (!res.ok) {
       let body = "";
       try { body = await res.text(); } catch (_) {}
@@ -414,13 +414,13 @@ function isInvalidStationboardError(err) {
 }
 
 export async function fetchStationboardRaw(options = {}) {
-  const { allowRetry = true } = options;
+  const { allowRetry = true, bustCache = false } = options;
   if (!appState.stationId) {
     await resolveStationId();
   }
 
   const stationKey = appState.stationId || "unknown";
-  const inflightKey = `${getApiBase()}|${stationKey}`;
+  const inflightKey = `${getApiBase()}|${stationKey}|${bustCache ? "bust" : "default"}`;
 
   if (!fetchStationboardRaw._inflight) {
     fetchStationboardRaw._inflight = new Map();
@@ -430,12 +430,13 @@ export async function fetchStationboardRaw(options = {}) {
     return fetchStationboardRaw._inflight.get(inflightKey);
   }
 
+  const cacheBust = bustCache ? `&_ts=${Date.now()}` : "";
   const url = apiUrl(
-    `/stationboard?station=${encodeURIComponent(stationKey)}&limit=${encodeURIComponent(STATIONBOARD_LIMIT)}`,
+    `/stationboard?station=${encodeURIComponent(stationKey)}&limit=${encodeURIComponent(STATIONBOARD_LIMIT)}${cacheBust}`,
   );
   const req = (async () => {
     try {
-      const data = await fetchJson(url);
+      const data = await fetchJson(url, { cache: bustCache ? "reload" : "default" });
 
       const needsRetry =
         allowRetry &&
@@ -485,6 +486,32 @@ export async function fetchStationboardRaw(options = {}) {
 
   fetchStationboardRaw._inflight.set(inflightKey, req);
   return req;
+}
+
+export function stationboardLooksStale(data) {
+  const list = Array.isArray(data?.stationboard) ? data.stationboard : [];
+  if (!list.length) return false;
+
+  const now = Date.now();
+  const graceMs = DEPARTED_GRACE_SECONDS * 1000;
+
+  return !list.some((entry) => {
+    const stop = entry?.stop || {};
+    const depStr =
+      (stop.prognosis && stop.prognosis.departure) ||
+      stop.departure ||
+      (entry.prognosis && entry.prognosis.departure) ||
+      null;
+
+    let dep = parseApiDate(depStr);
+    if (!dep && typeof stop.departureTimestamp === "number") {
+      dep = new Date(stop.departureTimestamp * 1000);
+    }
+
+    if (!dep) return false;
+
+    return dep.getTime() - now >= -graceMs;
+  });
 }
 
 export function buildDeparturesGrouped(data, viewMode = VIEW_MODE_LINE) {

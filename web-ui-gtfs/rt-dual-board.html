@@ -8,16 +8,15 @@
     <link rel="apple-touch-icon" href="bus-icon-1.png" />
     <meta name="theme-color" content="#01157f" />
     <script>window.__MD_API_BASE__ = "https://api.mesdeparts.ch";</script>
-    <link rel="preload" href="style.v2026-01-03-13.css" as="style" />
-    <link rel="modulepreload" href="logic.v2026-01-03-13.js" as="script" />
+    <link rel="preload" href="rt-style.css" as="style" />
+    <link rel="modulepreload" href="rt-logic.js" as="script" />
     <link rel="modulepreload" href="ui.v2026-01-03-13.js" />
-    <link rel="modulepreload" href="state.v2026-01-03-13.js" />
+    <link rel="modulepreload" href="rt-state.js" />
     <link rel="modulepreload" href="i18n.v2026-01-03-13.js" />
     <link rel="modulepreload" href="infoBTN.v2026-01-03-13.js" />
     <link rel="modulepreload" href="favourites.v2026-01-03-13.js" />
     <link rel="preconnect" href="https://api.mesdeparts.ch" crossorigin />
-    <link rel="modulepreload" href="main.v2026-01-03-13.js" />
-    <link rel="stylesheet" href="style.v2026-01-03-13.css" />
+    <link rel="stylesheet" href="rt-style.css" />
   </head>
   <body class="dual-body">
     <div class="dual-shell">
@@ -371,7 +370,7 @@
     <div class="dual-version-float" aria-label="Version">v1.5.8</div>
 
     <script type="module">
-      import { fetchStationSuggestions, fetchStationsNearby } from "./logic.v2026-01-03-13.js";
+      import { fetchStationSuggestions, fetchStationsNearby } from "./rt-logic.js";
       import { loadFavorites, addFavorite, removeFavorite, isFavorite } from "./favourites.v2026-01-03-13.js";
       import { LANGUAGE_OPTIONS, initI18n, setLanguage, t } from "./i18n.v2026-01-03-13.js";
       import {
@@ -383,7 +382,7 @@
         TRAIN_FILTER_ALL,
         TRAIN_FILTER_REGIONAL,
         TRAIN_FILTER_LONG_DISTANCE,
-      } from "./state.v2026-01-03-13.js";
+      } from "./rt-state.js";
       import { setupInfoButton } from "./infoBTN.v2026-01-03-13.js";
 
       const DEFAULT_LANG = initI18n();

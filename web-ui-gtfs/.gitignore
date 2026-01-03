@@ -1,0 +1,10 @@
+# Local config with secrets
+config.local.js
+
+# Derived or large data artifacts
+data/static/
+data/rt-samples/
+
+# Runtime caches/artifacts
+node_modules/
+dist/
