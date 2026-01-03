@@ -22,8 +22,8 @@ import {
   TRAIN_FILTER_LONG_DISTANCE,
   API_MODE_DIRECT,
   STATION_ID_STORAGE_KEY,
-} from "./state.v2026-01-03-11.js";
-import { t } from "./i18n.v2026-01-03-11.js";
+} from "./state.v2026-01-03-12.js";
+import { t } from "./i18n.v2026-01-03-12.js";
 
 // API base can be overridden by setting window.__MD_API_BASE__ before scripts load
 const DIRECT_API_BASE = "https://transport.opendata.ch/v1";
@@ -435,7 +435,28 @@ export async function fetchStationboardRaw(options = {}) {
   );
   const req = (async () => {
     try {
-      return await fetchJson(url);
+      const data = await fetchJson(url);
+
+      const needsRetry =
+        allowRetry &&
+        appState.stationId &&
+        (!data?.station || !data?.stationboard || data.stationboard.length === 0);
+
+      if (needsRetry) {
+        console.warn("[MesDeparts] stationboard empty/missing, retrying with resolved id", {
+          station: appState.STATION,
+          badId: appState.stationId,
+        });
+        try {
+          appState.stationId = null;
+          await resolveStationId();
+          return await fetchStationboardRaw({ allowRetry: false });
+        } catch (resolveErr) {
+          console.warn("[MesDeparts] stationboard retry failed", resolveErr);
+        }
+      }
+
+      return data;
     } catch (err) {
       const canRetry =
         allowRetry &&
