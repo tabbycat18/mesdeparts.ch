@@ -9,8 +9,8 @@
     <meta name="theme-color" content="#01157f" />
     <script>window.__MD_API_BASE__ = "https://api.mesdeparts.ch";</script>
     <link rel="preconnect" href="https://api.mesdeparts.ch" crossorigin />
-    <link rel="modulepreload" href="main.v2026-01-03.js" />
-    <link rel="stylesheet" href="style.v2026-01-03.css" />
+    <link rel="modulepreload" href="main.v2026-01-03-1.js" />
+    <link rel="stylesheet" href="style.v2026-01-03-1.css" />
   </head>
   <body class="dual-body">
     <div class="dual-shell">
@@ -361,10 +361,12 @@
       Afficher les contrôles
     </button>
 
+    <div class="dual-version-float" aria-label="Version">v1.5</div>
+
     <script type="module">
-      import { fetchStationSuggestions, fetchStationsNearby } from "./logic.v2026-01-03.js";
-      import { loadFavorites, addFavorite, removeFavorite, isFavorite } from "./favourites.v2026-01-03.js";
-      import { LANGUAGE_OPTIONS, initI18n, setLanguage, t } from "./i18n.v2026-01-03.js";
+      import { fetchStationSuggestions, fetchStationsNearby } from "./logic.v2026-01-03-1.js";
+      import { loadFavorites, addFavorite, removeFavorite, isFavorite } from "./favourites.v2026-01-03-1.js";
+      import { LANGUAGE_OPTIONS, initI18n, setLanguage, t } from "./i18n.v2026-01-03-1.js";
       import {
         appState,
         API_MODE_BOARD,
@@ -374,8 +376,8 @@
         TRAIN_FILTER_ALL,
         TRAIN_FILTER_REGIONAL,
         TRAIN_FILTER_LONG_DISTANCE,
-      } from "./state.v2026-01-03.js";
-      import { setupInfoButton } from "./infoBTN.v2026-01-03.js";
+      } from "./state.v2026-01-03-1.js";
+      import { setupInfoButton } from "./infoBTN.v2026-01-03-1.js";
 
       const DEFAULT_LANG = initI18n();
       appState.apiMode = API_MODE_BOARD;
@@ -818,6 +820,18 @@
           this.debouncedSuggest = debounce((q) => this.fetchSuggestions(q), 180);
           this.syncAll();
           this.bindEvents();
+          window.addEventListener(
+            "resize",
+            () => {
+              if (
+                this.els.favoritesPopover &&
+                !this.els.favoritesPopover.classList.contains("is-hidden")
+              ) {
+                this.positionFavoritesPopover();
+              }
+            },
+            { passive: true },
+          );
         }
 
         syncAll() {
@@ -1019,11 +1033,25 @@
           this.syncHideToggle();
           this.els.filtersPopover.classList.remove("is-hidden");
           this.els.filtersPopover.setAttribute("aria-hidden", "false");
+          if ("inert" in this.els.filtersPopover) {
+            this.els.filtersPopover.inert = false;
+          }
           this.els.filtersOpen.setAttribute("aria-expanded", "true");
         }
 
         closeFilters() {
           if (!this.els.filtersPopover || !this.els.filtersOpen) return;
+          const active = document.activeElement;
+          if (active && this.els.filtersPopover.contains(active)) {
+            if (typeof this.els.filtersOpen.focus === "function") {
+              this.els.filtersOpen.focus();
+            } else if (typeof active.blur === "function") {
+              active.blur();
+            }
+          }
+          if ("inert" in this.els.filtersPopover) {
+            this.els.filtersPopover.inert = true;
+          }
           this.els.filtersPopover.classList.add("is-hidden");
           this.els.filtersPopover.setAttribute("aria-hidden", "true");
           this.els.filtersOpen.setAttribute("aria-expanded", "false");
@@ -1165,6 +1193,40 @@
           this.renderFavoritesList();
         }
 
+        positionFavoritesPopover() {
+          if (!this.els.favoritesPopover || !this.els.favoritesBtn) return;
+          const popover = this.els.favoritesPopover;
+          const trigger = this.els.favoritesBtn;
+          const margin = 8;
+          popover.classList.add("is-floating");
+          popover.style.position = "fixed";
+          popover.style.transform = "none";
+          popover.style.right = "auto";
+          popover.style.left = "0px";
+          popover.style.top = "0px";
+
+          const viewportWidth = Math.max(
+            window.innerWidth || 0,
+            document.documentElement?.clientWidth || 0,
+          );
+          const viewportHeight = Math.max(
+            window.innerHeight || 0,
+            document.documentElement?.clientHeight || 0,
+          );
+          const btnRect = trigger.getBoundingClientRect();
+          const popRect = popover.getBoundingClientRect();
+
+          const maxLeft = Math.max(margin, viewportWidth - popRect.width - margin);
+          const left = Math.max(margin, Math.min(btnRect.left, maxLeft));
+
+          const desiredTop = btnRect.bottom + margin;
+          const maxTop = Math.max(margin, viewportHeight - popRect.height - margin);
+          const top = Math.min(Math.max(margin, desiredTop), maxTop);
+
+          popover.style.left = `${left}px`;
+          popover.style.top = `${top}px`;
+        }
+
         toggleFavoritesPopover() {
           if (!this.els.favoritesPopover || !this.els.favoritesBtn) return;
           const isOpen = !this.els.favoritesPopover.classList.contains("is-hidden");
@@ -1174,6 +1236,7 @@
             this.renderFavoritesList();
             this.els.favoritesPopover.classList.remove("is-hidden");
             this.els.favoritesBtn.setAttribute("aria-expanded", "true");
+            this.positionFavoritesPopover();
           }
         }
 
@@ -1181,6 +1244,12 @@
           if (!this.els.favoritesPopover || !this.els.favoritesBtn) return;
           this.els.favoritesPopover.classList.add("is-hidden");
           this.els.favoritesBtn.setAttribute("aria-expanded", "false");
+          this.els.favoritesPopover.classList.remove("is-floating");
+          this.els.favoritesPopover.style.left = "";
+          this.els.favoritesPopover.style.top = "";
+          this.els.favoritesPopover.style.right = "";
+          this.els.favoritesPopover.style.position = "";
+          this.els.favoritesPopover.style.transform = "";
         }
 
         renderFavoritesList() {
@@ -1485,6 +1554,7 @@
         const label = t(key);
         fullscreenBtn.textContent = label;
         fullscreenBtn.setAttribute("aria-label", label);
+        document.body?.classList.toggle("is-fullscreen", isFullscreen());
       }
 
       async function requestFullscreen() {
