@@ -20,7 +20,8 @@
       name="description"
       content="Tableau de départs avec horloge sbbUhr (Apache 2.0), sans affiliation officielle CFF/SBB."
     />
-    <link rel="modulepreload" href="logic.v2026-01-03-7.js" />
+    <link rel="preload" href="style.v2026-01-03-7.css" as="style" />
+    <link rel="modulepreload" href="logic.v2026-01-03-7.js" as="script" />
     <link rel="modulepreload" href="ui.v2026-01-03-7.js" />
     <link rel="modulepreload" href="state.v2026-01-03-7.js" />
     <link rel="modulepreload" href="i18n.v2026-01-03-7.js" />
@@ -450,10 +451,10 @@
         };
 
         if (!isClock && allowed) {
-          if (document.readyState === "complete") {
+          if (document.readyState === "complete" || document.readyState === "interactive") {
             registerSW();
           } else {
-            window.addEventListener("load", registerSW, { once: true });
+            document.addEventListener("DOMContentLoaded", registerSW, { once: true });
           }
         }
       }
