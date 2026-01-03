@@ -21,8 +21,8 @@ import {
   TRAIN_FILTER_LONG_DISTANCE,
   API_MODE_DIRECT,
   STATION_ID_STORAGE_KEY,
-} from "./state.v2026-01-03-7.js";
-import { t } from "./i18n.v2026-01-03-7.js";
+} from "./state.v2026-01-03-8.js";
+import { t } from "./i18n.v2026-01-03-8.js";
 
 // API base can be overridden by setting window.__MD_API_BASE__ before scripts load
 const DIRECT_API_BASE = "https://transport.opendata.ch/v1";
@@ -167,14 +167,51 @@ export function parseApiDate(str) {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-async function fetchJson(url) {
-  const res = await fetch(url);
-  if (!res.ok) {
-    let body = "";
-    try { body = await res.text(); } catch (_) {}
-    throw new Error(`HTTP ${res.status} ${res.statusText} for ${url}${body ? `\n${body.slice(0, 300)}` : ""}`);
+const FETCH_TIMEOUT_MS = 12_000;
+
+async function fetchJson(url, { signal, timeoutMs = FETCH_TIMEOUT_MS } = {}) {
+  const controller = new AbortController();
+  const timeout =
+    typeof timeoutMs === "number" && timeoutMs > 0
+      ? setTimeout(() => controller.abort(new DOMException("Timeout", "AbortError")), timeoutMs)
+      : null;
+
+  const forwardAbort = () => controller.abort(signal?.reason || new DOMException("Aborted", "AbortError"));
+  if (signal) {
+    if (signal.aborted) {
+      forwardAbort();
+    } else {
+      signal.addEventListener("abort", forwardAbort);
+    }
   }
-  return res.json();
+
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    if (!res.ok) {
+      let body = "";
+      try { body = await res.text(); } catch (_) {}
+      throw new Error(`HTTP ${res.status} ${res.statusText} for ${url}${body ? `\n${body.slice(0, 300)}` : ""}`);
+    }
+    return res.json();
+  } finally {
+    if (timeout) clearTimeout(timeout);
+    if (signal) signal.removeEventListener("abort", forwardAbort);
+  }
+}
+
+function isAbortError(err) {
+  if (!err) return false;
+  if (err.name === "AbortError") return true;
+  const msg = String(err?.message || "").toLowerCase();
+  return msg.includes("abort");
+}
+
+function isTimeoutError(err) {
+  return err instanceof DOMException && err.name === "AbortError" && err.message === "Timeout";
+}
+
+function isTransientFetchError(err) {
+  return isAbortError(err) || isTimeoutError(err);
 }
 
 // --------------------------------------------------------
@@ -263,19 +300,27 @@ export async function resolveStationId() {
   const data = await fetchJson(url);
 
   const list = data.stations || data.stops || data.locations || [];
-  const first = list[0];
-  if (!first) throw new Error("No station found");
-  appState.stationId = first.id;
+  if (!list.length) throw new Error("No station found");
+
+  const normalizeName = (name) => String(name || "").trim().toLowerCase();
+  const targetName = normalizeName(appState.STATION);
+
+  // Prefer exact name matches when present; fallback to first API result
+  const best =
+    list.find((s) => normalizeName(s?.name) === targetName) ||
+    list[0];
+
+  appState.stationId = best.id;
   try {
     const name = typeof appState.STATION === "string" ? appState.STATION : "";
     localStorage.setItem(
       STATION_ID_STORAGE_KEY,
-      JSON.stringify({ name, id: first.id }),
+      JSON.stringify({ name, id: best.id }),
     );
   } catch {
     // ignore storage errors
   }
-  return first.id;
+  return best.id;
 }
 
 export async function fetchStationSuggestions(query) {
@@ -823,11 +868,11 @@ export async function fetchDeparturesGrouped(viewMode = VIEW_MODE_LINE) {
   return buildDeparturesGrouped(data, viewMode);
 }
 
-async function fetchJourneyDetailsById(journeyId) {
+async function fetchJourneyDetailsById(journeyId, { signal } = {}) {
   if (!journeyId) return null;
   const url = apiUrl(`/journey?id=${encodeURIComponent(journeyId)}&passlist=1`);
   try {
-    const data = await fetchJson(url);
+    const data = await fetchJson(url, { signal });
     const journey = data?.journey || data;
     const passList = journey?.passList || data?.passList;
     const section = buildSectionFromPassList(passList, journey);
@@ -839,7 +884,7 @@ async function fetchJourneyDetailsById(journeyId) {
 }
 
 // Journey details for a specific trip (bus or train) via /connections
-export async function fetchJourneyDetails(dep) {
+export async function fetchJourneyDetails(dep, { signal } = {}) {
   if (!dep) throw new Error("fetchJourneyDetails: missing dep");
 
   const fromStationId = dep.fromStationId || appState.stationId || null;
@@ -878,7 +923,7 @@ export async function fetchJourneyDetails(dep) {
   const time = toCHTimeHHMM(dt.getTime());
 
   if (dep.journeyId) {
-    const viaId = await fetchJourneyDetailsById(dep.journeyId);
+    const viaId = await fetchJourneyDetailsById(dep.journeyId, { signal });
     if (viaId) return viaId;
   }
 
@@ -890,7 +935,7 @@ export async function fetchJourneyDetails(dep) {
     `&time=${encodeURIComponent(time)}` +
     `&limit=6`;
 
-  const data = await fetchJson(url);
+  const data = await fetchJson(url, { signal });
   const conns = data?.connections || [];
 
   const targetTs =

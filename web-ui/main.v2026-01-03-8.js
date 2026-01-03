@@ -21,14 +21,14 @@ import {
   TRAIN_FILTER_LONG_DISTANCE,
   DEFAULT_STATION_ID,
   STATION_ID_STORAGE_KEY,
-} from "./state.v2026-01-03-7.js";
+} from "./state.v2026-01-03-8.js";
 
 import {
   detectNetworkFromStation,
   resolveStationId,
   fetchStationboardRaw,
   buildDeparturesGrouped,
-} from "./logic.v2026-01-03-7.js";
+} from "./logic.v2026-01-03-8.js";
 
 import {
   setupClock,
@@ -46,10 +46,11 @@ import {
   ensureBoardFitsViewport,
   setupAutoFitWatcher,
   publishEmbedState,
-} from "./ui.v2026-01-03-7.js";
+  updateCountdownRows,
+} from "./ui.v2026-01-03-8.js";
 
-import { setupInfoButton } from "./infoBTN.v2026-01-03-7.js";
-import { initI18n, applyStaticTranslations, setLanguage, LANGUAGE_OPTIONS } from "./i18n.v2026-01-03-7.js";
+import { setupInfoButton } from "./infoBTN.v2026-01-03-8.js";
+import { initI18n, applyStaticTranslations, setLanguage, LANGUAGE_OPTIONS } from "./i18n.v2026-01-03-8.js";
 
 // Persist station between reloads
 const STORAGE_KEY = "mesdeparts.station";
@@ -262,11 +263,25 @@ function startRefreshLoop() {
   refreshTimer = setInterval(() => refreshDepartures({ showLoadingHint: false }), interval);
 }
 
+function refreshCountdownTick() {
+  if (!lastStationboardData) return;
+  try {
+    const rows = buildDeparturesGrouped(lastStationboardData, appState.viewMode);
+    const updated = updateCountdownRows(rows);
+    if (!updated) {
+      renderDepartures(rows);
+    }
+    publishEmbedState();
+  } catch (err) {
+    console.error("[MesDeparts] countdown refresh error:", err);
+    refreshDepartures();
+  }
+}
+
 function startCountdownLoop() {
   if (countdownTimer) clearInterval(countdownTimer);
   countdownTimer = setInterval(() => {
-    if (!lastStationboardData) return;
-    refreshDeparturesFromCache({ allowFetch: false, skipFilters: true, skipDebug: true });
+    refreshCountdownTick();
   }, COUNTDOWN_REFRESH_MS);
 }
 

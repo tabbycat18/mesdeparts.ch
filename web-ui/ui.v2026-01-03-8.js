@@ -14,21 +14,21 @@ import {
   API_MODE_DIRECT,
   API_MODE_STORAGE_KEY,
   API_MODE_AUTO_OFF_KEY,
-} from "./state.v2026-01-03-7.js";
+} from "./state.v2026-01-03-8.js";
 import {
   fetchStationSuggestions,
   fetchStationsNearby,
   fetchJourneyDetails,
   parseApiDate,
-} from "./logic.v2026-01-03-7.js";
+} from "./logic.v2026-01-03-8.js";
 import {
   loadFavorites,
   addFavorite,
   removeFavorite,
   isFavorite,
   clearFavorites,
-} from "./favourites.v2026-01-03-7.js";
-import { t } from "./i18n.v2026-01-03-7.js";
+} from "./favourites.v2026-01-03-8.js";
+import { t } from "./i18n.v2026-01-03-8.js";
 
 const QUICK_CONTROLS_STORAGE_KEY = "mesdeparts.quickControlsCollapsed";
 let quickControlsCollapsed = false;
@@ -2233,6 +2233,11 @@ function renderJourneyStops(dep, detail) {
 
 async function openJourneyDetails(dep) {
   if (!dep) return;
+  const reqId = ++activeJourneyRequestId;
+  if (activeJourneyAbort) activeJourneyAbort.abort(new DOMException("Superseded", "AbortError"));
+  const abortController = new AbortController();
+  activeJourneyAbort = abortController;
+
   const overlay = ensureJourneyOverlay();
   overlay.classList.add("is-visible");
 
@@ -2246,7 +2251,8 @@ async function openJourneyDetails(dep) {
   stopsEl.innerHTML = "";
 
   try {
-    const detail = await fetchJourneyDetails(dep);
+    const detail = await fetchJourneyDetails(dep, { signal: abortController.signal });
+    if (reqId !== activeJourneyRequestId) return;
     const section = detail?.section || detail;
     const badge = document.createElement("span");
     if (dep.mode === "train") {
@@ -2286,9 +2292,14 @@ async function openJourneyDetails(dep) {
     stopsEl.innerHTML = "";
     stopsEl.appendChild(renderJourneyStops(dep, detail));
   } catch (err) {
+    if (isAbortError(err) || reqId !== activeJourneyRequestId) return;
     console.error("[MesDeparts][journey] error", err);
     metaEl.textContent = t("journeyStopsError");
     stopsEl.innerHTML = "";
+  } finally {
+    if (reqId === activeJourneyRequestId && activeJourneyAbort === abortController) {
+      activeJourneyAbort = null;
+    }
   }
 }
 
@@ -2343,6 +2354,57 @@ function updatePlatformHeader(isTrain) {
   if (thPlat) thPlat.textContent = isTrain ? t("columnPlatformTrain") : t("columnPlatformBus");
 }
 
+const ARRIVAL_ICON_HTML = `
+          <svg class="bus-arrival-icon pulse-bus" viewBox="0 0 24 24" aria-label="Arrive">
+            <path d="M4 16c0 .88.39 1.67 1 2.22V20c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h8v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1.78c.61-.55 1-1.34 1-2.22V6c0-3-3.58-3-8-3S4 3 4 6v10zm3.5 1c-.83 0-1.5-.67-1.5-1.5S6.67 14 7.5 14 9 14.67 9 15.5 8.33 17 7.5 17zm9 0c-.83 0-1.5-.67-1.5-1.5S15.67 14 16.5 14 18 14.67 18 15.5 17.33 17 16.5 17zM6 11V6h12v5H6z"/>
+          </svg>`;
+
+const lastRenderedState = {
+  rowKeys: [],
+  rows: [],
+  boardIsTrain: null,
+  hideDeparture: null,
+};
+
+function getRowKey(dep) {
+  if (!dep) return "";
+  if (dep.journeyId) return dep.journeyId;
+  return `${dep.line || ""}|${dep.dest || ""}|${dep.scheduledTime || ""}`;
+}
+
+let activeJourneyAbort = null;
+let activeJourneyRequestId = 0;
+function isAbortError(err) {
+  if (!err) return false;
+  if (err.name === "AbortError") return true;
+  const msg = String(err?.message || "").toLowerCase();
+  return msg.includes("abort");
+}
+
+let departuresRowHandlersReady = false;
+function ensureDeparturesRowDelegation() {
+  if (departuresRowHandlersReady) return;
+  const tbody = document.getElementById("departures-body");
+  if (!tbody) return;
+
+  const activate = (event, isKeyboard = false) => {
+    const tr = event.target?.closest("tr");
+    if (!tr || tr.dataset.hasDetails !== "1") return;
+    const rows = lastRenderedState.rows || [];
+    const idx = Array.prototype.indexOf.call(tr.parentElement?.children || [], tr);
+    const dep = idx >= 0 ? rows[idx] : null;
+    if (!dep) return;
+    if (isKeyboard) event.preventDefault();
+    openJourneyDetails(dep);
+  };
+
+  tbody.addEventListener("click", (e) => activate(e, false));
+  tbody.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") activate(e, true);
+  });
+  departuresRowHandlersReady = true;
+}
+
 function setDepartureColumnVisibility(hide) {
   const thTime = document.querySelector("th.col-time");
   const departuresTable = document.querySelector("table.departures");
@@ -2354,10 +2416,16 @@ export function renderDepartures(rows) {
   const tbody = document.getElementById("departures-body");
   if (!tbody) return;
 
+  ensureDeparturesRowDelegation();
+
   setMinColumnVisibility(appState.lastBoardIsTrain);
   updatePlatformHeader(appState.lastBoardIsTrain);
   const hideDeparture = !!appState.hideBusDeparture && !appState.lastBoardIsTrain;
   setDepartureColumnVisibility(hideDeparture);
+  lastRenderedState.boardIsTrain = appState.lastBoardIsTrain;
+  lastRenderedState.hideDeparture = hideDeparture;
+  lastRenderedState.rowKeys = [];
+  lastRenderedState.rows = rows || [];
   if (typeof appState._renderViewControls === "function") {
     appState._renderViewControls();
   }
@@ -2383,6 +2451,8 @@ export function renderDepartures(rows) {
   if (uiDebugEnabled()) window.__MD_UI_LOGGED__ = 0;
 
   if (!rows || rows.length === 0) {
+    lastRenderedState.rowKeys = [];
+    lastRenderedState.rows = [];
     const tr = document.createElement("tr");
     tr.className = "empty-row";
     const td = document.createElement("td");
@@ -2410,7 +2480,8 @@ export function renderDepartures(rows) {
     const hasDetails =
       !!dep.journeyId || (Array.isArray(dep.passList) && dep.passList.length > 0);
     tr.classList.toggle("clickable", hasDetails);
-    tr.addEventListener("click", () => openJourneyDetails(dep));
+    tr.dataset.hasDetails = hasDetails ? "1" : "0";
+    tr.tabIndex = hasDetails ? 0 : -1;
 
     // UI debug: log first rows only (avoid spamming)
     if (uiDebugEnabled()) {
@@ -2549,17 +2620,22 @@ export function renderDepartures(rows) {
 
     if (!appState.lastBoardIsTrain) {
       if (dep.isArriving) {
-        tdMin.innerHTML = `
-          <svg class="bus-arrival-icon pulse-bus" viewBox="0 0 24 24" aria-label="Arrive">
-            <path d="M4 16c0 .88.39 1.67 1 2.22V20c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h8v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1.78c.61-.55 1-1.34 1-2.22V6c0-3-3.58-3-8-3S4 3 4 6v10zm3.5 1c-.83 0-1.5-.67-1.5-1.5S6.67 14 7.5 14 9 14.67 9 15.5 8.33 17 7.5 17zm9 0c-.83 0-1.5-.67-1.5-1.5S15.67 14 16.5 14 18 14.67 18 15.5 17.33 17 16.5 17zM6 11V6h12v5H6z"/>
-          </svg>`;
+        tdMin.innerHTML = ARRIVAL_ICON_HTML;
+        tdMin.dataset.minValue = "arriving";
+        tdMin.dataset.isArriving = "1";
       } else if (typeof dep.inMin === "number") {
         tdMin.textContent = String(dep.inMin);
+        tdMin.dataset.minValue = String(dep.inMin);
+        tdMin.dataset.isArriving = "0";
       } else {
         tdMin.textContent = "";
+        tdMin.dataset.minValue = "";
+        tdMin.dataset.isArriving = "0";
       }
     } else {
       tdMin.style.display = "none";
+      tdMin.dataset.minValue = "";
+      tdMin.dataset.isArriving = "0";
     }
 
     // Remark
@@ -2578,8 +2654,65 @@ export function renderDepartures(rows) {
     tr.appendChild(tdMin);
     tr.appendChild(tdRemark);
 
+    const rowKey = getRowKey(dep);
+    tr.dataset.rowKey = rowKey;
+    lastRenderedState.rowKeys.push(rowKey);
     tbody.appendChild(tr);
   }
 
   ensureBoardFitsViewport();
+}
+
+export function updateCountdownRows(rows) {
+  const tbody = document.getElementById("departures-body");
+  if (!tbody) return false;
+
+  const hideDeparture = !!appState.hideBusDeparture && !appState.lastBoardIsTrain;
+  if (
+    lastRenderedState.boardIsTrain !== appState.lastBoardIsTrain ||
+    lastRenderedState.hideDeparture !== hideDeparture
+  ) {
+    return false;
+  }
+
+  if (!rows || rows.length === 0) return false;
+
+  const domRows = Array.from(tbody.querySelectorAll("tr"));
+  if (domRows.length !== rows.length) return false;
+
+  for (let i = 0; i < rows.length; i += 1) {
+    const expectedKey = getRowKey(rows[i]);
+    if (domRows[i].dataset.rowKey !== expectedKey) return false;
+  }
+
+  for (let i = 0; i < rows.length; i += 1) {
+    const dep = rows[i];
+    const tr = domRows[i];
+    const minCell = tr.querySelector(".col-min-cell");
+    if (!minCell) continue;
+
+    if (dep.mode === "train") {
+      if (minCell.style.display !== "none") minCell.style.display = "none";
+      minCell.dataset.minValue = "";
+      minCell.dataset.isArriving = "0";
+      continue;
+    }
+
+    const nextValue = typeof dep.inMin === "number" ? String(dep.inMin) : "";
+    const nextIsArriving = dep.isArriving ? "1" : "0";
+
+    if (nextIsArriving === "1") {
+      if (minCell.dataset.isArriving !== "1") {
+        minCell.innerHTML = ARRIVAL_ICON_HTML;
+      }
+      minCell.dataset.minValue = "arriving";
+      minCell.dataset.isArriving = "1";
+    } else if (minCell.dataset.minValue !== nextValue || minCell.dataset.isArriving !== "0") {
+      minCell.textContent = nextValue;
+      minCell.dataset.minValue = nextValue;
+      minCell.dataset.isArriving = "0";
+    }
+  }
+
+  return true;
 }

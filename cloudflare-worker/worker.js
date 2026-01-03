@@ -5,10 +5,13 @@ const DEFAULT_GLOBAL_LIMIT_PER_DAY = 0;
 const RATE_LIMIT_WINDOW_SEC = 60;
 const GLOBAL_LIMIT_WINDOW_SEC = 86400;
 
-const ttlFor = (path) => {
+const ttlFor = (url) => {
+  const path = url.pathname || "";
+  const search = url.searchParams || new URLSearchParams(url.search || "");
+  const hasCoords = search.has("x") && search.has("y");
   if (path.startsWith("/stationboard")) return 10;       // tighter refresh for delays
   if (path.startsWith("/connections")) return 25;        // journey details overlay (trips)
-  if (path.startsWith("/locations")) return 86400;       // stop search cache
+  if (path.startsWith("/locations")) return hasCoords ? 120 : 86400; // near-me lookups change fast
   return 30;
 };
 
@@ -65,7 +68,7 @@ export default {
     }
 
     const url = new URL(request.url);
-    const ttl = ttlFor(url.pathname);
+    const ttl = ttlFor(url);
     // Preserve the /v1 prefix when forwarding to the upstream API
     const upstream = new URL(`/v1${url.pathname}${url.search}`, ORIGIN_BASE);
     const cache = caches.default;

@@ -12,7 +12,7 @@ export const MAX_LINES_BUS = 15;
 
 // Board sizing
 export const DEPS_PER_LINE = 2;
-export const MIN_ROWS = 12;
+export const MIN_ROWS = 20;
 export const MAX_TRAIN_ROWS = 20;
 
 // Refresh cadence

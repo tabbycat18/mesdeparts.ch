@@ -1883,19 +1883,46 @@ body.layout-tight .line-chips {
   background: rgba(1, 21, 127, 0.08);
 }
 
-.fav-popover__header {
+.fav-popover,
+.filters-popover,
+.mode-popover {
+  position: absolute;
+  right: 0;
+  background: #021a8f;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+}
+
+.filters-popover,
+.mode-popover {
+  top: calc(100% + 10px);
+  border-radius: 14px;
+  padding: 12px 12px 10px;
+}
+
+.fav-popover__header,
+.filters-popover__header,
+.mode-popover__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  margin-bottom: 6px;
 }
 
-.fav-popover__title {
+.fav-popover__title,
+.filters-popover__title,
+.mode-popover__title {
   font-weight: 780;
 }
 
-.fav-popover__close {
+.filters-popover__title,
+.mode-popover__title {
+  font-size: 1rem;
+}
+
+.fav-popover__close,
+.filters-popover__close,
+.mode-popover__close {
   border: none;
   background: transparent;
   color: #ffffff;
@@ -1904,15 +1931,12 @@ body.layout-tight .line-chips {
   padding: 4px 6px;
 }
 
+.fav-popover__header {
+  margin-bottom: 6px;
+}
+
 .filters-popover {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 10px);
-  background: #021a8f;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 14px;
   box-shadow: 0 18px 44px rgba(0, 0, 0, 0.5);
-  padding: 12px 12px 10px;
   width: min(390px, calc(100vw - 24px));
   z-index: 60;
   max-height: 70vh;
@@ -1963,14 +1987,7 @@ body.layout-tight .line-chips {
 }
 
 .mode-popover {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 10px);
-  background: #021a8f;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 14px;
   box-shadow: 0 18px 44px rgba(0, 0, 0, 0.5);
-  padding: 12px 12px 10px;
   width: min(420px, calc(100vw - 24px));
   z-index: 34;
   display: flex;
@@ -1990,17 +2007,7 @@ body.layout-tight .line-chips {
 }
 
 .mode-popover__title {
-  font-weight: 780;
   font-size: 1rem;
-}
-
-.mode-popover__close {
-  border: none;
-  background: transparent;
-  color: #ffffff;
-  font-size: 1.2rem;
-  cursor: pointer;
-  padding: 4px 6px;
 }
 
 .mode-popover__body {
