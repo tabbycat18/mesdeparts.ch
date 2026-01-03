@@ -1912,7 +1912,7 @@ body.layout-tight .line-chips {
   border-radius: 14px;
   box-shadow: 0 18px 44px rgba(0, 0, 0, 0.5);
   padding: 12px 12px 10px;
-  width: min(520px, calc(100vw - 24px));
+  width: min(390px, calc(100vw - 24px));
   z-index: 60;
   max-height: 70vh;
   display: flex;
@@ -2162,8 +2162,13 @@ body.dual-body {
 }
 
 .dual-version {
-  font-size: 0.8rem;
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.65rem;
   color: rgba(245, 247, 255, 0.7);
+  background: rgba(0, 0, 0, 0.25);
+  padding: 3px 5px;
+  border-radius: 5px;
   letter-spacing: 0.01em;
 }
 
@@ -2171,21 +2176,22 @@ body.dual-body {
   position: fixed;
   top: 10px;
   right: 12px;
-  display: none;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 10px;
-  border-radius: 999px;
-  background: rgba(0, 0, 0, 0.7);
-  color: #ffffff;
-  font-weight: 750;
-  font-size: 0.85rem;
+  padding: 4px 7px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.55);
+  color: rgba(245, 247, 255, 0.9);
+  font-weight: 600;
+  font-size: 0.7rem;
   letter-spacing: 0.01em;
   z-index: 70;
+  pointer-events: none;
 }
 
-.dual-body.is-fullscreen .dual-version-float {
-  display: inline-flex;
+.dual-body:not(.dual-controls-hidden) .dual-version-float {
+  opacity: 0;
 }
 
 .dual-status {
@@ -3193,6 +3199,18 @@ body.dual-embed .loading-hint {
   display: none !important;
 }
 
+/* Dual: center the filters popover and make it narrower */
+.dual-body .filters-popover {
+  position: fixed;
+  top: clamp(70px, 12vh, 120px);
+  left: 50%;
+  right: auto;
+  transform: translateX(-50%);
+  width: min(390px, calc(100vw - 24px));
+  max-width: calc(100vw - 32px);
+  z-index: 80;
+}
+
 html.dual-embed .board,
 body.dual-embed .board {
   max-width: none;
@@ -3209,9 +3227,4 @@ body.dual-embed .mobile-fullscreen-wrapper {
 html.dual-embed .board-header,
 body.dual-embed .board-header {
   justify-content: flex-start;
-}
-
-html.dual-embed .clock-block,
-body.dual-embed .clock-block {
-  display: none;
 }

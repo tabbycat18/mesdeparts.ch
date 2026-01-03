@@ -1,17 +1,17 @@
 // Bump the cache name to force-refresh cached assets (e.g. main.js) after fixes
-const CACHE_NAME = "md-static-v2026-01-03-3";
+const CACHE_NAME = "md-static-v2026-01-03-4";
 const ASSETS = [
   "./index.html",
   "./dual-board.html",
   "./manifest.webmanifest",
-  "./style.v2026-01-03-3.css",
-  "./main.v2026-01-03-3.js",
-  "./logic.v2026-01-03-3.js",
-  "./ui.v2026-01-03-3.js",
-  "./state.v2026-01-03-3.js",
-  "./i18n.v2026-01-03-3.js",
-  "./favourites.v2026-01-03-3.js",
-  "./infoBTN.v2026-01-03-3.js",
+  "./style.v2026-01-03-4.css",
+  "./main.v2026-01-03-4.js",
+  "./logic.v2026-01-03-4.js",
+  "./ui.v2026-01-03-4.js",
+  "./state.v2026-01-03-4.js",
+  "./i18n.v2026-01-03-4.js",
+  "./favourites.v2026-01-03-4.js",
+  "./infoBTN.v2026-01-03-4.js",
   "./bus-icon-1.png",
   "./bus-icon-1.svg",
   "./clock/index.html",

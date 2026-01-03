@@ -20,8 +20,8 @@ import {
   TRAIN_FILTER_REGIONAL,
   TRAIN_FILTER_LONG_DISTANCE,
   API_MODE_DIRECT,
-} from "./state.v2026-01-03-3.js";
-import { t } from "./i18n.v2026-01-03-3.js";
+} from "./state.v2026-01-03-4.js";
+import { t } from "./i18n.v2026-01-03-4.js";
 
 // API base can be overridden by setting window.__MD_API_BASE__ before scripts load
 const DIRECT_API_BASE = "https://transport.opendata.ch/v1";
