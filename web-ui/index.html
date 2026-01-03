@@ -8,7 +8,7 @@
     <link rel="apple-touch-icon" href="bus-icon-1.png" />
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="preconnect" href="https://api.mesdeparts.ch" crossorigin />
-    <link rel="modulepreload" href="main.v2026-01-03-1.js" />
+    <link rel="modulepreload" href="main.v2026-01-03-3.js" />
     <meta name="theme-color" content="#01157f" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -32,20 +32,21 @@
       })();
     </script>
     <script>window.__MD_API_BASE__ = "https://api.mesdeparts.ch";</script>
-    <link rel="stylesheet" href="style.v2026-01-03-1.css" />
+    <link rel="stylesheet" href="style.v2026-01-03-3.css" />
   </head>
   <body>
     <div class="mobile-fullscreen-wrapper">
       <div class="board">
-        <div class="version-tag" aria-label="Version">v1.5</div>
+        <div class="version-tag" aria-label="Version">v1.5.1</div>
         <header class="board-header">
           <div class="header-left">
             <div class="clock-block">
               <!-- Horloge CFF -->
               <iframe
-                src="clock/index.html"
+                data-clock-src="clock/index.html"
                 class="cff-clock"
                 title="Horloge CFF"
+                loading="lazy"
               ></iframe>
             </div>
 
@@ -419,8 +420,8 @@
       </div>
     </div>
 
-    <!-- IMPORTANT: use main.v2026-01-03-1.js as an ES module -->
-    <script type="module" src="main.v2026-01-03-1.js"></script>
+    <!-- IMPORTANT: use main.v2026-01-03-3.js as an ES module -->
+    <script type="module" src="main.v2026-01-03-3.js"></script>
     <script>
       if ("serviceWorker" in navigator) {
         const path = window.location.pathname || "/";

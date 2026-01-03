@@ -9,8 +9,8 @@
     <meta name="theme-color" content="#01157f" />
     <script>window.__MD_API_BASE__ = "https://api.mesdeparts.ch";</script>
     <link rel="preconnect" href="https://api.mesdeparts.ch" crossorigin />
-    <link rel="modulepreload" href="main.v2026-01-03-1.js" />
-    <link rel="stylesheet" href="style.v2026-01-03-1.css" />
+    <link rel="modulepreload" href="main.v2026-01-03-3.js" />
+    <link rel="stylesheet" href="style.v2026-01-03-3.css" />
   </head>
   <body class="dual-body">
     <div class="dual-shell">
@@ -18,7 +18,7 @@
         <div>
           <div class="dual-title-row">
             <div class="dual-title">Dual board</div>
-            <div class="dual-version">v1.5</div>
+            <div class="dual-version">v1.5.1</div>
           </div>
           <div id="dual-status" class="dual-status" aria-live="polite"></div>
         </div>
@@ -346,8 +346,8 @@
       </section>
 
       <div class="dual-wrap" id="wrapper">
-        <iframe class="dual-pane" id="leftPane" title="Board gauche"></iframe>
-        <iframe class="dual-pane" id="rightPane" title="Board droite"></iframe>
+        <iframe class="dual-pane" id="leftPane" title="Board gauche" loading="lazy"></iframe>
+        <iframe class="dual-pane" id="rightPane" title="Board droite" loading="lazy"></iframe>
       </div>
     </div>
 
@@ -361,12 +361,12 @@
       Afficher les contrôles
     </button>
 
-    <div class="dual-version-float" aria-label="Version">v1.5</div>
+    <div class="dual-version-float" aria-label="Version">v1.5.1</div>
 
     <script type="module">
-      import { fetchStationSuggestions, fetchStationsNearby } from "./logic.v2026-01-03-1.js";
-      import { loadFavorites, addFavorite, removeFavorite, isFavorite } from "./favourites.v2026-01-03-1.js";
-      import { LANGUAGE_OPTIONS, initI18n, setLanguage, t } from "./i18n.v2026-01-03-1.js";
+      import { fetchStationSuggestions, fetchStationsNearby } from "./logic.v2026-01-03-3.js";
+      import { loadFavorites, addFavorite, removeFavorite, isFavorite } from "./favourites.v2026-01-03-3.js";
+      import { LANGUAGE_OPTIONS, initI18n, setLanguage, t } from "./i18n.v2026-01-03-3.js";
       import {
         appState,
         API_MODE_BOARD,
@@ -376,8 +376,8 @@
         TRAIN_FILTER_ALL,
         TRAIN_FILTER_REGIONAL,
         TRAIN_FILTER_LONG_DISTANCE,
-      } from "./state.v2026-01-03-1.js";
-      import { setupInfoButton } from "./infoBTN.v2026-01-03-1.js";
+      } from "./state.v2026-01-03-3.js";
+      import { setupInfoButton } from "./infoBTN.v2026-01-03-3.js";
 
       const DEFAULT_LANG = initI18n();
       appState.apiMode = API_MODE_BOARD;

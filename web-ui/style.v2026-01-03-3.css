@@ -3210,3 +3210,8 @@ html.dual-embed .board-header,
 body.dual-embed .board-header {
   justify-content: flex-start;
 }
+
+html.dual-embed .clock-block,
+body.dual-embed .clock-block {
+  display: none;
+}

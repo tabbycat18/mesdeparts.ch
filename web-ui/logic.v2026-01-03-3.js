@@ -20,8 +20,8 @@ import {
   TRAIN_FILTER_REGIONAL,
   TRAIN_FILTER_LONG_DISTANCE,
   API_MODE_DIRECT,
-} from "./state.v2026-01-03-1.js";
-import { t } from "./i18n.v2026-01-03-1.js";
+} from "./state.v2026-01-03-3.js";
+import { t } from "./i18n.v2026-01-03-3.js";
 
 // API base can be overridden by setting window.__MD_API_BASE__ before scripts load
 const DIRECT_API_BASE = "https://transport.opendata.ch/v1";
@@ -345,8 +345,28 @@ export async function fetchStationboardRaw() {
     await resolveStationId();
   }
 
-  const url = apiUrl(`/stationboard?station=${encodeURIComponent(appState.stationId)}&limit=300`);
-  return fetchJson(url);
+  const stationKey = appState.stationId || "unknown";
+  const inflightKey = `${stationKey}`;
+
+  if (!fetchStationboardRaw._inflight) {
+    fetchStationboardRaw._inflight = new Map();
+  }
+
+  if (fetchStationboardRaw._inflight.has(inflightKey)) {
+    return fetchStationboardRaw._inflight.get(inflightKey);
+  }
+
+  const url = apiUrl(`/stationboard?station=${encodeURIComponent(stationKey)}&limit=300`);
+  const req = (async () => {
+    try {
+      return await fetchJson(url);
+    } finally {
+      fetchStationboardRaw._inflight.delete(inflightKey);
+    }
+  })();
+
+  fetchStationboardRaw._inflight.set(inflightKey, req);
+  return req;
 }
 
 export function buildDeparturesGrouped(data, viewMode = VIEW_MODE_LINE) {

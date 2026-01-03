@@ -1,20 +1,21 @@
 // Bump the cache name to force-refresh cached assets (e.g. main.js) after fixes
-const CACHE_NAME = "md-static-v2026-01-03-1";
+const CACHE_NAME = "md-static-v2026-01-03-3";
 const ASSETS = [
   "./index.html",
   "./dual-board.html",
   "./manifest.webmanifest",
-  "./style.v2026-01-03-1.css",
-  "./main.v2026-01-03-1.js",
-  "./logic.v2026-01-03-1.js",
-  "./ui.v2026-01-03-1.js",
-  "./state.v2026-01-03-1.js",
-  "./i18n.v2026-01-03-1.js",
-  "./favourites.v2026-01-03-1.js",
-  "./infoBTN.v2026-01-03-1.js",
+  "./style.v2026-01-03-3.css",
+  "./main.v2026-01-03-3.js",
+  "./logic.v2026-01-03-3.js",
+  "./ui.v2026-01-03-3.js",
+  "./state.v2026-01-03-3.js",
+  "./i18n.v2026-01-03-3.js",
+  "./favourites.v2026-01-03-3.js",
+  "./infoBTN.v2026-01-03-3.js",
   "./bus-icon-1.png",
   "./bus-icon-1.svg",
   "./clock/index.html",
+  "./clock/js/sbbUhr-1.3.js",
 ];
 
 const ASSET_PATHS = new Set(
@@ -58,8 +59,22 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Let the clock sub-app fetch directly (no SW handling)
+  // Clock iframe and its assets: serve cache-first to keep it instant/offline without changing behavior.
   if (url.pathname.startsWith("/clock")) {
+    event.respondWith(
+      (async () => {
+        const cache = await caches.open(CACHE_NAME);
+        const cached = await cache.match(url.pathname);
+        if (cached) {
+          return cached;
+        }
+        const response = await fetch(request);
+        if (response && response.ok) {
+          cache.put(url.pathname, response.clone());
+        }
+        return response;
+      })(),
+    );
     return;
   }
 
@@ -77,15 +92,18 @@ self.addEventListener("fetch", (event) => {
 
         // Serve the cached shell if available; otherwise fetch once and cache.
         const cached = await cache.match(cachedUrl);
-        if (cached) {
-          return cached;
-        }
+        if (cached) return cached;
 
-        const networkResponse = await fetch(request);
-        if (networkResponse && networkResponse.ok) {
-          cache.put(cachedUrl, networkResponse.clone());
+        try {
+          const networkResponse = await fetch(request);
+          if (networkResponse && networkResponse.ok) {
+            cache.put(cachedUrl, networkResponse.clone());
+          }
+          return networkResponse;
+        } catch (err) {
+          // If offline and no cache yet, surface the original error.
+          throw err;
         }
-        return networkResponse;
       })(),
     );
     return;
@@ -99,15 +117,33 @@ self.addEventListener("fetch", (event) => {
     (async () => {
       const cache = await caches.open(CACHE_NAME);
       const cached = await cache.match(pathname);
+      const revalidate = (async () => {
+        try {
+          const response = await fetch(request);
+          if (response && response.ok) {
+            cache.put(pathname, response.clone());
+          }
+        } catch {
+          // ignore background refresh errors
+        }
+      })();
+
       if (cached) {
+        // Return instantly from cache, refresh in the background.
+        void revalidate;
         return cached;
       }
 
-      const response = await fetch(request);
-      if (response && response.ok) {
-        cache.put(pathname, response.clone());
+      try {
+        const response = await fetch(request);
+        if (response && response.ok) {
+          cache.put(pathname, response.clone());
+        }
+        return response;
+      } catch (err) {
+        // If the network is unavailable and we have no cached version, surface the original error.
+        throw err;
       }
-      return response;
     })(),
   );
 });

@@ -19,14 +19,14 @@ import {
   TRAIN_FILTER_ALL,
   TRAIN_FILTER_REGIONAL,
   TRAIN_FILTER_LONG_DISTANCE,
-} from "./state.v2026-01-03-1.js";
+} from "./state.v2026-01-03-3.js";
 
 import {
   detectNetworkFromStation,
   resolveStationId,
   fetchStationboardRaw,
   buildDeparturesGrouped,
-} from "./logic.v2026-01-03-1.js";
+} from "./logic.v2026-01-03-3.js";
 
 import {
   setupClock,
@@ -44,10 +44,10 @@ import {
   ensureBoardFitsViewport,
   setupAutoFitWatcher,
   publishEmbedState,
-} from "./ui.v2026-01-03-1.js";
+} from "./ui.v2026-01-03-3.js";
 
-import { setupInfoButton } from "./infoBTN.v2026-01-03-1.js";
-import { initI18n, applyStaticTranslations, setLanguage, LANGUAGE_OPTIONS } from "./i18n.v2026-01-03-1.js";
+import { setupInfoButton } from "./infoBTN.v2026-01-03-3.js";
+import { initI18n, applyStaticTranslations, setLanguage, LANGUAGE_OPTIONS } from "./i18n.v2026-01-03-3.js";
 
 // Persist station between reloads
 const STORAGE_KEY = "mesdeparts.station";
@@ -63,6 +63,30 @@ const DEBUG_PERF =
     }
   })() && typeof performance !== "undefined";
 
+const defer = (fn) => {
+  if (typeof fn !== "function") return;
+  if (typeof requestIdleCallback === "function") {
+    requestIdleCallback(
+      () => {
+        try {
+          fn();
+        } catch (err) {
+          console.error("[MesDeparts][defer] error", err);
+        }
+      },
+      { timeout: 500 },
+    );
+    return;
+  }
+  setTimeout(() => {
+    try {
+      fn();
+    } catch (err) {
+      console.error("[MesDeparts][defer] error", err);
+    }
+  }, 0);
+};
+
 function logPerf(label, data) {
   if (!DEBUG_PERF) return;
   const pretty = Object.fromEntries(
@@ -70,6 +94,20 @@ function logPerf(label, data) {
   );
   // eslint-disable-next-line no-console
   console.log(`[MesDeparts][perf] ${label}`, pretty);
+}
+
+const isDualEmbed = () =>
+  document.documentElement.classList.contains("dual-embed") ||
+  document.body?.classList.contains("dual-embed");
+
+function loadClockIframe() {
+  if (isDualEmbed()) return;
+  const clock = document.querySelector(".cff-clock[data-clock-src]");
+  if (!clock) return;
+  if (clock.getAttribute("src")) return;
+  const src = clock.getAttribute("data-clock-src");
+  if (!src) return;
+  clock.setAttribute("src", src);
 }
 
 function markEmbedIfNeeded() {
@@ -439,12 +477,12 @@ function refreshDeparturesFromCache({ allowFetch = true, skipFilters = false, sk
   applyUrlPreferences();
 
   setupClock();
-  setupInfoButton();
+  defer(setupInfoButton);
   setupLanguageSwitcher(() => {
     refreshDepartures();
   });
   setupQuickControlsCollapse();
-  setupAutoFitWatcher();
+  defer(setupAutoFitWatcher);
 
   setupViewToggle(() => {
     refreshDeparturesFromCache();
@@ -464,6 +502,8 @@ function refreshDeparturesFromCache({ allowFetch = true, skipFilters = false, sk
     applyStation(name, id);
     refreshDepartures();
   });
+
+  loadClockIframe();
 
   // Initial load
   refreshDepartures();
