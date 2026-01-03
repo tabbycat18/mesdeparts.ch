@@ -20,14 +20,14 @@ import {
   TRAIN_FILTER_REGIONAL,
   TRAIN_FILTER_LONG_DISTANCE,
   STATION_ID_STORAGE_KEY,
-} from "./state.v2026-01-03-5.js";
+} from "./state.v2026-01-03-6.js";
 
 import {
   detectNetworkFromStation,
   resolveStationId,
   fetchStationboardRaw,
   buildDeparturesGrouped,
-} from "./logic.v2026-01-03-5.js";
+} from "./logic.v2026-01-03-6.js";
 
 import {
   setupClock,
@@ -45,10 +45,10 @@ import {
   ensureBoardFitsViewport,
   setupAutoFitWatcher,
   publishEmbedState,
-} from "./ui.v2026-01-03-5.js";
+} from "./ui.v2026-01-03-6.js";
 
-import { setupInfoButton } from "./infoBTN.v2026-01-03-5.js";
-import { initI18n, applyStaticTranslations, setLanguage, LANGUAGE_OPTIONS } from "./i18n.v2026-01-03-5.js";
+import { setupInfoButton } from "./infoBTN.v2026-01-03-6.js";
+import { initI18n, applyStaticTranslations, setLanguage, LANGUAGE_OPTIONS } from "./i18n.v2026-01-03-6.js";
 
 // Persist station between reloads
 const STORAGE_KEY = "mesdeparts.station";
