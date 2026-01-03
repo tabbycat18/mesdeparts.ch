@@ -20,14 +20,14 @@ import {
   TRAIN_FILTER_REGIONAL,
   TRAIN_FILTER_LONG_DISTANCE,
   STATION_ID_STORAGE_KEY,
-} from "./state.v2026-01-03-4.js";
+} from "./state.v2026-01-03-5.js";
 
 import {
   detectNetworkFromStation,
   resolveStationId,
   fetchStationboardRaw,
   buildDeparturesGrouped,
-} from "./logic.v2026-01-03-4.js";
+} from "./logic.v2026-01-03-5.js";
 
 import {
   setupClock,
@@ -45,10 +45,10 @@ import {
   ensureBoardFitsViewport,
   setupAutoFitWatcher,
   publishEmbedState,
-} from "./ui.v2026-01-03-4.js";
+} from "./ui.v2026-01-03-5.js";
 
-import { setupInfoButton } from "./infoBTN.v2026-01-03-4.js";
-import { initI18n, applyStaticTranslations, setLanguage, LANGUAGE_OPTIONS } from "./i18n.v2026-01-03-4.js";
+import { setupInfoButton } from "./infoBTN.v2026-01-03-5.js";
+import { initI18n, applyStaticTranslations, setLanguage, LANGUAGE_OPTIONS } from "./i18n.v2026-01-03-5.js";
 
 // Persist station between reloads
 const STORAGE_KEY = "mesdeparts.station";
@@ -267,6 +267,32 @@ function startCountdownLoop() {
     if (!lastStationboardData) return;
     refreshDeparturesFromCache({ allowFetch: false, skipFilters: true, skipDebug: true });
   }, COUNTDOWN_REFRESH_MS);
+}
+
+function stopRefreshLoop() {
+  if (refreshTimer) {
+    clearInterval(refreshTimer);
+    refreshTimer = null;
+  }
+}
+
+function stopCountdownLoop() {
+  if (countdownTimer) {
+    clearInterval(countdownTimer);
+    countdownTimer = null;
+  }
+}
+
+function handleVisibilityChange() {
+  if (typeof document === "undefined") return;
+  if (document.hidden) {
+    stopRefreshLoop();
+    stopCountdownLoop();
+    return;
+  }
+  startRefreshLoop();
+  startCountdownLoop();
+  refreshDepartures({ showLoadingHint: false });
 }
 
 function normalizeStationName(name) {
@@ -545,6 +571,15 @@ function refreshDeparturesFromCache({ allowFetch = true, skipFilters = false, sk
   startRefreshLoop();
   startCountdownLoop();
   scheduleAutoBoardModeSwitch();
+  if (typeof document !== "undefined") {
+    document.addEventListener("visibilitychange", handleVisibilityChange, { passive: true });
+  }
+  if (typeof window !== "undefined") {
+    window.addEventListener("focus", handleVisibilityChange, { passive: true });
+  }
+  if (typeof document !== "undefined" && document.hidden) {
+    handleVisibilityChange();
+  }
 
   if (DEBUG_PERF) {
     const bootEnd = performance.now();

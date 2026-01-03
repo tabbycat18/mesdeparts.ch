@@ -21,8 +21,8 @@ import {
   TRAIN_FILTER_LONG_DISTANCE,
   API_MODE_DIRECT,
   STATION_ID_STORAGE_KEY,
-} from "./state.v2026-01-03-4.js";
-import { t } from "./i18n.v2026-01-03-4.js";
+} from "./state.v2026-01-03-5.js";
+import { t } from "./i18n.v2026-01-03-5.js";
 
 // API base can be overridden by setting window.__MD_API_BASE__ before scripts load
 const DIRECT_API_BASE = "https://transport.opendata.ch/v1";
@@ -35,6 +35,9 @@ function getApiBase() {
 }
 
 const apiUrl = (pathAndQuery) => `${getApiBase()}${pathAndQuery}`;
+
+// Keep stationboard requests bounded to what the UI can display
+const STATIONBOARD_LIMIT = Math.max(MAX_TRAIN_ROWS * 2, MIN_ROWS * 3, 60);
 
 function isMobileViewport() {
   try {
@@ -356,7 +359,7 @@ export async function fetchStationboardRaw() {
   }
 
   const stationKey = appState.stationId || "unknown";
-  const inflightKey = `${stationKey}`;
+  const inflightKey = `${getApiBase()}|${stationKey}`;
 
   if (!fetchStationboardRaw._inflight) {
     fetchStationboardRaw._inflight = new Map();
@@ -366,7 +369,9 @@ export async function fetchStationboardRaw() {
     return fetchStationboardRaw._inflight.get(inflightKey);
   }
 
-  const url = apiUrl(`/stationboard?station=${encodeURIComponent(stationKey)}&limit=180`);
+  const url = apiUrl(
+    `/stationboard?station=${encodeURIComponent(stationKey)}&limit=${encodeURIComponent(STATIONBOARD_LIMIT)}`,
+  );
   const req = (async () => {
     try {
       return await fetchJson(url);

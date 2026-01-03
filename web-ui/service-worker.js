@@ -1,19 +1,16 @@
-// Bump the cache name to force-refresh cached assets (e.g. main.js) after fixes
-const CACHE_NAME = "md-static-v2026-01-03-5";
-
 // Core assets: required for the shell to work offline.
 const CORE_ASSETS = [
   "./index.html",
   "./dual-board.html",
   "./manifest.webmanifest",
-  "./style.v2026-01-03-4.css",
-  "./main.v2026-01-03-4.js",
-  "./logic.v2026-01-03-4.js",
-  "./ui.v2026-01-03-4.js",
-  "./state.v2026-01-03-4.js",
-  "./i18n.v2026-01-03-4.js",
-  "./favourites.v2026-01-03-4.js",
-  "./infoBTN.v2026-01-03-4.js",
+  "./style.v2026-01-03-5.css",
+  "./main.v2026-01-03-5.js",
+  "./logic.v2026-01-03-5.js",
+  "./ui.v2026-01-03-5.js",
+  "./state.v2026-01-03-5.js",
+  "./i18n.v2026-01-03-5.js",
+  "./favourites.v2026-01-03-5.js",
+  "./infoBTN.v2026-01-03-5.js",
   "./bus-icon-1.png",
   "./bus-icon-1.svg",
 ];
@@ -25,6 +22,18 @@ const LAZY_ASSETS = [
 ];
 
 const ASSETS = [...CORE_ASSETS, ...LAZY_ASSETS];
+
+function hashStrings(list) {
+  const str = list.join("|");
+  let hash = 0;
+  for (let i = 0; i < str.length; i += 1) {
+    hash = (hash * 31 + str.charCodeAt(i)) >>> 0;
+  }
+  return hash.toString(16);
+}
+
+// Cache version derives from asset list so new builds automatically invalidate old caches.
+const CACHE_NAME = `md-static-${hashStrings(ASSETS)}`;
 
 const ASSET_PATHS = new Set(
   ASSETS.map((asset) => new URL(asset, self.registration.scope).pathname),
@@ -99,20 +108,19 @@ self.addEventListener("fetch", (event) => {
         const cachedPath = isDualBoard ? "./dual-board.html" : "./index.html";
         const cachedUrl = new URL(cachedPath, self.registration.scope).pathname;
 
-        // Serve the cached shell if available; otherwise fetch once and cache.
         const cached = await cache.match(cachedUrl);
-        if (cached) return cached;
-
         try {
           const networkResponse = await fetch(request);
           if (networkResponse && networkResponse.ok) {
             cache.put(cachedUrl, networkResponse.clone());
+            return networkResponse;
           }
-          return networkResponse;
         } catch (err) {
-          // If offline and no cache yet, surface the original error.
-          throw err;
+          // ignore and fall back to cache
         }
+        if (cached) return cached;
+        // If the network is unavailable and we have no cached version, surface the original error.
+        throw new Error("Navigation fetch failed and no cache available");
       })(),
     );
     return;

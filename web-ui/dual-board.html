@@ -9,8 +9,8 @@
     <meta name="theme-color" content="#01157f" />
     <script>window.__MD_API_BASE__ = "https://api.mesdeparts.ch";</script>
     <link rel="preconnect" href="https://api.mesdeparts.ch" crossorigin />
-    <link rel="modulepreload" href="main.v2026-01-03-4.js" />
-    <link rel="stylesheet" href="style.v2026-01-03-4.css" />
+    <link rel="modulepreload" href="main.v2026-01-03-5.js" />
+    <link rel="stylesheet" href="style.v2026-01-03-5.css" />
   </head>
   <body class="dual-body">
     <div class="dual-shell">
@@ -364,9 +364,9 @@
     <div class="dual-version-float" aria-label="Version">v1.5.1</div>
 
     <script type="module">
-      import { fetchStationSuggestions, fetchStationsNearby } from "./logic.v2026-01-03-4.js";
-      import { loadFavorites, addFavorite, removeFavorite, isFavorite } from "./favourites.v2026-01-03-4.js";
-      import { LANGUAGE_OPTIONS, initI18n, setLanguage, t } from "./i18n.v2026-01-03-4.js";
+      import { fetchStationSuggestions, fetchStationsNearby } from "./logic.v2026-01-03-5.js";
+      import { loadFavorites, addFavorite, removeFavorite, isFavorite } from "./favourites.v2026-01-03-5.js";
+      import { LANGUAGE_OPTIONS, initI18n, setLanguage, t } from "./i18n.v2026-01-03-5.js";
       import {
         appState,
         API_MODE_BOARD,
@@ -376,8 +376,8 @@
         TRAIN_FILTER_ALL,
         TRAIN_FILTER_REGIONAL,
         TRAIN_FILTER_LONG_DISTANCE,
-      } from "./state.v2026-01-03-4.js";
-      import { setupInfoButton } from "./infoBTN.v2026-01-03-4.js";
+      } from "./state.v2026-01-03-5.js";
+      import { setupInfoButton } from "./infoBTN.v2026-01-03-5.js";
 
       const DEFAULT_LANG = initI18n();
       appState.apiMode = API_MODE_BOARD;
@@ -795,6 +795,7 @@
           this.pendingHideDeparture = this.state.hideDeparture;
           this.onChange = onChange;
           this.label = sideLabel(side);
+          this.suggestToken = 0;
 
           const suffix = side === "right" ? "right" : "left";
           this.els = {
@@ -820,18 +821,6 @@
           this.debouncedSuggest = debounce((q) => this.fetchSuggestions(q), 180);
           this.syncAll();
           this.bindEvents();
-          window.addEventListener(
-            "resize",
-            () => {
-              if (
-                this.els.favoritesPopover &&
-                !this.els.favoritesPopover.classList.contains("is-hidden")
-              ) {
-                this.positionFavoritesPopover();
-              }
-            },
-            { passive: true },
-          );
         }
 
         syncAll() {
@@ -984,25 +973,6 @@
               this.triggerChange();
             });
           }
-
-          document.addEventListener("click", (e) => {
-            if (this.els.favoritesPopover && !this.els.favoritesPopover.classList.contains("is-hidden")) {
-              const inPopover =
-                this.els.favoritesPopover.contains(e.target) ||
-                (this.els.favoritesBtn && this.els.favoritesBtn.contains(e.target));
-              if (!inPopover) {
-                this.closeFavoritesPopover();
-              }
-            }
-            if (this.els.filtersPopover && !this.els.filtersPopover.classList.contains("is-hidden")) {
-              const inFilters =
-                this.els.filtersPopover.contains(e.target) ||
-                (this.els.filtersOpen && this.els.filtersOpen.contains(e.target));
-              if (!inFilters) {
-                this.closeFilters();
-              }
-            }
-          });
         }
 
         setView(view) {
@@ -1104,8 +1074,10 @@
             this.clearSuggestions();
             return;
           }
+          const token = ++this.suggestToken;
           try {
             const list = await fetchStationSuggestions(query);
+            if (token !== this.suggestToken) return;
             this.renderSuggestions(list);
           } catch {
             this.clearSuggestions();
@@ -1276,6 +1248,34 @@
           this.els.favoritesList.appendChild(frag);
         }
 
+        handleGlobalResize() {
+          if (
+            this.els.favoritesPopover &&
+            !this.els.favoritesPopover.classList.contains("is-hidden")
+          ) {
+            this.positionFavoritesPopover();
+          }
+        }
+
+        handleGlobalClick(event) {
+          if (this.els.favoritesPopover && !this.els.favoritesPopover.classList.contains("is-hidden")) {
+            const inPopover =
+              this.els.favoritesPopover.contains(event.target) ||
+              (this.els.favoritesBtn && this.els.favoritesBtn.contains(event.target));
+            if (!inPopover) {
+              this.closeFavoritesPopover();
+            }
+          }
+          if (this.els.filtersPopover && !this.els.filtersPopover.classList.contains("is-hidden")) {
+            const inFilters =
+              this.els.filtersPopover.contains(event.target) ||
+              (this.els.filtersOpen && this.els.filtersOpen.contains(event.target));
+            if (!inFilters) {
+              this.closeFilters();
+            }
+          }
+        }
+
         setBoardType(isTrain, view, hideDeparture, { silent = false } = {}) {
           this.isTrainBoard = !!isTrain;
           const nextView = normalizeView(view);
@@ -1366,6 +1366,8 @@
         }
       }
 
+      const pickers = [];
+
       async function resolveInputValue(value) {
         if (!value) return null;
         if (isUrlish(value)) {
@@ -1384,6 +1386,9 @@
         return { stationName: value };
       }
 
+      const defaultsWithLanguage = (defaults) => ({ ...defaults, language: currentLanguage });
+      const scheduleApplyFrames = debounce(() => applyFrames(), 120);
+
       const stored = loadStoredStates();
       const legacy = loadLegacyStates();
 
@@ -1391,14 +1396,25 @@
         "left",
         LEFT_DEFAULT,
         initialStateForSide("left", stored, legacy),
-        () => applyFrames(),
+        () => scheduleApplyFrames(),
       );
       const rightPicker = new DualPicker(
         "right",
         RIGHT_DEFAULT,
         initialStateForSide("right", stored, legacy),
-        () => applyFrames(),
+        () => scheduleApplyFrames(),
       );
+      pickers.push(leftPicker, rightPicker);
+
+      const handleGlobalClick = (event) => {
+        pickers.forEach((p) => p?.handleGlobalClick?.(event));
+      };
+      const handleGlobalResize = () => {
+        pickers.forEach((p) => p?.handleGlobalResize?.());
+      };
+
+      document.addEventListener("click", handleGlobalClick);
+      window.addEventListener("resize", handleGlobalResize, { passive: true });
 
       populateLanguageSelect();
       applyGlobalLanguage(currentLanguage, { reloadFrames: false });
@@ -1409,8 +1425,6 @@
         });
       }
 
-      const defaultsWithLanguage = (defaults) => ({ ...defaults, language: currentLanguage });
-
       function saveStates(leftState, rightState) {
         try {
           localStorage.setItem(STORAGE_KEY, JSON.stringify({ left: leftState, right: rightState }));
@@ -1418,6 +1432,9 @@
           // ignore
         }
       }
+
+      let lastAppliedLeftUrl = "";
+      let lastAppliedRightUrl = "";
 
       function applyFrames({ updateQuery = true, showStatus = true } = {}) {
         if (!leftPicker || !rightPicker || !leftFrame || !rightFrame) return false;
@@ -1429,10 +1446,19 @@
           return false;
         }
 
-        leftFrame.src = leftUrl;
-        rightFrame.src = rightUrl;
+        const leftChanged = leftUrl !== lastAppliedLeftUrl;
+        const rightChanged = rightUrl !== lastAppliedRightUrl;
 
-        if (updateQuery) {
+        if (leftChanged) {
+          leftFrame.src = leftUrl;
+          lastAppliedLeftUrl = leftUrl;
+        }
+        if (rightChanged) {
+          rightFrame.src = rightUrl;
+          lastAppliedRightUrl = rightUrl;
+        }
+
+        if (updateQuery && (leftChanged || rightChanged)) {
           const nextParams = new URLSearchParams(window.location.search || "");
           nextParams.set("left", leftUrl);
           nextParams.set("right", rightUrl);
@@ -1443,7 +1469,7 @@
 
         saveStates(leftPicker.getSerializableState(), rightPicker.getSerializableState());
 
-        if (showStatus) {
+        if (showStatus && (leftChanged || rightChanged)) {
           setStatus(
             `${leftPicker.getDisplayName()} / ${rightPicker.getDisplayName()} ${t("dualStatusLoadedSuffix")}`,
           );

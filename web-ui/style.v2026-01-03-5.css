@@ -6,6 +6,7 @@
   --border: #335;
   --clock-bg: #00245f;
   --control-h: 32.5px; /* uniform height for inputs/buttons/selects */
+  --dual-bg: #000;
 
   /* Status */
   --danger: #ff5252;
@@ -2122,7 +2123,7 @@ body.layout-tight .line-chips {
 /* ------------------------------------------------------------------ */
 
 body.dual-body {
-  background: #000;
+  background: var(--dual-bg);
   color: var(--fg);
   display: flex;
   flex-direction: column;
@@ -2245,7 +2246,7 @@ body.dual-body {
   padding: 10px 12px;
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.24);
-  background: #000;
+  background: var(--dual-bg);
   color: #fff;
   font-weight: 700;
   letter-spacing: 0.01em;
@@ -2297,7 +2298,7 @@ body.dual-body {
   flex: 1 1 auto;
   display: flex;
   gap: 0;
-  background: #000;
+  background: var(--dual-bg);
   border-radius: 0;
   overflow: hidden;
   min-height: 360px;
@@ -2307,7 +2308,7 @@ body.dual-body {
   flex: 1 1 50%;
   border: none;
   outline: none;
-  background: #000;
+  background: var(--dual-bg);
   min-height: 320px;
 }
 
@@ -3162,40 +3163,23 @@ body.dual-body {
 }
 
 /* Board embed (inside dual iframes) */
-html.dual-embed .header-right,
-body.dual-embed .header-right,
-html.dual-embed .station-card,
-body.dual-embed .station-card,
-html.dual-embed .station-card-inline,
-body.dual-embed .station-card-inline,
-html.dual-embed .station-card-topline,
-body.dual-embed .station-card-topline,
-html.dual-embed #station-card-collapsible,
-body.dual-embed #station-card-collapsible,
-html.dual-embed .station-input-block,
-body.dual-embed .station-input-block,
-html.dual-embed .quick-controls-shell,
-body.dual-embed .quick-controls-shell,
-html.dual-embed .quick-controls,
-body.dual-embed .quick-controls,
-html.dual-embed .quick-controls-toggle,
-body.dual-embed .quick-controls-toggle,
-html.dual-embed .mode-popover,
-body.dual-embed .mode-popover,
-html.dual-embed .line-chips,
-body.dual-embed .line-chips,
-html.dual-embed .legacy-filters,
-body.dual-embed .legacy-filters,
-html.dual-embed .board-footer,
-body.dual-embed .board-footer,
-html.dual-embed .version-tag,
-body.dual-embed .version-tag,
-html.dual-embed .fav-popover,
-body.dual-embed .fav-popover,
-html.dual-embed .filters-popover,
-body.dual-embed .filters-popover,
-html.dual-embed .loading-hint,
-body.dual-embed .loading-hint {
+:is(html, body).dual-embed .header-right,
+:is(html, body).dual-embed .station-card,
+:is(html, body).dual-embed .station-card-inline,
+:is(html, body).dual-embed .station-card-topline,
+:is(html, body).dual-embed #station-card-collapsible,
+:is(html, body).dual-embed .station-input-block,
+:is(html, body).dual-embed .quick-controls-shell,
+:is(html, body).dual-embed .quick-controls,
+:is(html, body).dual-embed .quick-controls-toggle,
+:is(html, body).dual-embed .mode-popover,
+:is(html, body).dual-embed .line-chips,
+:is(html, body).dual-embed .legacy-filters,
+:is(html, body).dual-embed .board-footer,
+:is(html, body).dual-embed .version-tag,
+:is(html, body).dual-embed .fav-popover,
+:is(html, body).dual-embed .filters-popover,
+:is(html, body).dual-embed .loading-hint {
   display: none !important;
 }
 
