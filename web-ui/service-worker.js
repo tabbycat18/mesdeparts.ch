@@ -3,14 +3,14 @@ const CORE_ASSETS = [
   "./index.html",
   "./dual-board.html",
   "./manifest.webmanifest",
-  "./style.v2026-01-03-6.css",
-  "./main.v2026-01-03-6.js",
-  "./logic.v2026-01-03-6.js",
-  "./ui.v2026-01-03-6.js",
-  "./state.v2026-01-03-6.js",
-  "./i18n.v2026-01-03-6.js",
-  "./favourites.v2026-01-03-6.js",
-  "./infoBTN.v2026-01-03-6.js",
+  "./style.v2026-01-03-7.css",
+  "./main.v2026-01-03-7.js",
+  "./logic.v2026-01-03-7.js",
+  "./ui.v2026-01-03-7.js",
+  "./state.v2026-01-03-7.js",
+  "./i18n.v2026-01-03-7.js",
+  "./favourites.v2026-01-03-7.js",
+  "./infoBTN.v2026-01-03-7.js",
   "./bus-icon-1.png",
   "./bus-icon-1.svg",
 ];
@@ -44,7 +44,12 @@ self.addEventListener("install", (event) => {
   event.waitUntil(
     (async () => {
       const cache = await caches.open(CACHE_NAME);
-      await cache.addAll(CORE_ASSETS);
+      try {
+        await cache.addAll(CORE_ASSETS);
+      } catch (err) {
+        // If an asset is temporarily missing during deploy, keep installing instead of blocking the SW.
+        console.warn("[SW] core assets prefetch incomplete", err);
+      }
       cache.addAll(LAZY_ASSETS).catch(() => {});
     })(),
   );
@@ -109,18 +114,26 @@ self.addEventListener("fetch", (event) => {
         const cachedUrl = new URL(cachedPath, self.registration.scope).pathname;
 
         const cached = await cache.match(cachedUrl);
-        try {
-          const networkResponse = await fetch(request);
-          if (networkResponse && networkResponse.ok) {
-            cache.put(cachedUrl, networkResponse.clone());
-            return networkResponse;
+        const fetchAndUpdate = async () => {
+          const response = await fetch(request);
+          if (response && response.ok) {
+            cache.put(cachedUrl, response.clone());
           }
-        } catch (err) {
-          // ignore and fall back to cache
+          return response;
+        };
+
+        if (cached) {
+          // Serve instantly, refresh in background.
+          fetchAndUpdate().catch(() => {});
+          return cached;
         }
-        if (cached) return cached;
-        // If the network is unavailable and we have no cached version, surface the original error.
-        throw new Error("Navigation fetch failed and no cache available");
+
+        try {
+          return await fetchAndUpdate();
+        } catch (err) {
+          if (cached) return cached;
+          throw err;
+        }
       })(),
     );
     return;

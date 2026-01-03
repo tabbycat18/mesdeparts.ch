@@ -4,6 +4,7 @@
 // --------------------------------------------------------
 
 export const DEFAULT_STATION = "Lausanne, motte";
+export const DEFAULT_STATION_ID = "8587057";
 export const STATION_ID_STORAGE_KEY = "mesdeparts.stationMeta";
 
 // Legacy (kept for compatibility with older imports)
@@ -54,7 +55,7 @@ export const API_MODE_AUTO_SWITCH_MS = 120_000;
 export const appState = {
   // Station
   STATION: DEFAULT_STATION,
-  stationId: null,
+  stationId: DEFAULT_STATION_ID,
   stationIsMotte: DEFAULT_STATION.toLowerCase().includes("motte"),
   currentNetwork: "generic",
   language: "fr",

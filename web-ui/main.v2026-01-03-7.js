@@ -19,15 +19,16 @@ import {
   TRAIN_FILTER_ALL,
   TRAIN_FILTER_REGIONAL,
   TRAIN_FILTER_LONG_DISTANCE,
+  DEFAULT_STATION_ID,
   STATION_ID_STORAGE_KEY,
-} from "./state.v2026-01-03-6.js";
+} from "./state.v2026-01-03-7.js";
 
 import {
   detectNetworkFromStation,
   resolveStationId,
   fetchStationboardRaw,
   buildDeparturesGrouped,
-} from "./logic.v2026-01-03-6.js";
+} from "./logic.v2026-01-03-7.js";
 
 import {
   setupClock,
@@ -45,10 +46,10 @@ import {
   ensureBoardFitsViewport,
   setupAutoFitWatcher,
   publishEmbedState,
-} from "./ui.v2026-01-03-6.js";
+} from "./ui.v2026-01-03-7.js";
 
-import { setupInfoButton } from "./infoBTN.v2026-01-03-6.js";
-import { initI18n, applyStaticTranslations, setLanguage, LANGUAGE_OPTIONS } from "./i18n.v2026-01-03-6.js";
+import { setupInfoButton } from "./infoBTN.v2026-01-03-7.js";
+import { initI18n, applyStaticTranslations, setLanguage, LANGUAGE_OPTIONS } from "./i18n.v2026-01-03-7.js";
 
 // Persist station between reloads
 const STORAGE_KEY = "mesdeparts.station";
@@ -367,11 +368,13 @@ function applyStation(name, id) {
     storedMeta && storedMeta.name && storedMeta.name.toLowerCase() === stationName.toLowerCase()
       ? storedMeta.id
       : null;
+  const isDefaultStation = stationName.toLowerCase() === DEFAULT_STATION.toLowerCase();
+  const inferredId = isDefaultStation ? DEFAULT_STATION_ID : null;
 
   appState.STATION = stationName;
   // If a station id is provided (from suggestion/favourite), keep it.
   // Otherwise leave as null; it will be resolved later from the name.
-  appState.stationId = explicitId || cachedId || null;
+  appState.stationId = explicitId || cachedId || inferredId || null;
 
   appState.stationIsMotte = stationName.toLowerCase().includes("motte");
   appState.currentNetwork = detectNetworkFromStation(stationName);
