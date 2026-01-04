@@ -6,8 +6,8 @@ import readline from "node:readline";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Directory where GTFS .txt files live
-const GTFS_DIR = path.join(__dirname, "..", "data");
+// Directory where GTFS .txt files live (shared dev folder)
+const GTFS_DIR = path.join(__dirname, "..", "data", "gtfs-static");
 
 /**
  * Minimal CSV line parser that supports:
@@ -58,7 +58,7 @@ function parseCsvLine(line) {
 // Stream a CSV file line by line to avoid building a multi-GB string
 // Stream a CSV file line by line, with an optional row cap
 async function loadCsv(relativePath, maxRows = Infinity) {
-  const dataDir = path.resolve(new URL("../data", import.meta.url).pathname);
+  const dataDir = GTFS_DIR;
   const fullPath = path.join(dataDir, relativePath);
 
   const stream = createReadStream(fullPath, { encoding: "utf8" });

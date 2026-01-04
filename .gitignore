@@ -8,6 +8,11 @@ rt/backend/node_modules/
 rt/backend/.env
 rt/backend/gtfs-rt.pb
 rt/backend/gtfs-rt.json
+dev-artifacts/
+gtfs-rt.*
+*.pb
+*.zip
+*.csv
 
 # Large GTFS data snapshots (local only)
 rt/data/gtfs-static/

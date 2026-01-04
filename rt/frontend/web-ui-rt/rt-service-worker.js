@@ -1,16 +1,16 @@
 // Core assets: required for the shell to work offline.
 const CORE_ASSETS = [
-  "./index.html",
-  "./dual-board.html",
+  "./rt-index.html",
+  "./rt-dual-board.html",
   "./manifest.webmanifest",
-  "./style.v2026-01-04.css",
-  "./main.v2026-01-04.js",
-  "./logic.v2026-01-04.js",
-  "./ui.v2026-01-04.js",
-  "./state.v2026-01-04.js",
-  "./i18n.v2026-01-04.js",
-  "./favourites.v2026-01-04.js",
-  "./infoBTN.v2026-01-04.js",
+  "./rt-style.v2026-01-04.css",
+  "./rt-main.v2026-01-04.js",
+  "./rt-logic.v2026-01-04.js",
+  "./rt-ui.v2026-01-04.js",
+  "./rt-state.v2026-01-04.js",
+  "./rt-i18n.v2026-01-04.js",
+  "./rt-favourites.v2026-01-04.js",
+  "./rt-infoBTN.v2026-01-04.js",
   "./bus-icon-1.png",
   "./bus-icon-1.svg",
 ];
@@ -109,8 +109,8 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(
       (async () => {
         const cache = await caches.open(CACHE_NAME);
-        const isDualBoard = pathname.endsWith("/dual-board.html");
-        const cachedPath = isDualBoard ? "./dual-board.html" : "./index.html";
+        const isDualBoard = pathname.endsWith("/rt-dual-board.html");
+        const cachedPath = isDualBoard ? "./rt-dual-board.html" : "./rt-index.html";
         const cachedUrl = new URL(cachedPath, self.registration.scope).pathname;
 
         const cached = await cache.match(cachedUrl);

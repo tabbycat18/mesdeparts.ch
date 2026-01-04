@@ -3,8 +3,8 @@
 // Config & shared state
 // --------------------------------------------------------
 
-export const DEFAULT_STATION = "Lausanne, motte";
-export const DEFAULT_STATION_ID = "8592082";
+export const DEFAULT_STATION = "Lausanne";
+export const DEFAULT_STATION_ID = "Parent8501120";
 export const STATION_ID_STORAGE_KEY = "mesdeparts.stationMeta";
 
 // Legacy (kept for compatibility with older imports)
@@ -65,7 +65,7 @@ export const appState = {
   viewMode: VIEW_MODE_LINE,
   trainServiceFilter: TRAIN_FILTER_ALL,
 
-  // API mode: board (Cloudflare) vs direct (transport.opendata.ch)
+  // API mode: board vs direct (both hit the GTFS backend; direct just tweaks polling cadence)
   apiMode: API_MODE_BOARD,
 
   // UI refs

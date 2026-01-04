@@ -49,9 +49,6 @@ CREATE TABLE public.stops (
   wheelchair_boarding TEXT
 );
 
-CREATE INDEX IF NOT EXISTS idx_search_stops_after_comma
-ON public.search_stops (lower(trim(split_part(stop_name, ',', 2))));
-
 CREATE INDEX IF NOT EXISTS stops_name_idx
   ON public.stops (LOWER(stop_name));
 
@@ -162,3 +159,25 @@ CREATE INDEX IF NOT EXISTS stop_times_stop_dep_idx
 
 CREATE INDEX IF NOT EXISTS stop_times_trip_seq_idx
   ON public.stop_times (trip_id, stop_sequence);
+
+-- 8) search_stops materialized view (for fast prefix search)
+DROP MATERIALIZED VIEW IF EXISTS public.search_stops;
+CREATE MATERIALIZED VIEW public.search_stops AS
+SELECT
+  s.stop_id,
+  s.stop_name,
+  COUNT(st.id) AS nb_stop_times,
+  MIN(st.departure_time) AS first_dep,
+  MAX(st.departure_time) AS last_dep
+FROM public.stops s
+LEFT JOIN public.stop_times st ON st.stop_id = s.stop_id
+GROUP BY s.stop_id, s.stop_name;
+
+CREATE INDEX IF NOT EXISTS idx_search_stops_name
+  ON public.search_stops (stop_name);
+
+CREATE INDEX IF NOT EXISTS idx_search_stops_after_comma
+  ON public.search_stops (lower(trim(split_part(stop_name, ',', 2))));
+
+CREATE INDEX IF NOT EXISTS idx_search_stops_nb
+  ON public.search_stops (nb_stop_times DESC);

@@ -1,6 +1,7 @@
 Imports from your Mac terminal (psql)
 
 Important: don’t wrap \copy in BEGIN/COMMIT (that’s what caused the “idle-in-transaction timeout” pain).
+Reminder: the RT stack only uses GTFS stop_id values from the feed (including platform/Parent suffixes like `Parent8501120`). Do not try to import or look up transport.opendata.ch IDs here.
 	1.	Connect:
 
 psql "$NEON_URL"
@@ -12,46 +13,57 @@ psql "$NEON_URL"
 
 	3.	Run imports (adjust filenames if yours differ):
 
-  TRUNCATE public.xxx;
+  TRUNCATE public.stop_times,
+         public.trips,
+         public.calendar_dates,
+         public.calendar,
+         public.routes,
+         public.stops,
+         public.agencies
+RESTART IDENTITY;
 
 \copy public.agencies (agency_id, agency_name, agency_url, agency_timezone, agency_lang, agency_phone)
-FROM '/Users/mattiapastore/Documents/VSC/MesDeparts_RT/backend/data/agency.csv'
+FROM '/Users/mattiapastore/Documents/VSC/mesdeparts.ch/rt/data/gtfs-static/agency.csv'
 WITH (FORMAT csv, HEADER true, QUOTE '"', ESCAPE '"', NULL '');
 
-\copy public.stops (stop_id, stop_name, stop_lat, stop_lon, location_type, parent_station, platform_code, original_stop_id)
-FROM '/Users/mattiapastore/Documents/VSC/MesDeparts_RT/backend/data/stops.csv'
+\copy public.stops (stop_id, stop_name, stop_lat, stop_lon, location_type, parent_station, platform_code)
+FROM '/Users/mattiapastore/Documents/VSC/mesdeparts.ch/rt/data/gtfs-static/stops.csv'
 WITH (FORMAT csv, HEADER true, QUOTE '"', ESCAPE '"', NULL '');
+
+UPDATE public.stops
+SET original_stop_id = stop_id
+WHERE original_stop_id IS NULL;
 
 \copy public.routes (route_id, agency_id, route_short_name, route_long_name, route_desc, route_type)
-FROM '/Users/mattiapastore/Documents/VSC/MesDeparts_RT/backend/data/routes.csv'
+FROM '/Users/mattiapastore/Documents/VSC/mesdeparts.ch/rt/data/gtfs-static/routes.csv'
 WITH (FORMAT csv, HEADER true, QUOTE '"', ESCAPE '"', NULL '');
 
 \copy public.calendar (service_id, monday, tuesday, wednesday, thursday, friday, saturday, sunday, start_date, end_date)
-FROM '/Users/mattiapastore/Documents/VSC/MesDeparts_RT/backend/data/calendar.csv'
+FROM '/Users/mattiapastore/Documents/VSC/mesdeparts.ch/rt/data/gtfs-static/calendar.csv'
 WITH (FORMAT csv, HEADER true, QUOTE '"', ESCAPE '"', NULL '');
 
 \copy public.calendar_dates (service_id, date, exception_type)
-FROM '/Users/mattiapastore/Documents/VSC/MesDeparts_RT/backend/data/calendar_dates.csv'
+FROM '/Users/mattiapastore/Documents/VSC/mesdeparts.ch/rt/data/gtfs-static/calendar_dates.csv'
 WITH (FORMAT csv, HEADER true, QUOTE '"', ESCAPE '"', NULL '');
 
 Trips import (do this safely)
 
 Because trips.csv columns vary by feed, do this first in your Mac terminal to get the exact header:
 
-head -n 1 /Users/mattiapastore/Documents/VSC/MesDeparts_RT/backend/data/trips.csv
+head -n 1 /Users/mattiapastore/Documents/VSC/mesdeparts.ch/rt/data/gtfs-static/trips.csv
 
 Then use that exact order in the \copy (...) list.
 
 Example (based on what you were using):
 
-\copy public.trips (route_id, service_id, trip_id, trip_headsign, trip_short_name, direction_id, block_id, original_trip_id, hints)
-FROM '/Users/mattiapastore/Documents/VSC/MesDeparts_RT/backend/data/trips.csv'
+\copy public.trips (route_id,service_id,trip_id,trip_headsign,trip_short_name,direction_id,block_id,original_trip_id,hints)
+FROM '/Users/mattiapastore/Documents/VSC/mesdeparts.ch/rt/data/gtfs-static/trips.csv'
 WITH (FORMAT csv, HEADER true, QUOTE '"', ESCAPE '"', NULL '');
 
 Stop times import
 
 \copy public.stop_times (trip_id, arrival_time, departure_time, stop_id, stop_sequence, pickup_type, drop_off_type)
-FROM '/Users/mattiapastore/Documents/VSC/MesDeparts_RT/backend/data/stop_times.csv'
+FROM '/Users/mattiapastore/Documents/VSC/mesdeparts.ch/rt/data/gtfs-static/stop_times.csv'
 WITH (FORMAT csv, HEADER true, QUOTE '"', ESCAPE '"', NULL '');
 
 
@@ -75,6 +87,9 @@ SET
       COALESCE(NULLIF(split_part(departure_time, ':', 3), '')::int, 0)
     ELSE NULL
   END;
+
+CREATE INDEX IF NOT EXISTS stop_times_stop_departure_idx
+  ON public.stop_times (stop_id, departure_time_seconds);
 
 (Optional but recommended right after big imports)
 
@@ -112,25 +127,7 @@ WHERE st.trip_id IS NULL;
 
 Rebuild / refresh search_stops (yes, do it)
 
-Create once:
-
-DROP MATERIALIZED VIEW IF EXISTS public.search_stops;
-
-CREATE MATERIALIZED VIEW public.search_stops AS
-SELECT
-  s.stop_id,
-  s.stop_name,
-  COUNT(st.id) AS nb_stop_times,
-  MIN(st.departure_time) AS first_dep,
-  MAX(st.departure_time) AS last_dep
-FROM public.stops s
-LEFT JOIN public.stop_times st ON st.stop_id = s.stop_id
-GROUP BY s.stop_id, s.stop_name;
-
-CREATE INDEX IF NOT EXISTS idx_search_stops_name ON public.search_stops (stop_name);
-CREATE INDEX IF NOT EXISTS idx_search_stops_nb   ON public.search_stops (nb_stop_times DESC);
-
-Then whenever you reimport:
+The view is created by schema_gtfs.sql. After each import:
 
 REFRESH MATERIALIZED VIEW public.search_stops;
 

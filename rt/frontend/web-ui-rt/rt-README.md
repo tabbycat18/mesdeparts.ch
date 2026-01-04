@@ -10,7 +10,7 @@ Static, dependency-free front-end for the GTFS/RT variant. Everything in this fo
 ## Architecture (versioned files)
 - `rt-main.v*.js`: boot; reads URL/localStorage defaults (`stationName`/`stationId`, language), wires event handlers, starts refresh + countdown loops, and toggles board/direct API mode (auto-switches back to board mode after ~2 min unless overridden).
 - `rt-state.v*.js`: shared config/constants (refresh cadence, horizons, view modes, thresholds) and mutable `appState`.
-- `rt-logic.v*.js`: transport.opendata.ch client (or proxy when board mode is on), station resolve/nearby search, journey details fallback, delay/remark computation, grouping/sorting, and network detection for line colors.
+- `rt-logic.v*.js`: GTFS/Neon client (station resolve/nearby search), delay/remark computation, grouping/sorting, and network detection for line colors.
 - `rt-ui.v*.js`: DOM rendering of the board, clocks, station search with suggestions/nearby, filters (line/platform/train service), favorites popovers, view toggle, auto-fit watcher, and embed state publication.
 - `rt-i18n.v*.js`: minimal translations (FR/DE/IT/EN) + language persistence.
 - `rt-favourites.v*.js`: localStorage (`md_favorites_v1`) helpers; no backend.
@@ -19,11 +19,11 @@ Static, dependency-free front-end for the GTFS/RT variant. Everything in this fo
 - `clock/`: self-hosted SBB clock assets (Apache 2.0); cached by the service worker for offline/instant loads.
 
 ## Data & refresh flow
-- Default station is `Lausanne, motte` (id `8592082`); query params or stored values override it. Deep links use `?stationName=...&stationId=...`.
-- API base defaults to `https://transport.opendata.ch/v1`; override in HTML with `window.__MD_API_BASE__ = "https://api.mesdeparts.ch";` (proxy). Board mode uses that proxy; direct mode hits the public API and auto-reverts to board mode after ~2 minutes unless explicitly kept.
-- `refreshDepartures` calls `/stationboard` (limit tuned to UI), rebuilds grouped rows (3 h horizon, train/bus split, line/platform filters, favorites-only mode, train service filters) and renders. Countdown column updates every 5 s from cached data.
-- Stale board guard: if the stationboard looks “empty because everything is already in the past”, the UI triggers a cache-bypassing refetch at most once per minute per station to recover from sticky caches and will fall back to a direct (non-proxy) fetch if the board stays empty for ~1 minute.
-- Station search uses `/locations` (with debounced caching) and an optional geolocation helper via `/locations?x/y`. Journey details overlay falls back to `/journey` or `/connections` when `passList` is missing.
+- Default station is `Lausanne` (GTFS parent id `Parent8501120`); query params or stored values override it. Deep links use `?stationName=...&stationId=...`.
+- API base defaults to the RT backend (`http://localhost:3001` in dev). Override in HTML with `window.__MD_API_BASE__ = "https://api.mesdeparts.ch";`. Board/direct modes now hit the same GTFS/Neon backend; direct only changes the polling cadence and auto-reverts after ~2 minutes unless explicitly kept.
+- `refreshDepartures` calls `/api/stationboard` (limit tuned to UI), rebuilds grouped rows (3 h horizon, train/bus split, line/platform filters, favorites-only mode, train service filters) and renders. Countdown column updates every 5 s from cached data.
+- Stale board guard: if the stationboard looks “empty because everything is already in the past”, the UI triggers a cache-bypassing refetch at most once per minute per station. If a stored `stationId` is empty/legacy, it re-resolves it via `/api/stops/search` once per station name.
+- Station search uses `/api/stops/search` (debounced) and geolocation uses `/api/stops/nearby` so IDs always come from the GTFS feed. Journey details rely on the stationboard `passList` only; there is no transport.opendata.ch fallback.
 - Embeds: pages add a `dual-embed` class when framed; `publishEmbedState` exposes current board state to the parent.
 
 ## Running locally
@@ -41,6 +41,6 @@ Static, dependency-free front-end for the GTFS/RT variant. Everything in this fo
 - The UI is fully static: host this folder on any static host (Netlify/Vercel/S3/nginx/Apache). A `.htaccess` file is provided for Apache caching.
 
 ## Behavior/UX notes
-- Board mode toggle (“Tableau”) reduces API load by using the proxy; direct mode is faster for one-off checks. Filters/view changes are client-side only.
+- Board mode toggle (“Tableau”) adjusts polling/caching against the same GTFS backend (no transport.opendata.ch). Filters/view changes are client-side only.
 - Language, favorites, board mode preference, and last station are stored in `localStorage`; nothing leaves the browser.
 - The service worker pre-caches the shell and serves navigations cache-first with background revalidation; API calls always hit the network.

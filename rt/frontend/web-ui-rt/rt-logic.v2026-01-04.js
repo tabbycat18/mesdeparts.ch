@@ -20,19 +20,18 @@ import {
   TRAIN_FILTER_ALL,
   TRAIN_FILTER_REGIONAL,
   TRAIN_FILTER_LONG_DISTANCE,
-  API_MODE_DIRECT,
   STATION_ID_STORAGE_KEY,
-} from "./state.v2026-01-04.js";
-import { t } from "./i18n.v2026-01-04.js";
+} from "./rt-state.v2026-01-04.js";
+import { t } from "./rt-i18n.v2026-01-04.js";
 
-// API base can be overridden by setting window.__MD_API_BASE__ before scripts load
-const DIRECT_API_BASE = "https://transport.opendata.ch/v1";
-const BOARD_API_BASE =
+// API base can be overridden by setting window.__MD_API_BASE__ before scripts load.
+// The RT UI only talks to the GTFS/Neon backend; no transport.opendata.ch fallback.
+const BACKEND_API_BASE =
   (typeof window !== "undefined" && window.__MD_API_BASE__) ||
-  DIRECT_API_BASE;
+  "http://localhost:3001";
 
 function getApiBase() {
-  return appState.apiMode === API_MODE_DIRECT ? DIRECT_API_BASE : BOARD_API_BASE;
+  return BACKEND_API_BASE;
 }
 
 const apiUrl = (pathAndQuery) => `${getApiBase()}${pathAndQuery}`;
@@ -301,42 +300,62 @@ function passListContainsStation(passList, stationId, stationName) {
 // API : stations & stationboard
 // --------------------------------------------------------
 
-export async function resolveStationId() {
-  const url = apiUrl(`/locations?query=${encodeURIComponent(appState.STATION)}`);
+async function searchStopsBackendPrefix(query, limit = 7) {
+  const url = apiUrl(`/api/stops/search?q=${encodeURIComponent(query)}&limit=${encodeURIComponent(limit)}`);
   const data = await fetchJson(url);
+  return Array.isArray(data?.stops) ? data.stops : [];
+}
 
-  const list = data.stations || data.stops || data.locations || [];
-  if (!list.length) throw new Error("No station found");
+export async function resolveStationId() {
+  const stops = await searchStopsBackendPrefix(appState.STATION, 7);
+  if (!stops.length) throw new Error("No station found");
 
   const normalizeName = (name) => String(name || "").trim().toLowerCase();
   const targetName = normalizeName(appState.STATION);
 
   // Prefer exact name matches when present; fallback to first API result
   const best =
-    list.find((s) => normalizeName(s?.name) === targetName) ||
-    list[0];
+    stops.find((s) => normalizeName(s?.stop_name || s?.name) === targetName) ||
+    stops[0];
 
-  appState.stationId = best.id;
+  const resolvedId =
+    best.parent_station ||
+    best.group_id ||
+    best.stop_id ||
+    best.id ||
+    best.raw_stop_id ||
+    null;
+
+  if (!resolvedId) {
+    throw new Error("No station id found in GTFS search results");
+  }
+
+  appState.stationId = resolvedId;
   try {
     const name = typeof appState.STATION === "string" ? appState.STATION : "";
     localStorage.setItem(
       STATION_ID_STORAGE_KEY,
-      JSON.stringify({ name, id: best.id }),
+      JSON.stringify({ name, id: appState.stationId }),
     );
   } catch {
     // ignore storage errors
   }
-  return best.id;
+  return appState.stationId;
 }
 
 export async function fetchStationSuggestions(query) {
-  const url = apiUrl(`/locations?query=${encodeURIComponent(query)}&limit=7`);
-  const data = await fetchJson(url);
-
-  const list = data.stations || data.stops || data.locations || [];
-  return list
-    .filter((s) => s && s.name)
-    .map((s) => ({ id: s.id, name: s.name }));
+  const stops = await searchStopsBackendPrefix(query, 7);
+  return stops
+    .filter((s) => s && (s.stop_name || s.name))
+    .map((s) => ({
+      id:
+        s.parent_station ||
+        s.group_id ||
+        s.stop_id ||
+        s.id ||
+        s.raw_stop_id,
+      name: s.stop_name || s.name,
+    }));
 }
 
 export async function fetchStationsNearby(lat, lon, limit = 7) {
@@ -346,23 +365,32 @@ export async function fetchStationsNearby(lat, lon, limit = 7) {
     throw new Error("Invalid coordinates");
   }
 
-  const url =
-    apiUrl(`/locations?type=station&x=${encodeURIComponent(lonNum)}&y=${encodeURIComponent(latNum)}`) +
-    `&limit=${encodeURIComponent(limit)}`;
+  const url = apiUrl(
+    `/api/stops/nearby?lat=${encodeURIComponent(latNum)}&lon=${encodeURIComponent(
+      lonNum
+    )}&limit=${encodeURIComponent(limit)}`
+  );
   const data = await fetchJson(url);
 
   const list = data.stations || data.stops || data.locations || [];
   return list
-    .filter((s) => s && s.name)
+    .filter((s) => s && (s.stop_name || s.name))
     .map((s) => ({
-      id: s.id,
-      name: s.name,
+      id:
+        s.parent_station ||
+        s.group_id ||
+        s.stop_id ||
+        s.id ||
+        s.raw_stop_id,
+      name: s.stop_name || s.name,
       distance:
-        typeof s.distance === "number"
-        ? s.distance
-        : typeof s.dist === "number"
-          ? s.dist
-          : null,
+        typeof s.distance_m === "number"
+          ? s.distance_m
+          : typeof s.distance === "number"
+            ? s.distance
+            : typeof s.dist === "number"
+              ? s.dist
+              : null,
     }));
 }
 
@@ -413,10 +441,53 @@ function isInvalidStationboardError(err) {
   return msg.includes("404");
 }
 
+function adaptBackendDeparturesToStationboard(data) {
+  if (!data || !Array.isArray(data.departures)) return data;
+  const stationMeta = data.station || {};
+  const stationboard = data.departures.map((dep) => {
+    const scheduled = dep.scheduledDeparture || dep.departure || dep.scheduled_time;
+    const realtime = dep.realtimeDeparture || dep.realtime_time || null;
+    const delayMin = typeof dep.delayMin === "number" ? dep.delayMin : null;
+    return {
+      number: dep.number || dep.line || dep.name || "",
+      category: dep.category || "",
+      to: dep.destination || "",
+      operator: dep.operator || "",
+      stop: {
+        departure: scheduled || realtime,
+        platform: dep.platform || "",
+        prognosis: {
+          departure: realtime || scheduled || null,
+          platform: dep.platform || "",
+          delay: delayMin === null ? undefined : delayMin * 60,
+        },
+      },
+      journey: { id: dep.trip_id || dep.tripId || null },
+      trip: { id: dep.trip_id || dep.tripId || null },
+    };
+  });
+
+  return {
+    station: stationMeta,
+    stationboard,
+  };
+}
+
 export async function fetchStationboardRaw(options = {}) {
   const { allowRetry = true, bustCache = false } = options;
   if (!appState.stationId) {
-    await resolveStationId();
+    if (fetchStationboardRaw._failedStationName === appState.STATION) {
+      throw new Error("missing_station_id");
+    }
+    try {
+      await resolveStationId();
+      fetchStationboardRaw._failedStationName = null;
+    } catch (err) {
+      fetchStationboardRaw._failedStationName = appState.STATION;
+      throw err;
+    }
+  } else {
+    fetchStationboardRaw._failedStationName = null;
   }
 
   const stationKey = appState.stationId || "unknown";
@@ -431,12 +502,15 @@ export async function fetchStationboardRaw(options = {}) {
   }
 
   const cacheBust = bustCache ? `&_ts=${Date.now()}` : "";
-  const url = apiUrl(
-    `/stationboard?station=${encodeURIComponent(stationKey)}&limit=${encodeURIComponent(STATIONBOARD_LIMIT)}${cacheBust}`,
+  const backendUrl = apiUrl(
+    `/api/stationboard?location_id=${encodeURIComponent(stationKey)}&limit=${encodeURIComponent(STATIONBOARD_LIMIT)}${cacheBust}`,
   );
   const req = (async () => {
     try {
-      const data = await fetchJson(url, { cache: bustCache ? "reload" : "default" });
+      let data = await fetchJson(backendUrl, { cache: bustCache ? "reload" : "default" });
+      if (!data?.stationboard && Array.isArray(data?.departures)) {
+        data = adaptBackendDeparturesToStationboard(data);
+      }
 
       const needsRetry =
         allowRetry &&
@@ -962,28 +1036,11 @@ export async function fetchDeparturesGrouped(viewMode = VIEW_MODE_LINE) {
   return buildDeparturesGrouped(data, viewMode);
 }
 
-async function fetchJourneyDetailsById(journeyId, { signal } = {}) {
-  if (!journeyId) return null;
-  const url = apiUrl(`/journey?id=${encodeURIComponent(journeyId)}&passlist=1`);
-  try {
-    const data = await fetchJson(url, { signal });
-    const journey = data?.journey || data;
-    const passList = journey?.passList || data?.passList;
-    const section = buildSectionFromPassList(passList, journey);
-    if (!section) return null;
-    return { section, connection: null };
-  } catch (_) {
-    return null;
-  }
-}
-
-// Journey details for a specific trip (bus or train) via /connections
 export async function fetchJourneyDetails(dep, { signal } = {}) {
   if (!dep) throw new Error("fetchJourneyDetails: missing dep");
 
   const fromStationId = dep.fromStationId || appState.stationId || null;
   const fromStationName = dep.fromStationName || appState.STATION || "";
-  const to = dep.dest;
 
   const passList = Array.isArray(dep?.passList) ? dep.passList : null;
   const directSection = buildSectionFromPassList(passList);
@@ -1005,82 +1062,7 @@ export async function fetchJourneyDetails(dep, { signal } = {}) {
     return { section: directSection, connection: null };
   }
 
-  const from = fromStationId || fromStationName;
-  if (!from || !to) throw new Error("fetchJourneyDetails: missing from/to");
-
-  const tMs = dep.scheduledTime || dep.baseTime || Date.now();
-  const dt = new Date(tMs);
-  if (Number.isNaN(dt.getTime())) throw new Error("fetchJourneyDetails: invalid scheduledTime");
-
-  // Use CH timezone helpers to avoid UTC day-shift around midnight
-  const date = toCHDateYYYYMMDD(dt.getTime());
-  const time = toCHTimeHHMM(dt.getTime());
-
-  if (dep.journeyId) {
-    const viaId = await fetchJourneyDetailsById(dep.journeyId, { signal });
-    if (viaId) return viaId;
-  }
-
-  const url =
-    apiUrl("/connections") +
-    `?from=${encodeURIComponent(from)}` +
-    `&to=${encodeURIComponent(to)}` +
-    `&date=${encodeURIComponent(date)}` +
-    `&time=${encodeURIComponent(time)}` +
-    `&limit=6`;
-
-  const data = await fetchJson(url, { signal });
-  const conns = data?.connections || [];
-
-  const targetTs =
-    typeof dep.scheduledTimestamp === "number"
-      ? dep.scheduledTimestamp
-      : Math.floor(tMs / 1000);
-
-  let bestSection = null;
-  let bestConn = null;
-  let bestScore = Infinity;
-
-  for (const conn of conns) {
-    for (const section of conn?.sections || []) {
-      const j = section?.journey;
-      const depTs = section?.departure?.departureTimestamp;
-      if (typeof depTs !== "number") continue;
-
-      const hasFromStation = passListContainsStation(
-        section?.journey?.passList,
-        fromStationId,
-        fromStationName
-      );
-
-      const score =
-        Math.abs(depTs - targetTs) +
-        (lineLooksLike(dep, j) ? 0 : 3600) +
-        (hasFromStation ? 0 : 7200);
-      if (score < bestScore) {
-        bestScore = score;
-        bestSection = section;
-        bestConn = conn;
-      }
-    }
-  }
-
-  if (!bestSection) throw new Error("No journey details available for this départ");
-
-  const bestPassList = bestSection?.journey?.passList;
-  if (
-    (!Array.isArray(bestPassList) || bestPassList.length === 0) &&
-    bestSection?.journey?.id
-  ) {
-    const viaId = await fetchJourneyDetailsById(bestSection.journey.id);
-    if (viaId) return viaId;
-  }
-
-  if (bestSection) {
-    return { section: bestSection, connection: bestConn };
-  }
-
   if (directFallback) return directFallback;
 
-  throw new Error("No journey details available for this départ");
+  throw new Error("No journey details available for this départ (no GTFS pass list)");
 }

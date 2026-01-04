@@ -21,7 +21,7 @@ import {
   TRAIN_FILTER_LONG_DISTANCE,
   DEFAULT_STATION_ID,
   STATION_ID_STORAGE_KEY,
-} from "./state.v2026-01-04.js";
+} from "./rt-state.v2026-01-04.js";
 
 import {
   detectNetworkFromStation,
@@ -29,7 +29,7 @@ import {
   fetchStationboardRaw,
   buildDeparturesGrouped,
   stationboardLooksStale,
-} from "./logic.v2026-01-04.js";
+} from "./rt-logic.v2026-01-04.js";
 
 import {
   setupClock,
@@ -48,15 +48,15 @@ import {
   setupAutoFitWatcher,
   publishEmbedState,
   updateCountdownRows,
-} from "./ui.v2026-01-04.js";
+} from "./rt-ui.v2026-01-04.js";
 
-import { setupInfoButton } from "./infoBTN.v2026-01-04.js";
-import { initI18n, applyStaticTranslations, setLanguage, LANGUAGE_OPTIONS } from "./i18n.v2026-01-04.js";
+import { setupInfoButton } from "./rt-infoBTN.v2026-01-04.js";
+import { initI18n, applyStaticTranslations, setLanguage, LANGUAGE_OPTIONS } from "./rt-i18n.v2026-01-04.js";
 
 // Persist station between reloads
 const STORAGE_KEY = "mesdeparts.station";
-// Legacy wrong default id (Genève Cornavin) that was used for “Lausanne, motte”
-const LEGACY_DEFAULT_STATION_ID = "8587057";
+// Legacy defaults used before switching to GTFS stop_ids (opendata.ch ids)
+const LEGACY_DEFAULT_STATION_IDS = ["8592082", "8587057"];
 const DEFAULT_API_MODE = API_MODE_BOARD;
 const COUNTDOWN_REFRESH_MS = 5_000;
 const STALE_EMPTY_MAX_MS = 60_000; // force recovery if board stays empty this long while stationboard has entries
@@ -386,7 +386,11 @@ function applyUrlPreferences() {
 }
 
 function applyStation(name, id) {
-  const stationName = normalizeStationName(name) || DEFAULT_STATION;
+  const rawStationName = normalizeStationName(name);
+  const stationName =
+    rawStationName && rawStationName.toLowerCase() !== "lausanne, motte"
+      ? rawStationName
+      : DEFAULT_STATION;
   const storedMeta = readStoredStationMeta();
   const explicitId = typeof id === "string" ? id.trim() : null;
   const cachedIdRaw =
@@ -395,7 +399,7 @@ function applyStation(name, id) {
       : null;
   const isDefaultStation = stationName.toLowerCase() === DEFAULT_STATION.toLowerCase();
   const cachedId =
-    isDefaultStation && cachedIdRaw === LEGACY_DEFAULT_STATION_ID
+    isDefaultStation && cachedIdRaw && LEGACY_DEFAULT_STATION_IDS.includes(cachedIdRaw)
       ? null
       : cachedIdRaw;
   const inferredId = isDefaultStation ? DEFAULT_STATION_ID : null;

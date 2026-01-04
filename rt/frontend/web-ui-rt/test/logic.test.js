@@ -4,7 +4,7 @@ import {
   classifyMode,
   detectNetworkFromStation,
   parseApiDate,
-} from "../logic.v2026-01-04.js";
+} from "../rt-logic.v2026-01-04.js";
 
 // classifyMode should categorize common transport codes
 assert.equal(classifyMode("IC"), "train");

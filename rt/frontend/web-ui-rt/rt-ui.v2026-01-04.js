@@ -14,21 +14,21 @@ import {
   API_MODE_DIRECT,
   API_MODE_STORAGE_KEY,
   API_MODE_AUTO_OFF_KEY,
-} from "./state.v2026-01-04.js";
+} from "./rt-state.v2026-01-04.js";
 import {
   fetchStationSuggestions,
   fetchStationsNearby,
   fetchJourneyDetails,
   parseApiDate,
-} from "./logic.v2026-01-04.js";
+} from "./rt-logic.v2026-01-04.js";
 import {
   loadFavorites,
   addFavorite,
   removeFavorite,
   isFavorite,
   clearFavorites,
-} from "./favourites.v2026-01-04.js";
-import { t } from "./i18n.v2026-01-04.js";
+} from "./rt-favourites.v2026-01-04.js";
+import { t } from "./rt-i18n.v2026-01-04.js";
 
 const QUICK_CONTROLS_STORAGE_KEY = "mesdeparts.quickControlsCollapsed";
 let quickControlsCollapsed = false;
@@ -88,7 +88,7 @@ function normalizeLineId(dep) {
   if (typeof dep.line === "string" && dep.line.trim()) return dep.line;
   if (typeof dep.route === "string" && dep.route.trim()) return dep.route;
 
-  // transport.opendata.ch / misc variants
+  // Legacy API / misc variants
   if (typeof dep.route_short_name === "string" && dep.route_short_name.trim()) return dep.route_short_name;
   if (typeof dep.line_id === "string" && dep.line_id.trim()) return dep.line_id;
   if (typeof dep.service_line === "string" && dep.service_line.trim()) return dep.service_line;
@@ -2479,8 +2479,7 @@ export function renderDepartures(rows) {
   for (const dep of rows || []) {
     const tr = document.createElement("tr");
     tr.dataset.journeyId = dep.journeyId || "";
-    const hasDetails =
-      !!dep.journeyId || (Array.isArray(dep.passList) && dep.passList.length > 0);
+    const hasDetails = Array.isArray(dep.passList) && dep.passList.length > 0;
     tr.classList.toggle("clickable", hasDetails);
     tr.dataset.hasDetails = hasDetails ? "1" : "0";
     tr.tabIndex = hasDetails ? 0 : -1;
