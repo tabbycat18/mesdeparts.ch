@@ -52,7 +52,7 @@ router.get("/stops/search", async (req, res) => {
         FROM candidates
         ORDER BY
           group_id,
-          (parent_station IS NULL) DESC,                 -- prefer the parent row
+          (parent_station IS NULL) ASC,                  -- prefer a platform/child row
           (lower(stop_name) = lower($1)) DESC,           -- exact full-name match
           (lower(after_comma) = lower($1)) DESC,         -- exact after-comma match
           (position(',' in stop_name) = 0) DESC,         -- no-comma first

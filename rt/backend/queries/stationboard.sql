@@ -61,17 +61,10 @@ candidates AS (
       ))
     )
 ),
-trip_last AS (
-  SELECT st.trip_id, MAX(st.stop_sequence)::int AS last_seq
-  FROM public.stop_times st
-  WHERE st.trip_id IN (SELECT DISTINCT trip_id FROM candidates)
-  GROUP BY st.trip_id
-),
+-- Keep all stops, including terminus; do not drop terminating rows
 filtered AS (
   SELECT c.*
   FROM candidates c
-  JOIN trip_last tl ON tl.trip_id = c.trip_id
-  WHERE c.stop_sequence < tl.last_seq   -- ✅ drop terminating-at-this-stop rows
 ),
 deduped AS (
   SELECT DISTINCT ON (trip_id, stop_id, stop_sequence)
