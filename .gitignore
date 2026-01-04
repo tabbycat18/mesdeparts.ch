@@ -1,4 +1,17 @@
 venv/
 __pycache__/
 .DS_Store
+node_modules/
 
+# Backend/runtime artifacts
+rt/backend/node_modules/
+rt/backend/.env
+rt/backend/gtfs-rt.pb
+rt/backend/gtfs-rt.json
+
+# Large GTFS data snapshots (local only)
+rt/data/gtfs-static/
+rt/data/**/*.csv
+rt/data/**/*.zip
+!rt/data/README.md
+!rt/data/gtfs-static/README.md

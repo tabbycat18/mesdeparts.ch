@@ -2,6 +2,14 @@
 
 Static, dependency-free front-end for mesdeparts.ch. Everything in this folder is served as-is (no build step), with ES modules and versioned filenames to keep long-lived caches safe to bust.
 
+## Features
+- Stop search with suggestions and favorites (stored locally; no account).
+- Two bus views: by line (balanced by destination) or chronological; trains are always chronological.
+- Filters for platform/line/train service plus “My favorites” mode.
+- Board mode toggle (“Tableau”) for always-on displays; direct mode for one-off checks.
+- Self-hosted SBB clock + digital clock; auto-refresh every 10–20 s (~3 h horizon).
+- Multilingual (FR/DE/IT/EN), deep links via `?stationName=...&stationId=...`, installable PWA shell (API stays online).
+
 ## Entry points
 - `web-ui/index.html`: single-board experience with language switcher, favorites, filters, and the SBB clock iframe (`clock/`).
 - `web-ui/dual-board.html`: two boards side by side for kiosks/embeds, with separate station pickers and view/filter controls.
@@ -39,6 +47,12 @@ Static, dependency-free front-end for mesdeparts.ch. Everything in this folder i
 - JS/CSS filenames carry a version tag (`*.vYYYY-MM-DD-N.*`). When you bump assets, update references in `index.html`, `dual-board.html`, and the `CORE_ASSETS`/`LAZY_ASSETS` lists inside `service-worker.js`, plus the visible version tags in the HTML headers.
 - `service-worker.js` derives its cache name from the asset list; keep the list in sync with the actual files so cache busting remains automatic.
 - The UI is fully static: host this folder on any static host (Netlify/Vercel/S3/nginx/Apache). A `.htaccess` file is not used here; rely on versioned filenames for cache control.
+
+## Edge cache (Cloudflare Worker) — optional
+- What it does: proxy in front of `transport.opendata.ch` with short TTLs to reduce upstream calls when many users watch the same stop.
+- Files: `cloudflare-worker/worker.js`, `wrangler.toml` (at repo root). Not needed for FTP/static hosting.
+- Point the UI: set `window.__MD_API_BASE__ = "https://api.mesdeparts.ch"` near the top of `index.html` to use the proxy; otherwise it calls the public API.
+- Board mode uses the proxy; direct mode calls the public API and auto-reverts to board mode after ~2 minutes unless the user keeps it on.
 
 ## Behavior/UX notes
 - Board mode toggle (“Tableau”) reduces API load by using the Worker cache; direct mode is faster for one-off checks. Filters/view changes are client-side only.

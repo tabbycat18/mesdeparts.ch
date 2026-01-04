@@ -1,0 +1,16 @@
+{
+  "name": "mesdeparts-rt-backend",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "TZ=Europe/Zurich NODE_OPTIONS=--max-old-space-size=8192 node server.js",
+    "dev": "TZ=Europe/Zurich NODE_ENV=development NODE_OPTIONS=--max-old-space-size=8192 node server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "gtfs-realtime-bindings": "^1.1.1",
+    "pg": "^8.16.3"
+  }
+}
