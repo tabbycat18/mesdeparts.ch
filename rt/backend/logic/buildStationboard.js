@@ -153,11 +153,11 @@ export async function buildStationboard(locationId, options = {}) {
   const todayYmdInt = Number(todayYmd);
   const dow = now.getDay(); // 0=Sun ... 6=Sat
 
-  // 1) Resolve stop / station-group
+  // 1) Resolve stop / station-group (including RT-only via stops_union)
   const directGroupRes = await pool.query(
     `
     SELECT stop_id, stop_name, platform_code, parent_station
-    FROM public.stops
+    FROM public.stops_union
     WHERE COALESCE(parent_station, stop_id) = $1
     ORDER BY stop_name
     LIMIT 1;
@@ -175,7 +175,7 @@ export async function buildStationboard(locationId, options = {}) {
     const stopRes = await pool.query(
       `
       SELECT stop_id, stop_name, platform_code, parent_station
-      FROM public.stops
+      FROM public.stops_union
       WHERE stop_id = $1
          OR parent_station = $1
          OR LOWER(stop_name) LIKE LOWER($2)
@@ -218,7 +218,7 @@ export async function buildStationboard(locationId, options = {}) {
   const groupRes = await pool.query(
     `
     SELECT stop_id, stop_name, platform_code
-    FROM public.stops
+    FROM public.stops_union
     WHERE COALESCE(parent_station, stop_id) = $1
     ORDER BY platform_code, stop_name;
     `,

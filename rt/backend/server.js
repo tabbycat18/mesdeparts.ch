@@ -102,7 +102,7 @@ async function searchStopsPrefix(query, limit) {
         st.parent_station,
         trim(split_part(ss.stop_name, ',', 2)) AS after_comma
       FROM public.search_stops ss
-      JOIN public.stops st ON st.stop_id = ss.stop_id
+      JOIN public.stops_union st ON st.stop_id = ss.stop_id
       WHERE
         lower(ss.stop_name) LIKE lower($1) || '%'
         OR lower(trim(split_part(ss.stop_name, ',', 2))) LIKE lower($1) || '%'

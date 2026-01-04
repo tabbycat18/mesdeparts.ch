@@ -55,6 +55,45 @@ CREATE INDEX IF NOT EXISTS stops_name_idx
 CREATE INDEX IF NOT EXISTS stops_parent_idx
   ON public.stops (parent_station);
 
+-- 2b) Optional manual aliases (legacy names → GTFS stop_ids)
+CREATE TABLE IF NOT EXISTS public.stop_aliases (
+  alias          TEXT PRIMARY KEY,
+  target_stop_id TEXT NOT NULL
+);
+
+-- 2c) RT-observed stop ids (populated by loadRealtime.js; keep definition here for view dependencies)
+CREATE TABLE IF NOT EXISTS public.rt_updates (
+  trip_id         TEXT NOT NULL,
+  stop_id         TEXT NOT NULL,
+  stop_sequence   INTEGER,
+  departure_epoch BIGINT,
+  delay_sec       INTEGER,
+  seen_at         TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS rt_updates_unique_idx
+  ON public.rt_updates (trip_id, stop_id, stop_sequence, departure_epoch);
+
+CREATE INDEX IF NOT EXISTS rt_updates_stop_time_idx
+  ON public.rt_updates (stop_id, departure_epoch);
+
+CREATE INDEX IF NOT EXISTS rt_updates_trip_seq_idx
+  ON public.rt_updates (trip_id, stop_sequence);
+
+-- 2d) Unified stops view: GTFS stops + RT-only stop_ids + manual aliases
+CREATE OR REPLACE VIEW public.stops_union AS
+SELECT stop_id, stop_name, parent_station, platform_code
+FROM public.stops
+UNION
+SELECT DISTINCT ru.stop_id, ru.stop_id AS stop_name, NULL::TEXT AS parent_station, NULL::TEXT AS platform_code
+FROM public.rt_updates ru
+WHERE NOT EXISTS (
+  SELECT 1 FROM public.stops s WHERE s.stop_id = ru.stop_id
+)
+UNION
+SELECT sa.target_stop_id AS stop_id, sa.alias AS stop_name, NULL::TEXT AS parent_station, NULL::TEXT AS platform_code
+FROM public.stop_aliases sa;
+
 -- 3) routes
 CREATE TABLE public.routes (
   route_id         TEXT PRIMARY KEY,
@@ -169,7 +208,7 @@ SELECT
   COUNT(st.id) AS nb_stop_times,
   MIN(st.departure_time) AS first_dep,
   MAX(st.departure_time) AS last_dep
-FROM public.stops s
+FROM public.stops_union s
 LEFT JOIN public.stop_times st ON st.stop_id = s.stop_id
 GROUP BY s.stop_id, s.stop_name;
 

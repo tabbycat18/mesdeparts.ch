@@ -1,4 +1,5 @@
 // backend/loaders/loadRealtime.js
+import { pool } from "../db.js";
 
 const GTFS_RT_URL = "https://api.opentransportdata.swiss/la/gtfs-rt?format=JSON";
 
@@ -22,6 +23,89 @@ const CACHE_TTL_MS = Math.max(
   Number.isFinite(rawTtl) ? rawTtl : 15000,
   MIN_TTL_MS
 );
+
+const RT_RETENTION_HOURS = Number(process.env.RT_RETENTION_HOURS || "12");
+const RT_RETENTION_MS = Math.max(1, RT_RETENTION_HOURS) * 60 * 60 * 1000;
+
+let rtTableReady = false;
+let lastCleanupTs = 0;
+
+async function ensureRtUpdatesTable() {
+  if (rtTableReady) return;
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS public.rt_updates (
+      trip_id TEXT NOT NULL,
+      stop_id TEXT NOT NULL,
+      stop_sequence INTEGER,
+      departure_epoch BIGINT,
+      delay_sec INTEGER,
+      seen_at TIMESTAMPTZ DEFAULT now()
+    );
+  `);
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS rt_updates_unique_idx
+      ON public.rt_updates (trip_id, stop_id, stop_sequence, departure_epoch);
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS rt_updates_stop_time_idx
+      ON public.rt_updates (stop_id, departure_epoch);
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS rt_updates_trip_seq_idx
+      ON public.rt_updates (trip_id, stop_sequence);
+  `);
+  rtTableReady = true;
+}
+
+async function persistRtUpdates(rows) {
+  if (!Array.isArray(rows) || rows.length === 0) return;
+  try {
+    await ensureRtUpdatesTable();
+    const chunkSize = 500;
+    for (let i = 0; i < rows.length; i += chunkSize) {
+      const chunk = rows.slice(i, i + chunkSize);
+      const values = [];
+      const params = [];
+      let p = 1;
+      for (const r of chunk) {
+        values.push(
+          r.tripId,
+          r.stopId,
+          typeof r.stopSequence === "number" ? r.stopSequence : -1,
+          r.departureEpoch,
+          typeof r.delaySec === "number" ? r.delaySec : null
+        );
+        params.push(
+          `($${p}, $${p + 1}, $${p + 2}, $${p + 3}, $${p + 4})`
+        );
+        p += 5;
+      }
+      const sql = `
+        INSERT INTO public.rt_updates
+          (trip_id, stop_id, stop_sequence, departure_epoch, delay_sec)
+        VALUES ${params.join(", ")}
+        ON CONFLICT (trip_id, stop_id, stop_sequence, departure_epoch)
+        DO UPDATE SET
+          delay_sec = EXCLUDED.delay_sec,
+          seen_at = now();
+      `;
+      await pool.query(sql, values);
+    }
+
+    const now = Date.now();
+    if (now - lastCleanupTs > RT_RETENTION_MS) {
+      lastCleanupTs = now;
+      await pool.query(
+        `DELETE FROM public.rt_updates WHERE seen_at < now() - ($1 || ' milliseconds')::interval;`,
+        [RT_RETENTION_MS]
+      );
+    }
+  } catch (err) {
+    if (DEBUG_RT) {
+      console.warn("[GTFS-RT] persistRtUpdates failed", err?.message || err);
+    }
+  }
+}
 
 /**
  * Read the GTFS-RT API token from environment variables.
@@ -166,6 +250,7 @@ export async function fetchGtfsRealtimeFeed() {
  */
 export function buildDelayIndex(gtfsRtFeed) {
   const byKey = Object.create(null);
+  const rtRows = [];
 
   if (!gtfsRtFeed || !Array.isArray(gtfsRtFeed.entity)) {
     if (DEBUG_RT)
@@ -194,6 +279,16 @@ export function buildDelayIndex(gtfsRtFeed) {
 
       const delaySec = getDelaySeconds(stu);
       const updatedEpoch = getUpdatedEpoch(stu);
+
+      if (updatedEpoch !== null) {
+        rtRows.push({
+          tripId,
+          stopId: rawStopId,
+          stopSequence: typeof stopSequence === "number" ? stopSequence : null,
+          departureEpoch: updatedEpoch,
+          delaySec,
+        });
+      }
 
       for (const stopId of stopIdVariants(rawStopId)) {
         const key = `${tripId}|${stopId}|${seqPart}`;
@@ -227,6 +322,11 @@ export function buildDelayIndex(gtfsRtFeed) {
   if (DEBUG_RT) {
     console.log(`[GTFS-RT] Indexed ${Object.keys(byKey).length} delay entries`);
   }
+
+  // Best-effort persistence; do not block GTFS-RT processing if the DB write fails.
+  void persistRtUpdates(rtRows).catch((err) => {
+    if (DEBUG_RT) console.warn("[GTFS-RT] persistRtUpdates error", err?.message || err);
+  });
 
   return { byKey };
 }
