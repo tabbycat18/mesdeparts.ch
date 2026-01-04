@@ -8,16 +8,16 @@
     <link rel="apple-touch-icon" href="bus-icon-1.png" />
     <meta name="theme-color" content="#01157f" />
     <script>window.__MD_API_BASE__ = "http://localhost:3001";</script>
-    <link rel="preload" href="rt-style.v2026-01-04.css" as="style" />
-    <link rel="modulepreload" href="rt-logic.v2026-01-04.js" as="script" />
-    <link rel="modulepreload" href="rt-ui.v2026-01-04.js" />
-    <link rel="modulepreload" href="rt-state.v2026-01-04.js" />
-    <link rel="modulepreload" href="rt-i18n.v2026-01-04.js" />
-    <link rel="modulepreload" href="rt-infoBTN.v2026-01-04.js" />
-    <link rel="modulepreload" href="rt-favourites.v2026-01-04.js" />
+    <link rel="preload" href="rt-style.v2026-01-04-1.css" as="style" />
+    <link rel="modulepreload" href="rt-logic.v2026-01-04-1.js" as="script" />
+    <link rel="modulepreload" href="rt-ui.v2026-01-04-1.js" />
+    <link rel="modulepreload" href="rt-state.v2026-01-04-1.js" />
+    <link rel="modulepreload" href="rt-i18n.v2026-01-04-1.js" />
+    <link rel="modulepreload" href="rt-infoBTN.v2026-01-04-1.js" />
+    <link rel="modulepreload" href="rt-favourites.v2026-01-04-1.js" />
     <link rel="preconnect" href="https://api.mesdeparts.ch" crossorigin />
-    <link rel="modulepreload" href="rt-main.v2026-01-04.js" />
-    <link rel="stylesheet" href="rt-style.v2026-01-04.css" />
+    <link rel="modulepreload" href="rt-main.v2026-01-04-1.js" />
+    <link rel="stylesheet" href="rt-style.v2026-01-04-1.css" />
   </head>
   <body class="dual-body">
     <div class="dual-shell">
@@ -25,7 +25,7 @@
         <div>
           <div class="dual-title-row">
             <div class="dual-title">Dual board</div>
-            <div class="dual-version">v1.5.8</div>
+            <div class="dual-version">v1.5.9</div>
           </div>
           <div id="dual-status" class="dual-status" aria-live="polite"></div>
         </div>
@@ -368,12 +368,12 @@
       Afficher les contrôles
     </button>
 
-    <div class="dual-version-float" aria-label="Version">v1.5.8</div>
+    <div class="dual-version-float" aria-label="Version">v1.5.9</div>
 
     <script type="module">
-      import { fetchStationSuggestions, fetchStationsNearby } from "./rt-logic.v2026-01-04.js";
-      import { loadFavorites, addFavorite, removeFavorite, isFavorite } from "./rt-favourites.v2026-01-04.js";
-      import { LANGUAGE_OPTIONS, initI18n, setLanguage, t } from "./rt-i18n.v2026-01-04.js";
+      import { fetchStationSuggestions, fetchStationsNearby } from "./rt-logic.v2026-01-04-1.js";
+      import { loadFavorites, addFavorite, removeFavorite, isFavorite } from "./rt-favourites.v2026-01-04-1.js";
+      import { LANGUAGE_OPTIONS, initI18n, setLanguage, t } from "./rt-i18n.v2026-01-04-1.js";
       import {
         appState,
         API_MODE_BOARD,
@@ -383,8 +383,8 @@
         TRAIN_FILTER_ALL,
         TRAIN_FILTER_REGIONAL,
         TRAIN_FILTER_LONG_DISTANCE,
-      } from "./rt-state.v2026-01-04.js";
-      import { setupInfoButton } from "./rt-infoBTN.v2026-01-04.js";
+      } from "./rt-state.v2026-01-04-1.js";
+      import { setupInfoButton } from "./rt-infoBTN.v2026-01-04-1.js";
 
       const DEFAULT_LANG = initI18n();
       appState.apiMode = API_MODE_BOARD;

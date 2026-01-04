@@ -21,8 +21,8 @@ import {
   TRAIN_FILTER_REGIONAL,
   TRAIN_FILTER_LONG_DISTANCE,
   STATION_ID_STORAGE_KEY,
-} from "./rt-state.v2026-01-04.js";
-import { t } from "./rt-i18n.v2026-01-04.js";
+} from "./rt-state.v2026-01-04-1.js";
+import { t } from "./rt-i18n.v2026-01-04-1.js";
 
 // API base can be overridden by setting window.__MD_API_BASE__ before scripts load.
 // The RT UI only talks to the GTFS/Neon backend; no transport.opendata.ch fallback.

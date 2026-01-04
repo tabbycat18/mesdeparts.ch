@@ -21,7 +21,7 @@ import {
   TRAIN_FILTER_LONG_DISTANCE,
   DEFAULT_STATION_ID,
   STATION_ID_STORAGE_KEY,
-} from "./rt-state.v2026-01-04.js";
+} from "./rt-state.v2026-01-04-1.js";
 
 import {
   detectNetworkFromStation,
@@ -29,7 +29,7 @@ import {
   fetchStationboardRaw,
   buildDeparturesGrouped,
   stationboardLooksStale,
-} from "./rt-logic.v2026-01-04.js";
+} from "./rt-logic.v2026-01-04-1.js";
 
 import {
   setupClock,
@@ -48,10 +48,10 @@ import {
   setupAutoFitWatcher,
   publishEmbedState,
   updateCountdownRows,
-} from "./rt-ui.v2026-01-04.js";
+} from "./rt-ui.v2026-01-04-1.js";
 
-import { setupInfoButton } from "./rt-infoBTN.v2026-01-04.js";
-import { initI18n, applyStaticTranslations, setLanguage, LANGUAGE_OPTIONS } from "./rt-i18n.v2026-01-04.js";
+import { setupInfoButton } from "./rt-infoBTN.v2026-01-04-1.js";
+import { initI18n, applyStaticTranslations, setLanguage, LANGUAGE_OPTIONS } from "./rt-i18n.v2026-01-04-1.js";
 
 // Persist station between reloads
 const STORAGE_KEY = "mesdeparts.station";

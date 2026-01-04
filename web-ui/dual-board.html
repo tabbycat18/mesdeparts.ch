@@ -6,18 +6,27 @@
     <title>Mes Départs — Dual board</title>
     <link rel="icon" type="image/svg+xml" href="bus-icon-1.svg" />
     <link rel="apple-touch-icon" href="bus-icon-1.png" />
+    <link rel="manifest" href="manifest.webmanifest" />
     <meta name="theme-color" content="#01157f" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+    <meta name="application-name" content="Mes Départs" />
+    <meta
+      name="description"
+      content="Double tableau de départs Mes Départs avec horloge sbbUhr, installable en PWA."
+    />
     <script>window.__MD_API_BASE__ = "https://api.mesdeparts.ch";</script>
-    <link rel="preload" href="style.v2026-01-04.css" as="style" />
-    <link rel="modulepreload" href="logic.v2026-01-04.js" as="script" />
-    <link rel="modulepreload" href="ui.v2026-01-04.js" />
-    <link rel="modulepreload" href="state.v2026-01-04.js" />
-    <link rel="modulepreload" href="i18n.v2026-01-04.js" />
-    <link rel="modulepreload" href="infoBTN.v2026-01-04.js" />
-    <link rel="modulepreload" href="favourites.v2026-01-04.js" />
+    <link rel="preload" href="style.v2026-01-04-1.css" as="style" />
+    <link rel="modulepreload" href="logic.v2026-01-04-1.js" as="script" />
+    <link rel="modulepreload" href="ui.v2026-01-04-1.js" />
+    <link rel="modulepreload" href="state.v2026-01-04-1.js" />
+    <link rel="modulepreload" href="i18n.v2026-01-04-1.js" />
+    <link rel="modulepreload" href="infoBTN.v2026-01-04-1.js" />
+    <link rel="modulepreload" href="favourites.v2026-01-04-1.js" />
     <link rel="preconnect" href="https://api.mesdeparts.ch" crossorigin />
-    <link rel="modulepreload" href="main.v2026-01-04.js" />
-    <link rel="stylesheet" href="style.v2026-01-04.css" />
+    <link rel="modulepreload" href="main.v2026-01-04-1.js" />
+    <link rel="stylesheet" href="style.v2026-01-04-1.css" />
   </head>
   <body class="dual-body">
     <div class="dual-shell">
@@ -25,7 +34,7 @@
         <div>
           <div class="dual-title-row">
             <div class="dual-title">Dual board</div>
-            <div class="dual-version">v1.5.8</div>
+            <div class="dual-version">v1.5.9</div>
           </div>
           <div id="dual-status" class="dual-status" aria-live="polite"></div>
         </div>
@@ -368,12 +377,12 @@
       Afficher les contrôles
     </button>
 
-    <div class="dual-version-float" aria-label="Version">v1.5.8</div>
+    <div class="dual-version-float" aria-label="Version">v1.5.9</div>
 
     <script type="module">
-      import { fetchStationSuggestions, fetchStationsNearby } from "./logic.v2026-01-04.js";
-      import { loadFavorites, addFavorite, removeFavorite, isFavorite } from "./favourites.v2026-01-04.js";
-      import { LANGUAGE_OPTIONS, initI18n, setLanguage, t } from "./i18n.v2026-01-04.js";
+      import { fetchStationSuggestions, fetchStationsNearby } from "./logic.v2026-01-04-1.js";
+      import { loadFavorites, addFavorite, removeFavorite, isFavorite } from "./favourites.v2026-01-04-1.js";
+      import { LANGUAGE_OPTIONS, initI18n, setLanguage, t } from "./i18n.v2026-01-04-1.js";
       import {
         appState,
         API_MODE_BOARD,
@@ -383,8 +392,8 @@
         TRAIN_FILTER_ALL,
         TRAIN_FILTER_REGIONAL,
         TRAIN_FILTER_LONG_DISTANCE,
-      } from "./state.v2026-01-04.js";
-      import { setupInfoButton } from "./infoBTN.v2026-01-04.js";
+      } from "./state.v2026-01-04-1.js";
+      import { setupInfoButton } from "./infoBTN.v2026-01-04-1.js";
 
       const DEFAULT_LANG = initI18n();
       appState.apiMode = API_MODE_BOARD;
@@ -1649,6 +1658,34 @@
         document.addEventListener("pointerdown", enterFs, { once: true });
         document.addEventListener("keydown", enterFs, { once: true });
         setStatus(t("dualStatusTapFullscreen"));
+      }
+    </script>
+    <script>
+      if ("serviceWorker" in navigator) {
+        const path = window.location.pathname || "/";
+        const isClock = path.startsWith("/clock");
+        const allowed =
+          path === "/" ||
+          path === "/index.html" ||
+          path === "/dual-board.html" ||
+          path.startsWith("/?") ||
+          path.startsWith("/dual-board.html?");
+
+        const registerSW = () => {
+          navigator.serviceWorker
+            .register("/service-worker.js")
+            .catch((err) => {
+              console.error("Service worker registration failed", err);
+            });
+        };
+
+        if (!isClock && allowed) {
+          if (document.readyState === "complete" || document.readyState === "interactive") {
+            registerSW();
+          } else {
+            document.addEventListener("DOMContentLoaded", registerSW, { once: true });
+          }
+        }
       }
     </script>
   </body>

@@ -14,21 +14,21 @@ import {
   API_MODE_DIRECT,
   API_MODE_STORAGE_KEY,
   API_MODE_AUTO_OFF_KEY,
-} from "./rt-state.v2026-01-04.js";
+} from "./rt-state.v2026-01-04-1.js";
 import {
   fetchStationSuggestions,
   fetchStationsNearby,
   fetchJourneyDetails,
   parseApiDate,
-} from "./rt-logic.v2026-01-04.js";
+} from "./rt-logic.v2026-01-04-1.js";
 import {
   loadFavorites,
   addFavorite,
   removeFavorite,
   isFavorite,
   clearFavorites,
-} from "./rt-favourites.v2026-01-04.js";
-import { t } from "./rt-i18n.v2026-01-04.js";
+} from "./rt-favourites.v2026-01-04-1.js";
+import { t } from "./rt-i18n.v2026-01-04-1.js";
 
 const QUICK_CONTROLS_STORAGE_KEY = "mesdeparts.quickControlsCollapsed";
 let quickControlsCollapsed = false;
