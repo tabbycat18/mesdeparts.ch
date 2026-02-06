@@ -1002,7 +1002,7 @@ export function t(key) {
   // Italian tweaks: shorter destination label on mobile, different remark label on desktop
   if (currentLang === "it") {
     if (key === "columnDestination") {
-      return isMobileViewport() ? "Destinaz." : "Destinazione";
+      return isMobileViewport() ? "Destinazione" : "Destinazione";
     }
     if (key === "columnRemark") {
       return isMobileViewport() ? entry.it : "Informazione";

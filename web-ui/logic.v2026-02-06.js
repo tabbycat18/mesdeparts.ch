@@ -22,8 +22,8 @@ import {
   TRAIN_FILTER_LONG_DISTANCE,
   API_MODE_DIRECT,
   STATION_ID_STORAGE_KEY,
-} from "./state.v2026-01-04-1.js";
-import { t } from "./i18n.v2026-01-04-1.js";
+} from "./state.v2026-02-06.js";
+import { t } from "./i18n.v2026-02-06.js";
 
 // API base can be overridden by setting window.__MD_API_BASE__ before scripts load
 const DIRECT_API_BASE = "https://transport.opendata.ch/v1";
@@ -951,7 +951,18 @@ export function buildDeparturesGrouped(data, viewMode = VIEW_MODE_LINE) {
       .filter((d) => d.mode === "bus")
       .slice()
       .sort(lineDestComparator);
-    return sortedAll.slice(0, MIN_ROWS);
+    const keyOf = (d) =>
+      d && (d.journeyId || `${d.line || ""}|${d.dest || ""}|${d.scheduledTime || ""}`);
+    const seen = new Set(flat.map((d) => keyOf(d)));
+    for (const dep of sortedAll) {
+      if (flat.length >= MIN_ROWS) break;
+      const key = keyOf(dep);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      flat.push(dep);
+    }
+    flat.sort(lineDestComparator);
+    return flat;
   }
 
   return flat;

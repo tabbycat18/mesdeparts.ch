@@ -14,21 +14,21 @@ import {
   API_MODE_DIRECT,
   API_MODE_STORAGE_KEY,
   API_MODE_AUTO_OFF_KEY,
-} from "./state.v2026-01-04-1.js";
+} from "./state.v2026-02-06.js";
 import {
   fetchStationSuggestions,
   fetchStationsNearby,
   fetchJourneyDetails,
   parseApiDate,
-} from "./logic.v2026-01-04-1.js";
+} from "./logic.v2026-02-06.js";
 import {
   loadFavorites,
   addFavorite,
   removeFavorite,
   isFavorite,
   clearFavorites,
-} from "./favourites.v2026-01-04-1.js";
-import { t } from "./i18n.v2026-01-04-1.js";
+} from "./favourites.v2026-02-06.js";
+import { t } from "./i18n.v2026-02-06.js";
 
 const QUICK_CONTROLS_STORAGE_KEY = "mesdeparts.quickControlsCollapsed";
 let quickControlsCollapsed = false;
@@ -144,6 +144,7 @@ export function ensureBoardFitsViewport() {
 
     // Disable auto-zoom/scale; just ensure we are not in tight mode
     body.classList.remove(LAYOUT_TIGHT_CLASS);
+    syncDestinationColumnWidth();
   });
 }
 
@@ -811,7 +812,10 @@ function positionFavoritesPopover() {
   const popRect = popover.getBoundingClientRect();
 
   const maxLeft = Math.max(margin, viewportWidth - popRect.width - margin);
-  const left = Math.max(margin, Math.min(btnRect.left, maxLeft));
+  const preferRightAlign = viewportWidth <= 520;
+  const left = preferRightAlign
+    ? Math.min(Math.max(margin, btnRect.right - popRect.width), maxLeft)
+    : Math.max(margin, Math.min(btnRect.left, maxLeft));
 
   const maxTop = Math.max(margin, viewportHeight - popRect.height - margin);
   const desiredTop = btnRect.bottom + margin;
@@ -2368,6 +2372,37 @@ const lastRenderedState = {
   hideDeparture: null,
 };
 
+function syncDestinationColumnWidth() {
+  const th = document.querySelector("th.col-dest");
+  if (!th) return;
+  const isMobile = window.matchMedia && window.matchMedia("(max-width: 520px)").matches;
+  if (!isMobile) {
+    document.documentElement.style.removeProperty("--dest-col-width");
+    return;
+  }
+  const rect = th.getBoundingClientRect();
+  if (!rect || !rect.width) return;
+  const width = Math.ceil(rect.width);
+  document.documentElement.style.setProperty("--dest-col-width", `${width}px`);
+}
+
+function appendDestinationWithBreaks(target, dest) {
+  if (!target) return;
+  target.textContent = "";
+  const text = String(dest || "");
+  if (!text) return;
+  const parts = text.split(/([,\\/\\-–—])/);
+  for (const part of parts) {
+    if (!part) continue;
+    if (part === "," || part === "-" || part === "/" || part === "–" || part === "—") {
+      target.appendChild(document.createTextNode(part));
+      target.appendChild(document.createElement("wbr"));
+      continue;
+    }
+    target.appendChild(document.createTextNode(part));
+  }
+}
+
 function getRowKey(dep) {
   if (!dep) return "";
   if (dep.journeyId) return dep.journeyId;
@@ -2424,6 +2459,8 @@ export function renderDepartures(rows) {
   updatePlatformHeader(appState.lastBoardIsTrain);
   const hideDeparture = !!appState.hideBusDeparture && !appState.lastBoardIsTrain;
   setDepartureColumnVisibility(hideDeparture);
+  const departuresTable = document.querySelector("table.departures");
+  if (departuresTable) departuresTable.classList.toggle("is-train-board", !!appState.lastBoardIsTrain);
   lastRenderedState.boardIsTrain = appState.lastBoardIsTrain;
   lastRenderedState.hideDeparture = hideDeparture;
   lastRenderedState.rowKeys = [];
@@ -2569,7 +2606,7 @@ export function renderDepartures(rows) {
     // Destination
     const tdTo = document.createElement("td");
     tdTo.className = "col-to-cell";
-    tdTo.textContent = dep.dest || "";
+    appendDestinationWithBreaks(tdTo, dep.dest || "");
 
     // Time
     const tdTime = document.createElement("td");
