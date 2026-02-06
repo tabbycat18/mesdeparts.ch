@@ -300,19 +300,21 @@ body {
 .departures-scroller {
   width: 100%;
   overflow-x: auto;
+  overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
 }
 
 .departures {
-  width: 100%;
+  width: max-content;
+  min-width: 100%;
   border-collapse: collapse;
   margin-top: 4px;
 }
 
-/* Keep table usable on mobile: clamp width to ~iPhone 16 Pro Max */
+/* Keep table usable on mobile: let it overflow horizontally instead of wrapping */
 @media (max-width: 540px) {
   .departures {
-    min-width: min(440px, 100%);
+    min-width: 560px;
   }
 }
 
@@ -321,6 +323,7 @@ body {
   font-weight: 600;
   padding: 5px 6px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+  white-space: nowrap;
 }
 
 .departures thead tr {
@@ -556,19 +559,17 @@ body {
 
 .col-dest,
 .col-to-cell {
-  width: clamp(118px, 42vw, 160px);
-  max-width: 160px;
-  min-width: 0;
+  width: min-content;
   white-space: normal;
   line-height: 1.18;
-  overflow-wrap: break-word;
-  word-break: break-word;
+  overflow-wrap: normal;
+  word-break: normal;
+  hyphens: manual;
 }
 
 .departures.is-hide-departure .col-dest,
 .departures.is-hide-departure .col-to-cell {
-  width: clamp(140px, 46vw, 186px);
-  max-width: 186px;
+  width: min-content;
 }
 
 .departures.is-hide-departure .col-platform,
@@ -620,12 +621,12 @@ body {
 
   .col-dest,
   .col-to-cell {
-    max-width: 44vw;
+    width: min-content;
   }
 
   .departures.is-hide-departure .col-dest,
   .departures.is-hide-departure .col-to-cell {
-    max-width: 52vw;
+    width: min-content;
   }
 
   .departures.is-hide-departure .col-platform,
