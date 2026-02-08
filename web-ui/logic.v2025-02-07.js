@@ -22,8 +22,8 @@ import {
   TRAIN_FILTER_LONG_DISTANCE,
   API_MODE_DIRECT,
   STATION_ID_STORAGE_KEY,
-} from "./state.v2026-02-06.js";
-import { t } from "./i18n.v2026-02-06.js";
+} from "./state.v2025-02-07.js";
+import { t } from "./i18n.v2025-02-07.js";
 
 // API base can be overridden by setting window.__MD_API_BASE__ before scripts load
 const DIRECT_API_BASE = "https://transport.opendata.ch/v1";
@@ -404,6 +404,29 @@ function formatPlannedTime(d) {
   });
 }
 
+function normalizeStatus(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function hasCancelStatus(value) {
+  const status = normalizeStatus(value);
+  return status ? status.includes("cancel") : false;
+}
+
+function isCancelledEntry(entry, stop, prognosis) {
+  if (stop?.cancelled === true || stop?.canceled === true) return true;
+  if (prognosis?.cancelled === true || prognosis?.canceled === true) return true;
+  if (entry?.cancelled === true || entry?.canceled === true) return true;
+  if (entry?.prognosis?.cancelled === true || entry?.prognosis?.canceled === true) return true;
+
+  if (hasCancelStatus(prognosis?.status)) return true;
+  if (hasCancelStatus(stop?.status)) return true;
+  if (hasCancelStatus(entry?.status)) return true;
+  if (hasCancelStatus(entry?.prognosis?.status)) return true;
+
+  return false;
+}
+
 function isInvalidStationboardError(err) {
   const status = typeof err?.status === "number" ? err.status : null;
   if (status === 400 || status === 404) return true;
@@ -726,12 +749,7 @@ export function buildDeparturesGrouped(data, viewMode = VIEW_MODE_LINE) {
     let remark = "";
     let status = null; // "cancelled" | "delay" | "early" | null
 
-    const isCancelled =
-      stop.cancelled === true ||
-      prog.cancelled === true ||
-      (typeof prog.status === "string" && prog.status.toLowerCase() === "cancelled") ||
-      entry.cancelled === true ||
-      (entry.prognosis && entry.prognosis.cancelled === true);
+    const isCancelled = isCancelledEntry(entry, stop, prog);
 
     if (isCancelled) {
       remark = t("remarkCancelled");
