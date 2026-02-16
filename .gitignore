@@ -20,3 +20,5 @@ rt/data/**/*.csv
 rt/data/**/*.zip
 !rt/data/README.md
 !rt/data/gtfs-static/README.md
+
+rt/data/gtfs-static-OLD/
