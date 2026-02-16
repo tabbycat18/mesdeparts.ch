@@ -255,14 +255,80 @@ CREATE TEMP TABLE _import_stop_times (
   drop_off_type TEXT
 );
 \\copy _import_stop_times FROM '${CLEAN_DIR}/stop_times.txt' WITH (FORMAT csv, HEADER true)
-INSERT INTO public.gtfs_stop_times_stage (trip_id, arrival_time, departure_time, stop_id, stop_sequence, pickup_type, drop_off_type)
-SELECT
-  NULLIF(trip_id, ''),
-  NULLIF(arrival_time, ''),
-  NULLIF(departure_time, ''),
-  NULLIF(stop_id, ''),
-  NULLIF(stop_sequence, '')::INTEGER,
-  NULLIF(pickup_type, '')::INTEGER,
-  NULLIF(drop_off_type, '')::INTEGER
-FROM _import_stop_times;
+DO \$\$
+DECLARE
+  cols TEXT;
+  exprs TEXT;
+BEGIN
+  SELECT string_agg(quote_ident(c.column_name), ', ' ORDER BY c.ordinal_position)
+  INTO cols
+  FROM information_schema.columns c
+  WHERE c.table_schema = 'public'
+    AND c.table_name = 'gtfs_stop_times_stage'
+    AND c.column_name IN (
+      'trip_id',
+      'arrival_time',
+      'departure_time',
+      'stop_id',
+      'stop_sequence',
+      'pickup_type',
+      'drop_off_type',
+      'arrival_time_seconds',
+      'departure_time_seconds'
+    );
+
+  SELECT string_agg(
+    CASE c.column_name
+      WHEN 'trip_id' THEN 'NULLIF(trip_id, '''')'
+      WHEN 'arrival_time' THEN 'NULLIF(arrival_time, '''')'
+      WHEN 'departure_time' THEN 'NULLIF(departure_time, '''')'
+      WHEN 'stop_id' THEN 'NULLIF(stop_id, '''')'
+      WHEN 'stop_sequence' THEN 'NULLIF(stop_sequence, '''')::INTEGER'
+      WHEN 'pickup_type' THEN 'NULLIF(pickup_type, '''')::INTEGER'
+      WHEN 'drop_off_type' THEN 'NULLIF(drop_off_type, '''')::INTEGER'
+      WHEN 'arrival_time_seconds' THEN
+        'CASE
+           WHEN NULLIF(arrival_time, '''') IS NULL THEN NULL
+           WHEN arrival_time ~ ''^[0-9]{1,3}:[0-9]{2}(:[0-9]{2})?$'' THEN
+             split_part(arrival_time, '':'', 1)::INT * 3600 +
+             split_part(arrival_time, '':'', 2)::INT * 60 +
+             COALESCE(NULLIF(split_part(arrival_time, '':'', 3), '''')::INT, 0)
+           ELSE NULL
+         END'
+      WHEN 'departure_time_seconds' THEN
+        'CASE
+           WHEN NULLIF(departure_time, '''') IS NULL THEN NULL
+           WHEN departure_time ~ ''^[0-9]{1,3}:[0-9]{2}(:[0-9]{2})?$'' THEN
+             split_part(departure_time, '':'', 1)::INT * 3600 +
+             split_part(departure_time, '':'', 2)::INT * 60 +
+             COALESCE(NULLIF(split_part(departure_time, '':'', 3), '''')::INT, 0)
+           ELSE NULL
+         END'
+      ELSE 'NULL'
+    END,
+    ', ' ORDER BY c.ordinal_position
+  )
+  INTO exprs
+  FROM information_schema.columns c
+  WHERE c.table_schema = 'public'
+    AND c.table_name = 'gtfs_stop_times_stage'
+    AND c.column_name IN (
+      'trip_id',
+      'arrival_time',
+      'departure_time',
+      'stop_id',
+      'stop_sequence',
+      'pickup_type',
+      'drop_off_type',
+      'arrival_time_seconds',
+      'departure_time_seconds'
+    );
+
+  EXECUTE format(
+    'INSERT INTO public.gtfs_stop_times_stage (%s) SELECT %s FROM _import_stop_times',
+    cols,
+    exprs
+  );
+END
+\$\$;
 PSQL

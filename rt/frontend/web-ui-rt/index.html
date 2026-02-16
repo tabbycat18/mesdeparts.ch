@@ -7,7 +7,6 @@
     <link rel="icon" type="image/svg+xml" href="bus-icon-1.svg" />
     <link rel="apple-touch-icon" href="bus-icon-1.png" />
     <link rel="manifest" href="manifest.webmanifest" />
-    <link rel="preconnect" href="https://api.mesdeparts.ch" crossorigin />
     <link rel="modulepreload" href="main.v2025-02-07.js" />
     <link rel="prefetch" href="clock/index.html" as="document" />
     <link rel="prefetch" href="clock/js/sbbUhr-1.3.js" as="script" />
@@ -40,7 +39,7 @@
         }
       })();
     </script>
-    <script>window.__MD_API_BASE__ = "https://api.mesdeparts.ch";</script>
+    <script>window.__MD_API_BASE__ = window.__MD_API_BASE__ || "";</script>
     <link rel="stylesheet" href="style.v2025-02-07.css" />
   </head>
   <body>

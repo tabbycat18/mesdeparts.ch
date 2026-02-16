@@ -1,7 +1,6 @@
 // backend/loaders/loadRealtime.js
 import { pool } from "../db.js";
-
-const GTFS_RT_URL = "https://api.opentransportdata.swiss/la/gtfs-rt?format=JSON";
+import { fetchTripUpdates } from "../src/rt/fetchTripUpdates.js";
 
 // Set DEBUG_RT=1 if you want logs
 const DEBUG_RT = process.env.DEBUG_RT === "1";
@@ -108,23 +107,6 @@ async function persistRtUpdates(rows) {
 }
 
 /**
- * Read the GTFS-RT API token from environment variables.
- * You should set one of:
- *   - GTFS_RT_TOKEN
- *   - OPENDATA_SWISS_TOKEN
- */
-function getApiToken() {
-  const token =
-    process.env.GTFS_RT_TOKEN || process.env.OPENDATA_SWISS_TOKEN || "";
-  if (!token && DEBUG_RT) {
-    console.warn(
-      "[GTFS-RT] Missing token (GTFS_RT_TOKEN / OPENDATA_SWISS_TOKEN)."
-    );
-  }
-  return token;
-}
-
-/**
  * Some feeds may use stop_id without platform suffix.
  * Example DB: 8501037:0:3  (platform 3)
  * Feed may use: 8501037:0   (no platform)
@@ -172,6 +154,12 @@ function getTripUpdate(entity) {
   return pick(entity, "trip_update", "tripUpdate") || null;
 }
 
+function getTripScheduleRelationship(tripUpdate) {
+  const tripObj = pick(tripUpdate, "trip", "trip") || null;
+  const rel = tripObj ? pick(tripObj, "schedule_relationship", "scheduleRelationship") : null;
+  return typeof rel === "string" ? rel.toUpperCase() : "";
+}
+
 function getStopTimeUpdates(tripUpdate) {
   const u = pick(tripUpdate, "stop_time_update", "stopTimeUpdate");
   return Array.isArray(u) ? u : [];
@@ -212,32 +200,18 @@ function getUpdatedEpoch(stu) {
 }
 
 /**
- * Fetch the GTFS-RT feed from opentransportdata.swiss as JSON.
+ * Fetch the GTFS-RT trip-updates feed through the M1 wrapper.
  */
 export async function fetchGtfsRealtimeFeed() {
-  const token = getApiToken();
-  if (!token) {
-    throw new Error(
-      "[GTFS-RT] Missing API token. Set GTFS_RT_TOKEN or OPENDATA_SWISS_TOKEN."
-    );
-  }
-
-  const res = await fetch(GTFS_RT_URL, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(
-      `[GTFS-RT] HTTP ${res.status} when fetching GTFS-RT: ${body.slice(0, 200)}`
-    );
-  }
-
-  const data = await res.json();
+  const data = await fetchTripUpdates();
 
   if (DEBUG_RT) {
     const keys = Object.keys(data || {});
-    const entityCount = Array.isArray(data?.entity) ? data.entity.length : 0;
+    const entityCount = Array.isArray(data?.entities)
+      ? data.entities.length
+      : Array.isArray(data?.entity)
+        ? data.entity.length
+        : 0;
     console.log("[GTFS-RT] feed keys:", keys);
     console.log("[GTFS-RT] entity count:", entityCount);
   }
@@ -250,24 +224,33 @@ export async function fetchGtfsRealtimeFeed() {
  */
 export function buildDelayIndex(gtfsRtFeed) {
   const byKey = Object.create(null);
+  const cancelledTripIds = new Set();
   const rtRows = [];
+  const entities = Array.isArray(gtfsRtFeed?.entities)
+    ? gtfsRtFeed.entities
+    : Array.isArray(gtfsRtFeed?.entity)
+      ? gtfsRtFeed.entity
+      : [];
 
-  if (!gtfsRtFeed || !Array.isArray(gtfsRtFeed.entity)) {
+  if (!gtfsRtFeed || entities.length === 0) {
     if (DEBUG_RT)
       console.warn("[GTFS-RT] Unexpected feed shape (no entity array).");
-    return { byKey };
+    return { byKey, cancelledTripIds };
   }
 
   /* ==========================================
      B) Replace inner loop (your requested loop)
      ========================================== */
-  for (const entity of gtfsRtFeed.entity) {
+  for (const entity of entities) {
     const tu = getTripUpdate(entity);
     if (!tu) continue;
 
     const tripObj = pick(tu, "trip", "trip");
     const tripId = tripObj ? pick(tripObj, "trip_id", "tripId") || null : null;
     if (!tripId) continue;
+    if (getTripScheduleRelationship(tu) === "CANCELED") {
+      cancelledTripIds.add(String(tripId));
+    }
 
     const updates = getStopTimeUpdates(tu);
     for (const stu of updates) {
@@ -328,7 +311,7 @@ export function buildDelayIndex(gtfsRtFeed) {
     if (DEBUG_RT) console.warn("[GTFS-RT] persistRtUpdates error", err?.message || err);
   });
 
-  return { byKey };
+  return { byKey, cancelledTripIds };
 }
 
 export function getDelayForStop(delayIndex, tripId, stopId, stopSequence) {

@@ -57,6 +57,7 @@ import { initI18n, applyStaticTranslations, setLanguage, LANGUAGE_OPTIONS } from
 const STORAGE_KEY = "mesdeparts.station";
 // Legacy wrong default id (Genève Cornavin) that was used for “Lausanne, motte”
 const LEGACY_DEFAULT_STATION_ID = "8587057";
+const LEGACY_DEFAULT_STATION_NAME = "Lausanne, motte";
 const DEFAULT_API_MODE = API_MODE_BOARD;
 const COUNTDOWN_REFRESH_MS = 5_000;
 const STALE_EMPTY_MAX_MS = 60_000; // force recovery if board stays empty this long while stationboard has entries
@@ -385,7 +386,7 @@ function applyUrlPreferences() {
   }
 }
 
-function applyStation(name, id) {
+function applyStation(name, id, { syncUrl = false } = {}) {
   const stationName = normalizeStationName(name) || DEFAULT_STATION;
   const storedMeta = readStoredStationMeta();
   const explicitId = typeof id === "string" ? id.trim() : null;
@@ -419,7 +420,9 @@ function applyStation(name, id) {
   emptyBoardRetryStation = null;
 
   persistStationSelection(stationName, appState.stationId);
-  updateUrlWithStation(stationName, appState.stationId);
+  if (syncUrl) {
+    updateUrlWithStation(stationName, appState.stationId);
+  }
 
   updateStationTitle();
 }
@@ -655,11 +658,15 @@ function refreshDeparturesFromCache({ allowFetch = true, skipFilters = false, sk
 
   const urlStation = getStationFromUrl();
   // Station from storage
-  const stored = localStorage.getItem(STORAGE_KEY);
+  const storedRaw = localStorage.getItem(STORAGE_KEY);
+  const stored = normalizeStationName(storedRaw);
+  const storedIsLegacyDefault =
+    !!stored && stored.toLowerCase() === LEGACY_DEFAULT_STATION_NAME.toLowerCase();
+  const initialStored = storedIsLegacyDefault ? null : stored;
   if (urlStation) {
-    applyStation(urlStation.name || stored || DEFAULT_STATION, urlStation.id || null);
+    applyStation(urlStation.name || initialStored || DEFAULT_STATION, urlStation.id || null);
   } else {
-    applyStation(stored || DEFAULT_STATION);
+    applyStation(initialStored || DEFAULT_STATION);
   }
   applyUrlPreferences();
 
@@ -686,7 +693,7 @@ function refreshDeparturesFromCache({ allowFetch = true, skipFilters = false, sk
   });
 
   setupStationSearch((name, id) => {
-    applyStation(name, id);
+    applyStation(name, id, { syncUrl: true });
     refreshDepartures();
   });
 

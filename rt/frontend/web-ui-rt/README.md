@@ -18,7 +18,7 @@ Static, dependency-free front-end for mesdeparts.ch. Everything in this folder i
 ## Architecture (versioned files)
 - `main.v*.js`: boot; reads URL/localStorage defaults (`stationName`/`stationId`, language), wires event handlers, starts refresh + countdown loops, and toggles board/direct API mode (auto-switches back to board mode after ~2 min unless overridden).
 - `state.v*.js`: shared config/constants (refresh cadence, horizons, view modes, thresholds) and mutable `appState`.
-- `logic.v*.js`: transport.opendata.ch client (or Cloudflare proxy when board mode is on), station resolve/nearby search, journey details fallback, delay/remark computation, grouping/sorting, and network detection for line colors.
+- `logic.v*.js`: `rt/backend` client (`/api/stops/search`, `/api/stops/nearby`, `/api/stationboard`), station resolve/nearby search, delay/remark computation, grouping/sorting, and network detection for line colors.
 - `ui.v*.js`: DOM rendering of the board, clocks, station search with suggestions/nearby, filters (line/platform/train service), favorites popovers, view toggle, auto-fit watcher, and embed state publication.
 - `i18n.v*.js`: minimal translations (FR/DE/IT/EN) + language persistence.
 - `favourites.v*.js`: localStorage (`md_favorites_v1`) helpers; no backend.
@@ -27,11 +27,11 @@ Static, dependency-free front-end for mesdeparts.ch. Everything in this folder i
 - `clock/`: self-hosted SBB clock assets (Apache 2.0); cached by the service worker for offline/instant loads.
 
 ## Data & refresh flow
-- Default station is `Lausanne, motte` (id `8592082`); query params or stored values override it. Deep links use `?stationName=...&stationId=...`.
-- API base defaults to `https://transport.opendata.ch/v1`; override in HTML with `window.__MD_API_BASE__ = "https://api.mesdeparts.ch";` (Cloudflare Worker cache). Board mode uses that proxy; direct mode hits the public API and auto-reverts to board mode after ~2 minutes unless explicitly kept.
-- `refreshDepartures` calls `/stationboard` (limit tuned to UI), rebuilds grouped rows (3 h horizon, train/bus split, line/platform filters, favorites-only mode, train service filters) and renders. Countdown column updates every 5 s from cached data.
-- Stale board guard: if the stationboard looks “empty because everything is already in the past”, the UI triggers a cache-bypassing refetch at most once per minute per station to recover from sticky caches and will fall back to a direct (non-proxy) fetch if the board stays empty for ~1 minute.
-- Station search uses `/locations` (with debounced caching) and an optional geolocation helper via `/locations?x/y`. Journey details overlay falls back to `/journey` or `/connections` when `passList` is missing.
+- Default station is `Lausanne, motte`; query params or stored values override it. Deep links use `?stationName=...&stationId=...`.
+- API base defaults to same-origin in deployment; on `localhost` it auto-targets `http://localhost:3001`. Override with `window.__MD_API_BASE__ = "https://your-backend-host"` when needed.
+- `refreshDepartures` calls `/api/stationboard` (limit tuned to UI), rebuilds grouped rows (3 h horizon, train/bus split, line/platform filters, favorites-only mode, train service filters) and renders. Countdown column updates every 5 s from cached data.
+- Stale board guard: if the board looks stale/empty, the UI triggers a cache-bypassing refetch at most once per minute per station.
+- Station search uses `/api/stops/search` and geolocation helper via `/api/stops/nearby`.
 - Embeds: pages add a `dual-embed` class when framed; `publishEmbedState` exposes current board state to the parent.
 
 ## Running locally
@@ -48,11 +48,9 @@ Static, dependency-free front-end for mesdeparts.ch. Everything in this folder i
 - `service-worker.js` derives its cache name from the asset list; keep the list in sync with the actual files so cache busting remains automatic.
 - The UI is fully static: host this folder on any static host (Netlify/Vercel/S3/nginx/Apache). A `.htaccess` file is not used here; rely on versioned filenames for cache control.
 
-## Edge cache (Cloudflare Worker) — optional
-- What it does: proxy in front of `transport.opendata.ch` with short TTLs to reduce upstream calls when many users watch the same stop.
-- Files: `cloudflare-worker/worker.js`, `wrangler.toml` (at repo root). Not needed for FTP/static hosting.
-- Point the UI: set `window.__MD_API_BASE__ = "https://api.mesdeparts.ch"` near the top of `index.html` to use the proxy; otherwise it calls the public API.
-- Board mode uses the proxy; direct mode calls the public API and auto-reverts to board mode after ~2 minutes unless the user keeps it on.
+## API target
+- This UI is now wired for `rt/backend` API routes only.
+- It is not using the old `/locations` + `/stationboard` contract anymore.
 
 ## Behavior/UX notes
 - Board mode toggle (“Tableau”) reduces API load by using the Worker cache; direct mode is faster for one-off checks. Filters/view changes are client-side only.

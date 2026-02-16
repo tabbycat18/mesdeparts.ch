@@ -304,15 +304,15 @@ body {
 /* Grid column templates for deterministic layout */
 :root {
   /* WIDE mode (desktop/board): single-line destination */
-  --cols-wide: 4.8rem minmax(20ch, 1fr) 4.8rem 3.2rem 2.9rem minmax(6rem, 9rem);
+  --cols-wide: 4.8rem minmax(16ch, 1fr) 4.8rem 3.2rem 2.9rem minmax(9rem, 16rem);
   /* Line | Destination | Départ | Voie | min | Remarque */
 
   /* WIDE mode (no Départ column) */
-  --cols-wide-hide: 4.8rem minmax(24ch, 1fr) 3.2rem 2.9rem minmax(6rem, 9rem);
+  --cols-wide-hide: 4.8rem minmax(18ch, 1fr) 3.2rem 2.9rem minmax(9rem, 16rem);
   /* Line | Destination | Voie | min | Remarque */
 
   /* WIDE mode (train board: no min column) */
-  --cols-wide-train: 6rem minmax(20ch, 1fr) 4.8rem 3.2rem minmax(6rem, 9rem);
+  --cols-wide-train: 6rem minmax(16ch, 1fr) 4.8rem 3.2rem minmax(10rem, 18rem);
   /* Line | Destination | Départ | Voie | Remarque */
 
   /* PHONE mode: compact layout, Time right next to Destination */
@@ -772,7 +772,8 @@ body {
 }
 
 .col-remark-cell.status-early {
-  color: #3ddc5a; /* green for En avance */
+  color: #66ff7a; /* brighter green for En avance */
+  font-weight: 700;
 }
 
 .col-remark-cell.status-cancelled {
@@ -2839,6 +2840,12 @@ iframe.dual-pane {
   color: var(--remark);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
+}
+
+.journey-meta-pill--delay.journey-meta-pill--early {
+  background: rgba(102, 255, 122, 0.2);
+  border-color: rgba(102, 255, 122, 0.7);
+  color: #66ff7a;
 }
 
 .journey-stops {

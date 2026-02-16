@@ -20,6 +20,30 @@ export const pool = new Pool({
     require: true,
     rejectUnauthorized: false,
   },
+  ...(process.env.PG_CONNECTION_TIMEOUT_MS
+    ? {
+        connectionTimeoutMillis: Math.max(
+          1000,
+          Number(process.env.PG_CONNECTION_TIMEOUT_MS || "0")
+        ),
+      }
+    : {}),
+  ...(process.env.PG_QUERY_TIMEOUT_MS
+    ? {
+        query_timeout: Math.max(
+          1000,
+          Number(process.env.PG_QUERY_TIMEOUT_MS || "0")
+        ),
+      }
+    : {}),
+  ...(process.env.PG_STATEMENT_TIMEOUT_MS
+    ? {
+        statement_timeout: Math.max(
+          1000,
+          Number(process.env.PG_STATEMENT_TIMEOUT_MS || "0")
+        ),
+      }
+    : {}),
 });
 
 // Optional: log when connected

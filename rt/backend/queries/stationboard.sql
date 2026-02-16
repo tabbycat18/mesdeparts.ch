@@ -1,6 +1,48 @@
-WITH active_services AS (
-  SELECT c.service_id
-  FROM public.calendar c
+WITH filtered_stop_times AS MATERIALIZED (
+  SELECT
+    st.trip_id,
+    st.stop_id,
+    st.stop_sequence,
+    st.arrival_time,
+    st.departure_time,
+    st.departure_time_seconds AS dep_sec
+  FROM public.gtfs_stop_times st
+  WHERE st.stop_id = ANY($1::text[])
+    -- Departures board only:
+    -- 1) must have a real departure time at this stop (not arrival-only row)
+    -- pickup_type is intentionally not enforced here; some feeds are too strict.
+    AND st.departure_time_seconds IS NOT NULL
+    AND (
+      ($3::int < 86400 AND st.departure_time_seconds BETWEEN $2::int AND $3::int)
+      OR
+      ($3::int >= 86400 AND (
+        st.departure_time_seconds BETWEEN $2::int AND $3::int
+        OR ($2::int < 86400 AND st.departure_time_seconds BETWEEN 0 AND ($3::int - 86400))
+      ))
+    )
+),
+trips_for_stops AS MATERIALIZED (
+  SELECT
+    fst.trip_id,
+    fst.stop_id,
+    fst.stop_sequence,
+    fst.arrival_time,
+    fst.departure_time,
+    fst.dep_sec,
+    t.route_id,
+    t.service_id,
+    to_jsonb(t) AS trip_json
+  FROM filtered_stop_times fst
+  JOIN public.gtfs_trips t ON t.trip_id = fst.trip_id
+),
+candidate_services AS MATERIALIZED (
+  SELECT DISTINCT tfs.service_id
+  FROM trips_for_stops tfs
+),
+active_services AS (
+  SELECT cs.service_id
+  FROM candidate_services cs
+  JOIN public.gtfs_calendar c ON c.service_id = cs.service_id
   WHERE c.start_date::int <= $5::int
     AND c.end_date::int >= $5::int
     AND (
@@ -16,55 +58,43 @@ WITH active_services AS (
     ) = 1
     AND NOT EXISTS (
       SELECT 1
-      FROM public.calendar_dates cd
-      WHERE cd.service_id = c.service_id
+      FROM public.gtfs_calendar_dates cd
+      WHERE cd.service_id = cs.service_id
         AND cd.date::int = $5::int
         AND cd.exception_type = 2
     )
   UNION
-  SELECT cd.service_id
-  FROM public.calendar_dates cd
+  SELECT cs.service_id
+  FROM candidate_services cs
+  JOIN public.gtfs_calendar_dates cd ON cd.service_id = cs.service_id
   WHERE cd.date::int = $5::int
     AND cd.exception_type = 1
 ),
 candidates AS (
   SELECT
-    st.trip_id,
-    st.stop_id,
-    st.stop_sequence,
-    st.arrival_time,
-    st.departure_time,
-    COALESCE(st.departure_time, st.arrival_time) AS time_str,
-    COALESCE(st.departure_time_seconds, st.arrival_time_seconds) AS dep_sec,
-    st.departure_time_seconds,
-    t.route_id,
-    t.service_id,
-    t.trip_headsign,
-    t.trip_short_name,
-    r.route_short_name,
-    r.route_long_name,
-    r.route_desc,
-    r.route_type,
-    r.agency_id
-  FROM public.stop_times st
-  JOIN public.trips t ON t.trip_id = st.trip_id
-  JOIN active_services a ON a.service_id = t.service_id
-  LEFT JOIN public.routes r ON r.route_id = t.route_id
-  WHERE st.stop_id = ANY($1::text[])
-    AND COALESCE(st.departure_time_seconds, st.arrival_time_seconds) IS NOT NULL
-    AND (
-      ($3::int < 86400 AND COALESCE(st.departure_time_seconds, st.arrival_time_seconds) BETWEEN $2::int AND $3::int)
-      OR
-      ($3::int >= 86400 AND (
-        COALESCE(st.departure_time_seconds, st.arrival_time_seconds) BETWEEN $2::int AND $3::int
-        OR COALESCE(st.departure_time_seconds, st.arrival_time_seconds) BETWEEN 0 AND ($3::int - 86400)
-      ))
-    )
-),
--- Keep all stops, including terminus; do not drop terminating rows
-filtered AS (
-  SELECT c.*
-  FROM candidates c
+    tfs.trip_id,
+    tfs.stop_id,
+    tfs.stop_sequence,
+    tfs.arrival_time,
+    tfs.departure_time,
+    COALESCE(tfs.departure_time, tfs.arrival_time) AS time_str,
+    tfs.dep_sec,
+    tfs.route_id,
+    tfs.service_id,
+    tfs.trip_json ->> 'trip_headsign' AS trip_headsign,
+    tfs.trip_json ->> 'trip_short_name' AS trip_short_name,
+    tr.route_json ->> 'route_short_name' AS route_short_name,
+    tr.route_json ->> 'route_long_name' AS route_long_name,
+    tr.route_json ->> 'route_desc' AS route_desc,
+    tr.route_json ->> 'route_type' AS route_type,
+    tr.route_json ->> 'agency_id' AS agency_id
+  FROM trips_for_stops tfs
+  JOIN active_services a ON a.service_id = tfs.service_id
+  LEFT JOIN public.gtfs_routes r ON r.route_id = tfs.route_id
+  CROSS JOIN LATERAL (
+    SELECT
+      to_jsonb(r) AS route_json
+  ) tr
 ),
 deduped AS (
   SELECT DISTINCT ON (trip_id, stop_id, stop_sequence)
@@ -84,12 +114,11 @@ deduped AS (
     route_desc,
     route_type,
     agency_id
-  FROM filtered
+  FROM candidates
   ORDER BY
     trip_id,
     stop_id,
     stop_sequence,
-    (departure_time_seconds IS NULL) ASC, -- prefer true departure rows
     dep_sec ASC
 )
 SELECT *

@@ -20,19 +20,21 @@ import {
   TRAIN_FILTER_ALL,
   TRAIN_FILTER_REGIONAL,
   TRAIN_FILTER_LONG_DISTANCE,
-  API_MODE_DIRECT,
   STATION_ID_STORAGE_KEY,
 } from "./state.v2025-02-07.js";
 import { t } from "./i18n.v2025-02-07.js";
 
-// API base can be overridden by setting window.__MD_API_BASE__ before scripts load
-const DIRECT_API_BASE = "https://transport.opendata.ch/v1";
-const BOARD_API_BASE =
+// API base can be overridden by setting window.__MD_API_BASE__ before scripts load.
+// Frontend now targets rt/backend endpoints only.
+const BACKEND_API_BASE =
   (typeof window !== "undefined" && window.__MD_API_BASE__) ||
-  DIRECT_API_BASE;
+  (typeof window !== "undefined" &&
+  (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")
+    ? "http://localhost:3001"
+    : "");
 
 function getApiBase() {
-  return appState.apiMode === API_MODE_DIRECT ? DIRECT_API_BASE : BOARD_API_BASE;
+  return String(BACKEND_API_BASE || "").replace(/\/$/, "");
 }
 
 const apiUrl = (pathAndQuery) => `${getApiBase()}${pathAndQuery}`;
@@ -302,10 +304,9 @@ function passListContainsStation(passList, stationId, stationName) {
 // --------------------------------------------------------
 
 export async function resolveStationId() {
-  const url = apiUrl(`/locations?query=${encodeURIComponent(appState.STATION)}`);
+  const url = apiUrl(`/api/stops/search?q=${encodeURIComponent(appState.STATION)}&limit=7`);
   const data = await fetchJson(url);
-
-  const list = data.stations || data.stops || data.locations || [];
+  const list = Array.isArray(data?.stops) ? data.stops : [];
   if (!list.length) throw new Error("No station found");
 
   const normalizeName = (name) => String(name || "").trim().toLowerCase();
@@ -313,30 +314,30 @@ export async function resolveStationId() {
 
   // Prefer exact name matches when present; fallback to first API result
   const best =
-    list.find((s) => normalizeName(s?.name) === targetName) ||
+    list.find((s) => normalizeName(s?.stop_name) === targetName) ||
     list[0];
 
-  appState.stationId = best.id;
+  appState.stationId = String(best.stop_id || "").trim();
   try {
     const name = typeof appState.STATION === "string" ? appState.STATION : "";
     localStorage.setItem(
       STATION_ID_STORAGE_KEY,
-      JSON.stringify({ name, id: best.id }),
+      JSON.stringify({ name, id: appState.stationId }),
     );
   } catch {
     // ignore storage errors
   }
-  return best.id;
+  return appState.stationId;
 }
 
 export async function fetchStationSuggestions(query) {
-  const url = apiUrl(`/locations?query=${encodeURIComponent(query)}&limit=7`);
+  const url = apiUrl(`/api/stops/search?q=${encodeURIComponent(query)}&limit=7`);
   const data = await fetchJson(url);
 
-  const list = data.stations || data.stops || data.locations || [];
+  const list = Array.isArray(data?.stops) ? data.stops : [];
   return list
-    .filter((s) => s && s.name)
-    .map((s) => ({ id: s.id, name: s.name }));
+    .filter((s) => s && s.stop_name && s.stop_id)
+    .map((s) => ({ id: s.stop_id, name: s.stop_name }));
 }
 
 export async function fetchStationsNearby(lat, lon, limit = 7) {
@@ -346,24 +347,74 @@ export async function fetchStationsNearby(lat, lon, limit = 7) {
     throw new Error("Invalid coordinates");
   }
 
-  const url =
-    apiUrl(`/locations?type=station&x=${encodeURIComponent(lonNum)}&y=${encodeURIComponent(latNum)}`) +
-    `&limit=${encodeURIComponent(limit)}`;
+  const url = apiUrl(
+    `/api/stops/nearby?lat=${encodeURIComponent(latNum)}&lon=${encodeURIComponent(lonNum)}&limit=${encodeURIComponent(limit)}`,
+  );
   const data = await fetchJson(url);
 
-  const list = data.stations || data.stops || data.locations || [];
+  const list = Array.isArray(data?.stops) ? data.stops : [];
   return list
-    .filter((s) => s && s.name)
+    .filter((s) => s && s.stop_name && s.stop_id)
     .map((s) => ({
-      id: s.id,
-      name: s.name,
+      id: s.stop_id,
+      name: s.stop_name,
       distance:
-        typeof s.distance === "number"
-        ? s.distance
-        : typeof s.dist === "number"
-          ? s.dist
+        typeof s.distance_m === "number"
+        ? s.distance_m
+        : typeof s.distance_m === "string"
+          ? Number(s.distance_m) || null
           : null,
     }));
+}
+
+function normalizeBackendStationboard(data) {
+  const departures = Array.isArray(data?.departures) ? data.departures : [];
+  const stationId = String(data?.station?.id || appState.stationId || "").trim();
+  const stationName = String(data?.station?.name || appState.STATION || "").trim();
+  const station = { id: stationId, name: stationName };
+
+  const stationboard = departures.map((dep) => {
+    const scheduled = dep?.scheduledDeparture || dep?.realtimeDeparture || null;
+    const realtime = dep?.realtimeDeparture || dep?.scheduledDeparture || null;
+    const delayMin = Number.isFinite(Number(dep?.delayMin)) ? Number(dep.delayMin) : 0;
+    const platformRaw = String(dep?.platform || "");
+    const platform = dep?.platformChanged ? `!${platformRaw}` : platformRaw;
+    const cancelled = dep?.cancelled === true;
+    const scheduledMs = Date.parse(String(scheduled || ""));
+
+    return {
+      category: String(dep?.category || ""),
+      number: String(dep?.number || ""),
+      name: String(dep?.name || dep?.line || ""),
+      operator: dep?.operator || "",
+      to: String(dep?.destination || ""),
+      cancelled,
+      journey: dep?.trip_id ? { id: String(dep.trip_id) } : null,
+      trip: dep?.trip_id ? { id: String(dep.trip_id) } : null,
+      passList: [],
+      stop: {
+        station,
+        departure: scheduled,
+        departureTimestamp:
+          Number.isFinite(scheduledMs) ? Math.floor(scheduledMs / 1000) : undefined,
+        platform,
+        delay: delayMin,
+        cancelled,
+        prognosis: {
+          departure: realtime,
+          delay: delayMin,
+          status: cancelled ? "CANCELED" : "OK",
+          cancelled,
+        },
+      },
+      prognosis: {
+        status: cancelled ? "CANCELED" : "OK",
+        cancelled,
+      },
+    };
+  });
+
+  return { station, stationboard };
 }
 
 // Normalize a “simple” line id used for CSS and grouping
@@ -455,11 +506,12 @@ export async function fetchStationboardRaw(options = {}) {
 
   const cacheBust = bustCache ? `&_ts=${Date.now()}` : "";
   const url = apiUrl(
-    `/stationboard?station=${encodeURIComponent(stationKey)}&limit=${encodeURIComponent(STATIONBOARD_LIMIT)}${cacheBust}`,
+    `/api/stationboard?stop_id=${encodeURIComponent(stationKey)}&limit=${encodeURIComponent(STATIONBOARD_LIMIT)}${cacheBust}`,
   );
   const req = (async () => {
     try {
-      const data = await fetchJson(url, { cache: bustCache ? "reload" : "default" });
+      const backendData = await fetchJson(url, { cache: bustCache ? "reload" : "default" });
+      const data = normalizeBackendStationboard(backendData);
 
       const needsRetry =
         allowRetry &&
@@ -467,16 +519,17 @@ export async function fetchStationboardRaw(options = {}) {
         (!data?.station || !data?.stationboard || data.stationboard.length === 0);
 
       if (needsRetry) {
-        console.warn("[MesDeparts] stationboard empty/missing, retrying with resolved id", {
-          station: appState.STATION,
-          badId: appState.stationId,
-        });
+        const badId = appState.stationId;
         try {
           appState.stationId = null;
           await resolveStationId();
           return await fetchStationboardRaw({ allowRetry: false });
         } catch (resolveErr) {
-          console.warn("[MesDeparts] stationboard retry failed", resolveErr);
+          console.warn("[MesDeparts] stationboard retry failed", {
+            station: appState.STATION,
+            badId,
+            error: resolveErr?.message || String(resolveErr),
+          });
         }
       }
 
@@ -488,17 +541,18 @@ export async function fetchStationboardRaw(options = {}) {
         isInvalidStationboardError(err);
 
       if (canRetry) {
-        console.warn("[MesDeparts] stationboard retry with resolved id", {
-          station: appState.STATION,
-          badId: appState.stationId,
-          error: err?.message || String(err),
-        });
+        const badId = appState.stationId;
         try {
           appState.stationId = null;
           await resolveStationId();
           return await fetchStationboardRaw({ allowRetry: false });
         } catch (resolveErr) {
-          console.warn("[MesDeparts] stationboard retry failed", resolveErr);
+          console.warn("[MesDeparts] stationboard retry failed", {
+            station: appState.STATION,
+            badId,
+            initialError: err?.message || String(err),
+            retryError: resolveErr?.message || String(resolveErr),
+          });
         }
       }
       throw err;
@@ -773,10 +827,7 @@ export function buildDeparturesGrouped(data, viewMode = VIEW_MODE_LINE) {
         status = "delay";
       }
     } else if (!status && delayMin < 0) {
-      const earlyMin = Math.abs(delayMin);
-      const earlyLabel =
-        earlyMin >= 1 ? `${t("remarkEarly")} (${earlyMin} min)` : t("remarkEarly");
-      remark = earlyLabel;
+      remark = t("remarkEarly");
       status = "early";
     }
 
@@ -993,7 +1044,7 @@ export async function fetchDeparturesGrouped(viewMode = VIEW_MODE_LINE) {
 
 async function fetchJourneyDetailsById(journeyId, { signal } = {}) {
   if (!journeyId) return null;
-  const url = apiUrl(`/journey?id=${encodeURIComponent(journeyId)}&passlist=1`);
+  const url = apiUrl(`/api/journey?id=${encodeURIComponent(journeyId)}&passlist=1`);
   try {
     const data = await fetchJson(url, { signal });
     const journey = data?.journey || data;
@@ -1045,21 +1096,30 @@ export async function fetchJourneyDetails(dep, { signal } = {}) {
   const date = toCHDateYYYYMMDD(dt.getTime());
   const time = toCHTimeHHMM(dt.getTime());
 
-  if (dep.journeyId) {
-    const viaId = await fetchJourneyDetailsById(dep.journeyId, { signal });
-    if (viaId) return viaId;
+  async function fetchConnections(fromParam) {
+    const url =
+      apiUrl("/api/connections") +
+      `?from=${encodeURIComponent(fromParam)}` +
+      `&to=${encodeURIComponent(to)}` +
+      `&date=${encodeURIComponent(date)}` +
+      `&time=${encodeURIComponent(time)}` +
+      `&limit=6`;
+    return fetchJson(url, { signal });
   }
 
-  const url =
-    apiUrl("/connections") +
-    `?from=${encodeURIComponent(from)}` +
-    `&to=${encodeURIComponent(to)}` +
-    `&date=${encodeURIComponent(date)}` +
-    `&time=${encodeURIComponent(time)}` +
-    `&limit=6`;
+  let data = await fetchConnections(from);
+  let conns = data?.connections || [];
 
-  const data = await fetchJson(url, { signal });
-  const conns = data?.connections || [];
+  // Parent station IDs may return no matches on /connections; retry with station name.
+  if (
+    (!Array.isArray(conns) || conns.length === 0) &&
+    fromStationName &&
+    String(fromStationName).trim() &&
+    String(from) !== String(fromStationName)
+  ) {
+    data = await fetchConnections(fromStationName);
+    conns = data?.connections || [];
+  }
 
   const targetTs =
     typeof dep.scheduledTimestamp === "number"

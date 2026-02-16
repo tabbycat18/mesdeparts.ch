@@ -6,7 +6,8 @@
   "scripts": {
     "start": "TZ=Europe/Zurich NODE_OPTIONS=--max-old-space-size=8192 node server.js",
     "dev": "TZ=Europe/Zurich NODE_ENV=development NODE_OPTIONS=--max-old-space-size=8192 node server.js",
-    "import:gtfs": "bash scripts/import-gtfs.sh"
+    "import:gtfs": "bash scripts/import-gtfs.sh",
+    "test": "node --test test/*.test.js"
   },
   "dependencies": {
     "cors": "^2.8.5",

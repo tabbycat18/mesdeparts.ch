@@ -2284,7 +2284,7 @@ async function openJourneyDetails(dep) {
     dest.textContent = `→ ${dep.dest || section?.arrival?.station?.name || section?.journey?.to?.name || ""}`;
     titleEl.appendChild(dest);
 
-    const hasDelay = typeof dep.delayMin === "number" && dep.delayMin > 0;
+    const hasDelay = typeof dep.delayMin === "number" && dep.delayMin !== 0;
     const isTrain = dep.mode === "train";
 
     const platformVal =
@@ -2310,10 +2310,14 @@ async function openJourneyDetails(dep) {
       metaEl.appendChild(platformPill);
     }
 
-    if (hasDelay && dep.delayMin > 0) {
+    if (hasDelay) {
       const pill = document.createElement("span");
       pill.className = "journey-meta-pill journey-meta-pill--delay";
-      pill.textContent = `+${dep.delayMin} min`;
+      if (dep.delayMin < 0) {
+        pill.classList.add("journey-meta-pill--early");
+      }
+      const signedDelay = dep.delayMin > 0 ? `+${dep.delayMin}` : `${dep.delayMin}`;
+      pill.textContent = `${signedDelay} min`;
       metaEl.appendChild(pill);
     }
 
