@@ -3,8 +3,8 @@
 // Small help overlay that explains how the board works
 // --------------------------------------------------------
 
-import { appState } from "./rt-state.v2026-01-04-1.js";
-import { t } from "./rt-i18n.v2026-01-04-1.js";
+import { appState } from "./state.v2025-02-07.js";
+import { t } from "./i18n.v2025-02-07.js";
 
 const INFO_TAB_STORAGE_KEY = "infoOverlayLastTab";
 const TAB_KEYS = ["help", "realtime", "credits"];

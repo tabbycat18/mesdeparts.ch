@@ -29,6 +29,7 @@ import {
   fetchStationboardRaw,
   buildDeparturesGrouped,
   stationboardLooksStale,
+  isTransientFetchError,
 } from "./logic.v2025-02-07.js";
 
 import {
@@ -598,6 +599,42 @@ async function refreshDepartures({ retried, showLoadingHint = true } = {}) {
     publishEmbedState();
   } catch (err) {
     console.error("[MesDeparts] refresh error:", err);
+
+    const transient = isTransientFetchError(err);
+    if (transient && appState.apiMode === API_MODE_BOARD) {
+      const prevMode = appState.apiMode;
+      appState.apiMode = API_MODE_DIRECT;
+      try {
+        const directData = await fetchStationboardRaw({ allowRetry: false, bustCache: true });
+        const directRows = buildDeparturesGrouped(directData, appState.viewMode);
+        lastStationboardData = directData;
+        if (Array.isArray(directData?.stationboard) && directData.stationboard.length > 0) {
+          lastNonEmptyStationboardAt = Date.now();
+        }
+        renderFilterOptions();
+        renderDepartures(directRows);
+        updateDebugPanel(directRows);
+        publishEmbedState();
+        return;
+      } catch (directErr) {
+        console.warn("[MesDeparts][transient-fallback] direct mode failed", directErr);
+      } finally {
+        appState.apiMode = prevMode;
+      }
+    }
+
+    if (transient && lastStationboardData) {
+      try {
+        const rows = buildDeparturesGrouped(lastStationboardData, appState.viewMode);
+        renderFilterOptions();
+        renderDepartures(rows);
+        updateDebugPanel(rows);
+        publishEmbedState();
+        return;
+      } catch (cacheErr) {
+        console.warn("[MesDeparts][transient-fallback] cache render failed", cacheErr);
+      }
+    }
 
     // Show a minimal error row
     const tbody2 = document.getElementById("departures-body");

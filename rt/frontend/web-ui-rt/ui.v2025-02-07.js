@@ -14,21 +14,21 @@ import {
   API_MODE_DIRECT,
   API_MODE_STORAGE_KEY,
   API_MODE_AUTO_OFF_KEY,
-} from "./rt-state.v2026-01-04-1.js";
+} from "./state.v2025-02-07.js";
 import {
   fetchStationSuggestions,
   fetchStationsNearby,
   fetchJourneyDetails,
   parseApiDate,
-} from "./rt-logic.v2026-01-04-1.js";
+} from "./logic.v2025-02-07.js";
 import {
   loadFavorites,
   addFavorite,
   removeFavorite,
   isFavorite,
   clearFavorites,
-} from "./rt-favourites.v2026-01-04-1.js";
-import { t } from "./rt-i18n.v2026-01-04-1.js";
+} from "./favourites.v2025-02-07.js";
+import { t } from "./i18n.v2025-02-07.js";
 
 const QUICK_CONTROLS_STORAGE_KEY = "mesdeparts.quickControlsCollapsed";
 let quickControlsCollapsed = false;
@@ -88,7 +88,7 @@ function normalizeLineId(dep) {
   if (typeof dep.line === "string" && dep.line.trim()) return dep.line;
   if (typeof dep.route === "string" && dep.route.trim()) return dep.route;
 
-  // Legacy API / misc variants
+  // transport.opendata.ch / misc variants
   if (typeof dep.route_short_name === "string" && dep.route_short_name.trim()) return dep.route_short_name;
   if (typeof dep.line_id === "string" && dep.line_id.trim()) return dep.line_id;
   if (typeof dep.service_line === "string" && dep.service_line.trim()) return dep.service_line;
@@ -144,6 +144,7 @@ export function ensureBoardFitsViewport() {
 
     // Disable auto-zoom/scale; just ensure we are not in tight mode
     body.classList.remove(LAYOUT_TIGHT_CLASS);
+    syncDestinationColumnWidth();
   });
 }
 
@@ -794,31 +795,28 @@ function positionFavoritesPopover() {
   if (!filterUi.favPopover || !filterUi.favQuickToggle) return;
   const popover = filterUi.favPopover;
   const trigger = filterUi.favQuickToggle;
-  const margin = 8;
-  popover.classList.add("is-floating");
-  popover.style.position = "fixed";
-  popover.style.transform = "none";
-  popover.style.right = "auto";
-  popover.style.left = "0px";
-  popover.style.top = "0px";
 
   const viewportWidth = Math.max(window.innerWidth || 0, document.documentElement?.clientWidth || 0);
-  const viewportHeight = Math.max(
-    window.innerHeight || 0,
-    document.documentElement?.clientHeight || 0,
-  );
-  const btnRect = trigger.getBoundingClientRect();
-  const popRect = popover.getBoundingClientRect();
+  const isMobile = viewportWidth <= 520;
 
-  const maxLeft = Math.max(margin, viewportWidth - popRect.width - margin);
-  const left = Math.max(margin, Math.min(btnRect.left, maxLeft));
+  if (isMobile) {
+    popover.classList.add("is-floating");
+    popover.style.position = "fixed";
+    popover.style.left = "50%";
+    popover.style.right = "auto";
+    popover.style.top = "auto";
+    popover.style.bottom = "12px";
+    popover.style.transform = "translateX(-50%)";
+    return;
+  }
 
-  const maxTop = Math.max(margin, viewportHeight - popRect.height - margin);
-  const desiredTop = btnRect.bottom + margin;
-  const top = Math.min(Math.max(margin, desiredTop), maxTop);
-
-  popover.style.left = `${left}px`;
-  popover.style.top = `${top}px`;
+  popover.classList.remove("is-floating");
+  popover.style.position = "";
+  popover.style.left = "";
+  popover.style.right = "";
+  popover.style.top = "";
+  popover.style.bottom = "";
+  popover.style.transform = "";
 }
 
 function openFavoritesPopover() {
@@ -840,6 +838,7 @@ function closeFavoritesPopover() {
   filterUi.favPopover.style.left = "";
   filterUi.favPopover.style.top = "";
   filterUi.favPopover.style.right = "";
+  filterUi.favPopover.style.bottom = "";
   filterUi.favPopover.style.position = "";
   filterUi.favPopover.style.transform = "";
   setFavoritesManageMode(false);
@@ -2037,14 +2036,18 @@ function ensureJourneyOverlay() {
   overlay.id = "journey-overlay";
   overlay.className = "journey-overlay";
   overlay.innerHTML = `
-    <div class="journey-panel">
-      <div class="journey-header">
-        <div class="journey-title"></div>
-        <button class="journey-close" type="button" aria-label="Fermer">×</button>
+    <div class="journey-panel tripDetailsModal">
+      <div class="tripDetailsHeader">
+        <div class="tripDetailsHeaderMain">
+          <div class="journey-title tripDetailsTitle"></div>
+          <div class="journey-meta tripDetailsMeta"></div>
+        </div>
+        <button class="journey-close tripDetailsClose" type="button" aria-label="Fermer">×</button>
       </div>
-      <div class="journey-body">
-        <div class="journey-meta"></div>
-        <div class="journey-stops"></div>
+      <div class="tripDetailsBody">
+        <div class="tripDetailsStopsCard">
+          <div class="journey-stops stopsList"></div>
+        </div>
       </div>
     </div>
   `;
@@ -2095,7 +2098,7 @@ function renderJourneyStops(dep, detail) {
 
   if (!visiblePassList.length) {
     const empty = document.createElement("div");
-    empty.className = "journey-stop";
+    empty.className = "journey-stop stopRow stopRow--empty";
     empty.textContent = t("journeyNoStops");
     stopsWrap.appendChild(empty);
     return stopsWrap;
@@ -2136,25 +2139,28 @@ function renderJourneyStops(dep, detail) {
 
     const platform = cleanPlat(platCandidates.find((p) => cleanPlat(p)) || "");
     const li = document.createElement("div");
-    li.className = "journey-stop";
+    li.className = "journey-stop stopRow";
     if (isLast) li.classList.add("is-last");
     if (isFirst) li.classList.add("is-origin");
+    if (isFirst) li.classList.add("is-first");
 
+    const gutter = document.createElement("div");
+    gutter.className = "stopGutter";
     const dot = document.createElement("span");
-    dot.className = "journey-stop-dot";
-    li.appendChild(dot);
+    dot.className = "journey-stop-dot stopDot";
+    gutter.appendChild(dot);
 
-    const content = document.createElement("div");
-    content.className = "journey-stop-content";
+    const main = document.createElement("div");
+    main.className = "journey-stop-main stopMain";
 
     const nameEl = document.createElement("div");
-    nameEl.className = "journey-stop-name";
+    nameEl.className = "journey-stop-name stopName";
     nameEl.textContent = name;
 
     const timeEl = document.createElement("div");
-    timeEl.className = "journey-stop-times";
+    timeEl.className = "journey-stop-times stopTimes";
     const timeStack = document.createElement("div");
-    timeStack.className = "journey-stop-time-stack";
+    timeStack.className = "journey-stop-time-stack stopTimeStack";
 
     const arrStr = arr ? formatTimeCell(arr) : null;
     const depStr = depTime ? formatTimeCell(depTime) : null;
@@ -2192,12 +2198,12 @@ function renderJourneyStops(dep, detail) {
 
     if (showArrival) {
       const rowArr = document.createElement("div");
-      rowArr.className = "journey-stop-time-row";
+      rowArr.className = "journey-stop-time-row stopTimeRow";
       const lbl = document.createElement("span");
-      lbl.className = "journey-stop-time-label";
+      lbl.className = "journey-stop-time-label stopTimeLabel";
       lbl.textContent = "Arr.";
       const val = document.createElement("span");
-      val.className = "journey-stop-time-value";
+      val.className = "journey-stop-time-value stopTimeValue";
       val.textContent = arrStr || "--:--";
       rowArr.appendChild(lbl);
       rowArr.appendChild(val);
@@ -2206,27 +2212,30 @@ function renderJourneyStops(dep, detail) {
 
     if (showDeparture) {
       const rowDep = document.createElement("div");
-      rowDep.className = "journey-stop-time-row";
+      rowDep.className = "journey-stop-time-row stopTimeRow";
       const lbl = document.createElement("span");
-      lbl.className = "journey-stop-time-label";
+      lbl.className = "journey-stop-time-label stopTimeLabel";
       lbl.textContent = isLast ? "Arr." : "Dép.";
       const val = document.createElement("span");
-      val.className = "journey-stop-time-value";
+      val.className = "journey-stop-time-value stopTimeValue";
       val.textContent = depStr || arrStr || "--:--";
       rowDep.appendChild(lbl);
       rowDep.appendChild(val);
       timeStack.appendChild(rowDep);
     }
 
-    // Add platform once per stop (left side)
-    if (platformPill) {
-      timeEl.appendChild(platformPill);
-    }
     timeEl.appendChild(timeStack);
+    main.appendChild(nameEl);
+    if (platformPill) {
+      const sub = document.createElement("div");
+      sub.className = "journey-stop-sub stopSub";
+      sub.appendChild(platformPill);
+      main.appendChild(sub);
+    }
 
-    content.appendChild(nameEl);
-    content.appendChild(timeEl);
-    li.appendChild(content);
+    li.appendChild(gutter);
+    li.appendChild(main);
+    li.appendChild(timeEl);
     stopsWrap.appendChild(li);
   });
 
@@ -2241,6 +2250,8 @@ async function openJourneyDetails(dep) {
   activeJourneyAbort = abortController;
 
   const overlay = ensureJourneyOverlay();
+  const panel = overlay.querySelector(".tripDetailsModal");
+  if (panel) panel.classList.toggle("debugTimeline", uiDebugEnabled());
   overlay.classList.add("is-visible");
 
   const titleEl = overlay.querySelector(".journey-title");
@@ -2256,6 +2267,7 @@ async function openJourneyDetails(dep) {
     const detail = await fetchJourneyDetails(dep, { signal: abortController.signal });
     if (reqId !== activeJourneyRequestId) return;
     const section = detail?.section || detail;
+    const connection = detail?.connection || null;
     const badge = document.createElement("span");
     if (dep.mode === "train") {
       badge.className = `line-badge line-train ${trainBadgeClass(dep.category || dep.line || "")}`;
@@ -2273,23 +2285,51 @@ async function openJourneyDetails(dep) {
     titleEl.appendChild(dest);
 
     const hasDelay = typeof dep.delayMin === "number" && dep.delayMin > 0;
+    const isTrain = dep.mode === "train";
+
+    const platformVal =
+      dep.platform ||
+      section?.departure?.platform ||
+      section?.departure?.stop?.platform ||
+      section?.departure?.prognosis?.platform ||
+      connection?.from?.platform ||
+      "";
 
     metaEl.textContent = "";
-    const metaLine = document.createElement("span");
-    metaLine.className = "journey-meta-time";
-    metaLine.textContent = `${t("journeyPlannedDeparture")} ${dep.timeStr || ""}`;
-    const delayPill =
-      hasDelay && dep.delayMin > 0
-        ? (() => {
-            const pill = document.createElement("span");
-            pill.className = "journey-meta-pill journey-meta-pill--delay";
-            pill.textContent = `+${dep.delayMin} min`;
-            return pill;
-          })()
-        : null;
 
-    metaEl.appendChild(metaLine);
-    if (delayPill) metaEl.appendChild(delayPill);
+    const timePill = document.createElement("span");
+    timePill.className = "journey-meta-pill journey-meta-pill--time";
+    timePill.textContent = `${t("journeyPlannedDeparture")} ${dep.timeStr || ""}`;
+    metaEl.appendChild(timePill);
+
+    if (platformVal) {
+      const platformPill = document.createElement("span");
+      platformPill.className = "journey-meta-pill journey-meta-pill--platform";
+      const label = isTrain ? t("columnPlatformTrain") : t("columnPlatformBus");
+      platformPill.textContent = `${label} ${String(platformVal).replace("!", "").trim()}`;
+      metaEl.appendChild(platformPill);
+    }
+
+    if (hasDelay && dep.delayMin > 0) {
+      const pill = document.createElement("span");
+      pill.className = "journey-meta-pill journey-meta-pill--delay";
+      pill.textContent = `+${dep.delayMin} min`;
+      metaEl.appendChild(pill);
+    }
+
+    if (dep.status === "cancelled") {
+      const pill = document.createElement("span");
+      pill.className = "journey-meta-pill journey-meta-pill--cancelled";
+      pill.textContent = t("remarkCancelled");
+      metaEl.appendChild(pill);
+    }
+
+    if (dep.operator) {
+      const pill = document.createElement("span");
+      pill.className = "journey-meta-pill journey-meta-pill--operator";
+      pill.textContent = String(dep.operator);
+      metaEl.appendChild(pill);
+    }
 
     stopsEl.innerHTML = "";
     stopsEl.appendChild(renderJourneyStops(dep, detail));
@@ -2368,6 +2408,37 @@ const lastRenderedState = {
   hideDeparture: null,
 };
 
+function syncDestinationColumnWidth() {
+  const th = document.querySelector("th.col-dest");
+  if (!th) return;
+  const isMobile = window.matchMedia && window.matchMedia("(max-width: 520px)").matches;
+  if (!isMobile) {
+    document.documentElement.style.removeProperty("--dest-col-width");
+    return;
+  }
+  const rect = th.getBoundingClientRect();
+  if (!rect || !rect.width) return;
+  const width = Math.ceil(rect.width);
+  document.documentElement.style.setProperty("--dest-col-width", `${width}px`);
+}
+
+function appendDestinationWithBreaks(target, dest) {
+  if (!target) return;
+  target.textContent = "";
+  const text = String(dest || "");
+  if (!text) return;
+  const parts = text.split(/([,\\/\\-–—])/);
+  for (const part of parts) {
+    if (!part) continue;
+    if (part === "," || part === "-" || part === "/" || part === "–" || part === "—") {
+      target.appendChild(document.createTextNode(part));
+      target.appendChild(document.createElement("wbr"));
+      continue;
+    }
+    target.appendChild(document.createTextNode(part));
+  }
+}
+
 function getRowKey(dep) {
   if (!dep) return "";
   if (dep.journeyId) return dep.journeyId;
@@ -2424,6 +2495,8 @@ export function renderDepartures(rows) {
   updatePlatformHeader(appState.lastBoardIsTrain);
   const hideDeparture = !!appState.hideBusDeparture && !appState.lastBoardIsTrain;
   setDepartureColumnVisibility(hideDeparture);
+  const departuresTable = document.querySelector("table.departures");
+  if (departuresTable) departuresTable.classList.toggle("is-train-board", !!appState.lastBoardIsTrain);
   lastRenderedState.boardIsTrain = appState.lastBoardIsTrain;
   lastRenderedState.hideDeparture = hideDeparture;
   lastRenderedState.rowKeys = [];
@@ -2475,12 +2548,16 @@ export function renderDepartures(rows) {
   );
 
   let prevLineKey = null;
+  const useGroupSeparators =
+    !appState.lastBoardIsTrain && appState.viewMode === VIEW_MODE_LINE;
 
   for (const dep of rows || []) {
     const tr = document.createElement("tr");
     tr.dataset.journeyId = dep.journeyId || "";
-    const hasDetails = Array.isArray(dep.passList) && dep.passList.length > 0;
+    const hasDetails =
+      !!dep.journeyId || (Array.isArray(dep.passList) && dep.passList.length > 0);
     tr.classList.toggle("clickable", hasDetails);
+    tr.classList.toggle("is-cancelled", dep?.status === "cancelled");
     tr.dataset.hasDetails = hasDetails ? "1" : "0";
     tr.tabIndex = hasDetails ? 0 : -1;
 
@@ -2507,7 +2584,7 @@ export function renderDepartures(rows) {
     }
 
     const lineKey = dep?.simpleLineId || dep?.line || dep?.number || "";
-    if (!appState.lastBoardIsTrain && prevLineKey && lineKey && lineKey !== prevLineKey) {
+    if (useGroupSeparators && prevLineKey && lineKey && lineKey !== prevLineKey) {
       tr.classList.add("line-separator");
     }
     if (lineKey) prevLineKey = lineKey;
@@ -2568,7 +2645,7 @@ export function renderDepartures(rows) {
     // Destination
     const tdTo = document.createElement("td");
     tdTo.className = "col-to-cell";
-    tdTo.textContent = dep.dest || "";
+    appendDestinationWithBreaks(tdTo, dep.dest || "");
 
     // Time
     const tdTime = document.createElement("td");
