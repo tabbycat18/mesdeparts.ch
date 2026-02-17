@@ -55,6 +55,8 @@ import cors from "cors";
 const { pool } = await import("./db.js");
 const { getStationboard } = await import("./src/api/stationboard.js");
 const { fetchServiceAlerts } = await import("./src/rt/fetchServiceAlerts.js");
+const { fetchTripUpdates } = await import("./src/rt/fetchTripUpdates.js");
+const { summarizeTripUpdates } = await import("./src/rt/tripUpdatesSummary.js");
 
 const app = express();
 const PORT = Number(process.env.PORT || 3001);
@@ -233,6 +235,11 @@ async function fetchOtdJson(url) {
   } finally {
     clearTimeout(timer);
   }
+}
+
+function isDebugRequest(req) {
+  if (process.env.DEBUG === "1") return true;
+  return String(req?.query?.debug || "").trim() === "1";
 }
 
 app.get("/health", async (_req, res) => {
@@ -612,17 +619,40 @@ app.get("/api/connections", async (req, res) => {
 app.get("/api/stationboard", async (req, res) => {
   try {
     const stopId = String(req.query.stop_id || "").trim();
+    const stationId = String(req.query.stationId || req.query.station_id || "").trim();
+    const stationName = String(req.query.stationName || "").trim();
     const limit = Number(req.query.limit || "300");
     const windowMinutes = Number(req.query.window_minutes || "0");
-    console.log("[API] /api/stationboard params", { stopId, limit, windowMinutes });
-    if (!stopId) {
-      return res.status(400).json({ error: "missing_stop_id", expected: ["stop_id"] });
+    console.log("[API] /api/stationboard params", {
+      stopId,
+      stationId,
+      stationName,
+      limit,
+      windowMinutes,
+    });
+    if (!stopId && !stationId) {
+      return res.status(400).json({
+        error: "missing_stop_id",
+        expected: ["stop_id", "stationId"],
+      });
     }
 
-    const result = await getStationboard({ stopId, limit, windowMinutes });
+    const result = await getStationboard({
+      stopId,
+      stationId,
+      stationName,
+      limit,
+      windowMinutes,
+    });
     return res.json(result);
   } catch (err) {
     console.error("[API] /api/stationboard failed:", err);
+    if (err?.code === "unknown_stop" || Number(err?.status) === 400) {
+      return res.status(400).json({
+        error: "unknown_stop",
+        tried: Array.isArray(err?.tried) ? err.tried : [],
+      });
+    }
     if (process.env.NODE_ENV !== "production") {
       return res.status(500).json({
         error: "stationboard_failed",
@@ -710,6 +740,37 @@ app.get("/api/debug/alerts", async (req, res) => {
     return res.status(500).json({
       ok: false,
       error: "alerts_debug_failed",
+      detail: String(err?.message || err),
+    });
+  }
+});
+
+app.get("/api/_debug/tripupdates_summary", async (req, res) => {
+  if (!isDebugRequest(req)) {
+    return res.status(404).json({ error: "not_found" });
+  }
+
+  try {
+    const sampleLimit = Math.max(1, Math.min(Number(req.query.sample || "5"), 20));
+    const feed = await fetchTripUpdates();
+    const summary = summarizeTripUpdates(feed, { sampleLimit });
+    return res.json({
+      ok: true,
+      fetchedAt: new Date().toISOString(),
+      headerTimestamp: summary.headerTimestamp,
+      counts: {
+        totalEntities: summary.totalEntities,
+        tripDescriptorCanceled: summary.tripDescriptorCanceledCount,
+        stopTimeSkipped: summary.stopTimeSkippedCount,
+        stopTimeNoData: summary.stopTimeNoDataCount,
+      },
+      sample: summary.sampleCancellationSignals,
+    });
+  } catch (err) {
+    console.error("[API] /api/_debug/tripupdates_summary failed:", err);
+    return res.status(500).json({
+      ok: false,
+      error: "tripupdates_summary_failed",
       detail: String(err?.message || err),
     });
   }
