@@ -48,7 +48,25 @@ function getTripIdFromUpdate(update) {
 function getScheduleRelationship(update) {
   const trip = pick(update, "trip") || null;
   const rel = pick(trip, "schedule_relationship", "scheduleRelationship");
-  return typeof rel === "string" ? rel.toUpperCase() : "";
+  if (typeof rel === "string") {
+    const normalized = rel.toUpperCase();
+    return normalized === "CANCELLED" ? "CANCELED" : normalized;
+  }
+  const n = asNumber(rel);
+  switch (n) {
+    case 0:
+      return "SCHEDULED";
+    case 1:
+      return "ADDED";
+    case 2:
+      return "UNSCHEDULED";
+    case 3:
+      return "CANCELED";
+    case 4:
+      return "DUPLICATED";
+    default:
+      return "";
+  }
 }
 
 function getStopTimeUpdates(update) {
@@ -209,7 +227,7 @@ function buildCancelledTripIdSet(tripUpdates) {
     const tripId = getTripIdFromUpdate(tu);
     if (!tripId) continue;
 
-    // Cancellation rule for M1: only explicit TripDescriptor.schedule_relationship=CANCELED.
+    // Cancellation at trip-level: explicit TripDescriptor.schedule_relationship=CANCELED.
     if (getScheduleRelationship(tu) === "CANCELED") {
       cancelled.add(String(tripId));
     }
@@ -354,7 +372,7 @@ export function applyTripUpdates(baseRows, tripUpdates) {
   return baseRows.map((row) => {
     const merged = {
       ...row,
-      cancelled: false,
+      cancelled: row?.cancelled === true,
       source: row?.source || "scheduled",
       tags: Array.isArray(row?.tags) ? [...row.tags] : [],
       suppressedStop: false,
@@ -399,6 +417,7 @@ export function applyTripUpdates(baseRows, tripUpdates) {
     );
     if (stopStatus === "SKIPPED") {
       merged.suppressedStop = true;
+      merged.cancelled = true;
       addTag(merged.tags, "skipped_stop");
     }
 

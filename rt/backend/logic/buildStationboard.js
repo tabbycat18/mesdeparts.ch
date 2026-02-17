@@ -5,6 +5,8 @@ import {
 } from "../loaders/loadRealtime.js";
 import { applyTripUpdates } from "../src/merge/applyTripUpdates.js";
 import { applyAddedTrips } from "../src/merge/applyAddedTrips.js";
+import { pickPreferredMergedDeparture } from "../src/merge/pickPreferredDeparture.js";
+import { createCancellationTracer } from "../src/debug/cancellationTrace.js";
 
 import fs from "node:fs";
 import path from "node:path";
@@ -298,6 +300,9 @@ export async function buildStationboard(locationId, options = {}) {
   );
 
   const now = new Date();
+  const traceCancellation = createCancellationTracer("buildStationboard", {
+    enabled: process.env.DEBUG === "1",
+  });
   const ENABLE_RT = process.env.ENABLE_RT === "1";
 
   console.log("[buildStationboard] start", {
@@ -754,8 +759,10 @@ export async function buildStationboard(locationId, options = {}) {
       tags: rowTags,
     });
   }
+  traceCancellation("after_base_rows", baseRows);
 
   const mergedScheduledRows = applyTripUpdates(baseRows, delayIndex);
+  traceCancellation("after_apply_trip_updates", mergedScheduledRows);
   const addedRows = ENABLE_RT
     ? applyAddedTrips({
         tripUpdates: delayIndex,
@@ -774,22 +781,32 @@ export async function buildStationboard(locationId, options = {}) {
     const key = `${row.trip_id || ""}|${row.stop_id || ""}|${row.stop_sequence || ""}|${
       row.scheduledDeparture || ""
     }`;
-    if (!mergedByKey.has(key)) mergedByKey.set(key, row);
+    const previous = mergedByKey.get(key);
+    mergedByKey.set(key, pickPreferredMergedDeparture(previous, row));
   }
   const mergedRows = Array.from(mergedByKey.values());
+  traceCancellation("after_added_trip_merge", mergedRows);
+
+  const nonSuppressedRows = mergedRows.filter(
+    (row) => !(row?.suppressedStop === true && row?.cancelled !== true)
+  );
+  traceCancellation("after_suppressed_filter", nonSuppressedRows);
+
   const departures = [];
 
-  for (const row of mergedRows) {
-    if (row?.suppressedStop) continue;
+  for (const row of nonSuppressedRows) {
+    const realtimeMs = Date.parse(row?.realtimeDeparture || "");
+    const scheduledMs = Date.parse(row?.scheduledDeparture || "");
+    const effectiveDepartureMs = Number.isFinite(realtimeMs) ? realtimeMs : scheduledMs;
+    if (!Number.isFinite(effectiveDepartureMs)) continue;
 
-    const realtimeDt = new Date(row.realtimeDeparture || row.scheduledDeparture);
-    if (!Number.isFinite(realtimeDt.getTime())) continue;
+    const effectiveDepartureIso = new Date(effectiveDepartureMs).toISOString();
 
     // --- Visibility filtering based on *effective* departure ---
     // We keep items according to realtime departure (if available), so late vehicles
     // remain visible even when their scheduled time is already in the past.
     // Also keep "0 min" items for a short grace period after departure.
-    const msUntil = realtimeDt.getTime() - now.getTime();
+    const msUntil = effectiveDepartureMs - now.getTime();
     const windowMs = windowMinutes * 60 * 1000;
     const graceMs = DEPARTED_GRACE_SECONDS * 1000;
 
@@ -799,11 +816,13 @@ export async function buildStationboard(locationId, options = {}) {
     const minutesLeft = msUntil <= 0 ? 0 : Math.floor(msUntil / 60000);
     departures.push({
       ...row,
+      realtimeDeparture: effectiveDepartureIso,
       source: row?.source || "scheduled",
       tags: Array.isArray(row?.tags) ? row.tags : [],
       minutesLeft,
     });
   }
+  traceCancellation("after_time_window_filter", departures);
 
   departures.sort((a, b) => {
     const aMs = Date.parse(a?.realtimeDeparture || a?.scheduledDeparture || "");
@@ -813,8 +832,11 @@ export async function buildStationboard(locationId, options = {}) {
     return aNum - bNum;
   });
 
+  const finalDepartures = departures.slice(0, requestedLimit);
+  traceCancellation("after_limit_slice", finalDepartures);
+
   return {
     station: { id: stationGroupId, name: stationName },
-    departures: departures.slice(0, requestedLimit),
+    departures: finalDepartures,
   };
 }

@@ -1,9 +1,13 @@
 import { buildStationboard } from "../../logic/buildStationboard.js";
 import { pool } from "../../db.js";
+import { query as dbQuery } from "../db/query.js";
+import { resolveStop } from "../resolve/resolveStop.js";
 import { fetchServiceAlerts } from "../rt/fetchServiceAlerts.js";
 import { attachAlerts } from "../merge/attachAlerts.js";
 import { synthesizeFromAlerts } from "../merge/synthesizeFromAlerts.js";
 import { supplementFromOtdStationboard } from "../merge/supplementFromOtdStationboard.js";
+import { pickPreferredMergedDeparture } from "../merge/pickPreferredDeparture.js";
+import { createCancellationTracer } from "../debug/cancellationTrace.js";
 
 const ALERTS_CACHE_MS = Math.max(
   1_000,
@@ -228,6 +232,12 @@ function hasReplacementDeparture(departures) {
   });
 }
 
+function uniqueStopIds(values) {
+  return Array.from(
+    new Set((values || []).map((v) => String(v || "").trim()).filter(Boolean))
+  );
+}
+
 async function loadStationScopeStopIds(requestedStopId, stationGroupId) {
   const requested = String(requestedStopId || "").trim();
   const group = String(stationGroupId || requestedStopId || "").trim();
@@ -257,6 +267,8 @@ async function loadStationScopeStopIds(requestedStopId, stationGroupId) {
 
 export async function getStationboard({
   stopId,
+  stationId,
+  stationName,
   fromTs,
   toTs,
   limit,
@@ -266,8 +278,30 @@ export async function getStationboard({
   void fromTs;
   void toTs;
   const shouldIncludeAlerts = includeAlerts !== false;
+  const traceCancellation = createCancellationTracer("api/stationboard", {
+    enabled: process.env.DEBUG === "1",
+  });
 
-  const locationId = String(stopId || "").trim();
+  const resolved = await resolveStop(
+    {
+      stop_id: stopId,
+      stationId,
+      stationName,
+    },
+    {
+      db: { query: dbQuery },
+    }
+  );
+
+  const locationId = String(resolved?.canonical?.id || "").trim();
+  if (!locationId) {
+    const err = new Error("unknown_stop");
+    err.code = "unknown_stop";
+    err.status = 400;
+    err.tried = Array.isArray(resolved?.tried) ? resolved.tried : [];
+    throw err;
+  }
+
   const boundedLimit = Math.max(1, Math.min(Number(limit) || 300, 500));
   const requestedWindow = Number(windowMinutes);
   const baseWindowMinutes =
@@ -303,9 +337,24 @@ export async function getStationboard({
   }
 
   const departures = Array.isArray(board?.departures) ? board.departures : [];
-  const scopeStopIds = await loadStationScopeStopIds(locationId, board?.station?.id);
+  const scopeStopIds = uniqueStopIds([
+    ...(resolved?.children || []).map((child) => child?.id),
+    ...(await loadStationScopeStopIds(locationId, board?.station?.id)),
+  ]);
+  const canonicalName =
+    String(resolved?.displayName || resolved?.canonical?.name || stationName || "").trim() ||
+    String(board?.station?.name || locationId).trim();
   const baseResponse = {
     ...board,
+    station: {
+      id: locationId,
+      name: canonicalName,
+    },
+    resolved: {
+      canonicalId: locationId,
+      source: String(resolved?.source || "fallback"),
+      childrenCount: Array.isArray(resolved?.children) ? resolved.children.length : 0,
+    },
     banners: [],
     departures: departures.map((dep) =>
       ({
@@ -316,6 +365,7 @@ export async function getStationboard({
       })
     ),
   };
+  traceCancellation("after_base_stationboard", baseResponse.departures);
 
   if (!shouldIncludeAlerts) return baseResponse;
 
@@ -326,7 +376,7 @@ export async function getStationboard({
       stopId: locationId,
       departures: baseResponse.departures,
       scopeStopIds,
-      stationName: board?.station?.name || locationId,
+      stationName: canonicalName,
       now: new Date(),
       windowMinutes: baseWindowMinutes,
       departedGraceSeconds: Number(process.env.DEPARTED_GRACE_SECONDS || "45"),
@@ -338,7 +388,8 @@ export async function getStationboard({
       const key = `${dep.trip_id || ""}|${dep.stop_id || ""}|${dep.stop_sequence || ""}|${
         dep.scheduledDeparture || ""
       }|${dep.source || ""}`;
-      if (!byKey.has(key)) byKey.set(key, dep);
+      const previous = byKey.get(key);
+      byKey.set(key, pickPreferredMergedDeparture(previous, dep));
     }
     const mergedDepartures = Array.from(byKey.values())
       .sort((a, b) => {
@@ -349,6 +400,7 @@ export async function getStationboard({
         return ax - bx;
       })
       .slice(0, 1000);
+    traceCancellation("after_alert_synthesis_merge", mergedDepartures);
     const routeIds = mergedDepartures.map((dep) => dep?.route_id).filter(Boolean);
     const tripIds = mergedDepartures.map((dep) => dep?.trip_id).filter(Boolean);
 
@@ -361,12 +413,13 @@ export async function getStationboard({
       alerts,
       now: new Date(),
     });
+    traceCancellation("after_attach_alerts", attached.departures);
 
     let finalDepartures = attached.departures;
     if (!hasReplacementDeparture(finalDepartures)) {
       const supplement = await fetchOtdReplacementSupplement({
         stopId: locationId,
-        stationName: board?.station?.name || locationId,
+        stationName: canonicalName,
         now: new Date(),
         windowMinutes: baseWindowMinutes,
         limit: boundedLimit,
@@ -377,7 +430,8 @@ export async function getStationboard({
           const key = `${dep.trip_id || ""}|${dep.stop_id || ""}|${dep.stop_sequence || ""}|${
             dep.scheduledDeparture || ""
           }|${dep.source || ""}`;
-          if (!bySuppKey.has(key)) bySuppKey.set(key, dep);
+          const previous = bySuppKey.get(key);
+          bySuppKey.set(key, pickPreferredMergedDeparture(previous, dep));
         }
         finalDepartures = Array.from(bySuppKey.values())
           .sort((a, b) => {
@@ -390,6 +444,7 @@ export async function getStationboard({
           .slice(0, 1000);
       }
     }
+    traceCancellation("after_otd_supplement", finalDepartures);
 
     return {
       ...baseResponse,
