@@ -777,7 +777,25 @@ body {
 }
 
 .col-remark-cell.status-cancelled {
-  color: #ff4d4f; /* red for Supprimé */
+  color: #ffffff;
+}
+
+.col-remark-cell .remark-pill {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.2;
+  padding: 0.14rem 0.5rem;
+}
+
+.col-remark-cell .remark-pill--cancelled {
+  background: #da291c;
+  border: 1px solid #da291c;
+  border-radius: 0;
+  color: #ffffff;
+  font-weight: 800;
 }
 
 .col-remark-cell .remark-debug-cancelled {

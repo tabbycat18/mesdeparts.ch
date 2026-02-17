@@ -2724,7 +2724,15 @@ export function renderDepartures(rows) {
     // Remark
     const tdRemark = document.createElement("td");
     tdRemark.className = "col-remark-cell";
-    tdRemark.textContent = dep.remark || "";
+    const remarkText = dep.remark || "";
+    if (dep.status === "cancelled" && remarkText) {
+      const badge = document.createElement("span");
+      badge.className = "remark-pill remark-pill--cancelled";
+      badge.textContent = remarkText;
+      tdRemark.appendChild(badge);
+    } else {
+      tdRemark.textContent = remarkText;
+    }
     if (dep.status === "cancelled") tdRemark.classList.add("status-cancelled");
     if (dep.status === "delay") tdRemark.classList.add("status-delay");
     if (dep.status === "early") tdRemark.classList.add("status-early");

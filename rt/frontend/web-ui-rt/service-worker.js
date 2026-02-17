@@ -22,7 +22,7 @@ const LAZY_ASSETS = [
 ];
 
 const ASSETS = [...CORE_ASSETS, ...LAZY_ASSETS];
-const CACHE_REV = "2026-02-17-cancel-visibility-2";
+const CACHE_REV = "2026-02-17-cancel-visibility-3";
 
 function hashStrings(list) {
   const str = list.join("|");
