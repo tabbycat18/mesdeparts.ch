@@ -429,9 +429,17 @@ export function applyTripUpdates(baseRows, tripUpdates) {
         Number.isFinite(rowStopSeq) &&
         Number.isFinite(tripFlags.maxSuppressedStopSequence) &&
         tripFlags.maxSuppressedStopSequence > rowStopSeq;
+      const suppressionStartsAtNextStop =
+        Number.isFinite(rowStopSeq) &&
+        Number.isFinite(tripFlags.minSuppressedStopSequence) &&
+        tripFlags.minSuppressedStopSequence === rowStopSeq + 1;
       const noSeqSignal = !Number.isFinite(rowStopSeq) && tripFlags.hasSuppressedStop;
       if (hasDownstreamSuppression || noSeqSignal || tripFlags.hasUnknownSuppressedSequence) {
         addTag(merged.tags, "short_turn");
+      }
+      if (suppressionStartsAtNextStop) {
+        merged.cancelled = true;
+        addTag(merged.tags, "short_turn_terminus");
       }
     }
 

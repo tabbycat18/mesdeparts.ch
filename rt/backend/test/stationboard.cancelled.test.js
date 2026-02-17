@@ -182,3 +182,48 @@ test("dedupe preference keeps cancelled departure when duplicates collide", () =
   assert.equal(dedupedSorted[0].trip_id, "trip-dup");
   assert.equal(dedupedSorted[0].cancelled, true);
 });
+
+test("applyTripUpdates cancels row when suppression starts at next stop", () => {
+  const baseRows = [
+    {
+      trip_id: "trip-short-turn-terminus",
+      stop_id: "8501120:0:8",
+      stop_sequence: 8,
+      scheduledDeparture: "2026-02-17T04:49:00.000Z",
+      realtimeDeparture: "2026-02-17T04:49:00.000Z",
+      delayMin: 0,
+    },
+  ];
+
+  const tripUpdates = {
+    entities: [
+      {
+        tripUpdate: {
+          trip: {
+            tripId: "trip-short-turn-terminus",
+            scheduleRelationship: "SCHEDULED",
+          },
+          stopTimeUpdate: [
+            {
+              stopId: "8501120:0:8",
+              stopSequence: 8,
+              scheduleRelationship: "SCHEDULED",
+            },
+            {
+              stopId: "8501118:0:2",
+              stopSequence: 9,
+              scheduleRelationship: "SKIPPED",
+            },
+          ],
+        },
+      },
+    ],
+  };
+
+  const merged = applyTripUpdates(baseRows, tripUpdates);
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0].suppressedStop, false);
+  assert.equal(merged[0].cancelled, true);
+  assert.ok(merged[0].tags.includes("short_turn"));
+  assert.ok(merged[0].tags.includes("short_turn_terminus"));
+});
