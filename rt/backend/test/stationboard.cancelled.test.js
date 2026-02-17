@@ -97,7 +97,7 @@ test("applyTripUpdates adds cancelled flag using trip schedule_relationship", ()
   assert.equal(typeof merged[0].platformChanged, "boolean");
 });
 
-test("applyTripUpdates marks cancelled for SKIPPED stop_time_update", () => {
+test("applyTripUpdates marks suppressed stop for SKIPPED stop_time_update", () => {
   const baseRows = [
     {
       trip_id: "trip-skip",
@@ -140,7 +140,7 @@ test("applyTripUpdates marks cancelled for SKIPPED stop_time_update", () => {
 
   const merged = applyTripUpdates(baseRows, tripUpdates);
   assert.equal(merged.length, 1);
-  assert.equal(merged[0].cancelled, true);
+  assert.equal(merged[0].cancelled, false);
   assert.equal(merged[0].suppressedStop, true);
   assert.ok(Array.isArray(merged[0].tags));
   assert.ok(merged[0].tags.includes("skipped_stop"));

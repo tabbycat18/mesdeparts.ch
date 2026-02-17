@@ -787,7 +787,7 @@ export async function buildStationboard(locationId, options = {}) {
   const mergedRows = Array.from(mergedByKey.values());
   traceCancellation("after_added_trip_merge", mergedRows);
 
-  const nonSuppressedRows = mergedRows.filter((row) => row?.suppressedStop !== true);
+  const nonSuppressedRows = mergedRows;
   traceCancellation("after_suppressed_filter", nonSuppressedRows);
 
   const departures = [];

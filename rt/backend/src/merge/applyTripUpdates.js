@@ -417,7 +417,6 @@ export function applyTripUpdates(baseRows, tripUpdates) {
     );
     if (stopStatus === "SKIPPED") {
       merged.suppressedStop = true;
-      merged.cancelled = true;
       addTag(merged.tags, "skipped_stop");
     }
 

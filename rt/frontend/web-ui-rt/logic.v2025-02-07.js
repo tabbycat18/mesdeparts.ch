@@ -245,13 +245,26 @@ function normalizeCat(c) {
   return s;
 }
 
+function normalizeLineToken(value) {
+  const raw = String(value || "").trim().toUpperCase();
+  if (!raw) return "";
+  const compact = raw.replace(/\s+/g, "");
+  if (/^\d+$/.test(compact)) return String(parseInt(compact, 10));
+  return compact;
+}
+
 function lineLooksLike(dep, journey) {
-  const depNum = String(dep?.number || "").trim().toUpperCase();
-  const jNum = String(journey?.number || "").trim().toUpperCase();
-  if (depNum && jNum && depNum !== jNum) return false;
+  const depNum = normalizeLineToken(dep?.number || dep?.simpleLineId || dep?.line);
+  const jNum = normalizeLineToken(journey?.number);
+  if (depNum) {
+    // For bus/tram rows, unknown journey numbers are too ambiguous on mixed hubs.
+    if (dep?.mode === "bus" && !jNum) return false;
+    if (jNum && depNum !== jNum) return false;
+  }
 
   const depCat = normalizeCat(dep?.category);
   const jCat = normalizeCat(journey?.category);
+  if (dep?.mode === "bus" && classifyMode(jCat) === "train") return false;
   if (dep?.mode === "train" && depCat && jCat && depCat !== jCat) return false;
   return true;
 }
@@ -388,6 +401,8 @@ function normalizeBackendStationboard(data) {
       name: String(dep?.name || dep?.line || ""),
       operator: dep?.operator || "",
       to: String(dep?.destination || ""),
+      source: String(dep?.source || ""),
+      tags: Array.isArray(dep?.tags) ? dep.tags : [],
       cancelled,
       journey: dep?.trip_id ? { id: String(dep.trip_id) } : null,
       trip: dep?.trip_id ? { id: String(dep.trip_id) } : null,
@@ -637,6 +652,8 @@ export function buildDeparturesGrouped(data, viewMode = VIEW_MODE_LINE) {
   for (const entry of stationboard) {
     const rawNumber = entry.number ? String(entry.number) : "";
     const rawCategory = entry.category ? String(entry.category) : "";
+    const source = String(entry?.source || "").trim();
+    const tags = Array.isArray(entry?.tags) ? entry.tags : [];
 
     // Operator can be a string or an object
     const rawOperator =
@@ -659,9 +676,19 @@ export function buildDeparturesGrouped(data, viewMode = VIEW_MODE_LINE) {
     }
 
     let mode = classifyMode(rawCategory);
+    const replacementText = `${rawCategory} ${rawNumber} ${entry?.name || ""} ${
+      entry?.to || ""
+    } ${rawOperator}`.toLowerCase();
+    const isReplacementBus =
+      tags.includes("replacement") ||
+      source === "synthetic_alert" ||
+      /^EV/i.test(rawNumber) ||
+      /\b(ev(?:\s*\d+)?|ersatz|replacement|remplacement|sostitutiv|substitute)\b/i.test(
+        replacementText
+      );
 
     // If this is a “station” board (no comma), ignore buses entirely
-    if (forceTrainStation && mode === "bus") continue;
+    if (forceTrainStation && mode === "bus" && !isReplacementBus) continue;
 
     if (mode === "train") trainCount += 1;
     else busCount += 1;
@@ -869,6 +896,8 @@ export function buildDeparturesGrouped(data, viewMode = VIEW_MODE_LINE) {
       operator: rawOperator || null,
       _debugNetwork: entryNetwork,
       isPostBus,
+      source,
+      tags,
 
       // details lookup helpers
       fromStationId: appState.stationId || null,
@@ -1129,6 +1158,9 @@ export async function fetchJourneyDetails(dep, { signal } = {}) {
   let bestSection = null;
   let bestConn = null;
   let bestScore = Infinity;
+  let bestStrictSection = null;
+  let bestStrictConn = null;
+  let bestStrictScore = Infinity;
 
   for (const conn of conns) {
     for (const section of conn?.sections || []) {
@@ -1142,16 +1174,32 @@ export async function fetchJourneyDetails(dep, { signal } = {}) {
         fromStationName
       );
 
-      const score =
+      const relaxedScore =
         Math.abs(depTs - targetTs) +
         (lineLooksLike(dep, j) ? 0 : 3600) +
         (hasFromStation ? 0 : 7200);
-      if (score < bestScore) {
-        bestScore = score;
+      if (relaxedScore < bestScore) {
+        bestScore = relaxedScore;
         bestSection = section;
         bestConn = conn;
       }
+
+      const strictMatch =
+        lineLooksLike(dep, j) &&
+        (dep.mode !== "bus" || classifyMode(j?.category || "") === "bus");
+      if (!strictMatch) continue;
+      const strictScore = Math.abs(depTs - targetTs) + (hasFromStation ? 0 : 7200);
+      if (strictScore < bestStrictScore) {
+        bestStrictScore = strictScore;
+        bestStrictSection = section;
+        bestStrictConn = conn;
+      }
     }
+  }
+
+  if (bestStrictSection) {
+    bestSection = bestStrictSection;
+    bestConn = bestStrictConn;
   }
 
   if (!bestSection) throw new Error("No journey details available for this départ");
