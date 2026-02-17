@@ -2663,7 +2663,8 @@ export function renderDepartures(rows) {
     const platformVal = dep.platform || "";
     const prevPlatform = dep.previousPlatform || null;
 
-    if (dep.platformChanged && platformVal) {
+    const showPlatformChange = dep.mode === "train" && dep.platformChanged && platformVal;
+    if (showPlatformChange) {
       const wrap = document.createElement("div");
       wrap.className = "platform-change-wrap";
 
@@ -2727,6 +2728,12 @@ export function renderDepartures(rows) {
     if (dep.status === "cancelled") tdRemark.classList.add("status-cancelled");
     if (dep.status === "delay") tdRemark.classList.add("status-delay");
     if (dep.status === "early") tdRemark.classList.add("status-early");
+    if (dep.status === "cancelled" && uiDebugEnabled()) {
+      const debugCancel = document.createElement("span");
+      debugCancel.className = "remark-debug-cancelled";
+      debugCancel.textContent = " CXL";
+      tdRemark.appendChild(debugCancel);
+    }
 
     // Assemble
     tr.appendChild(tdLine);

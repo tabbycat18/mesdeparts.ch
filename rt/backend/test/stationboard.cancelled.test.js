@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { applyTripUpdates } from "../src/merge/applyTripUpdates.js";
+import { pickPreferredMergedDeparture } from "../src/merge/pickPreferredDeparture.js";
 
 test("applyTripUpdates adds cancelled flag using trip schedule_relationship", () => {
   const baseRows = [
@@ -94,4 +95,90 @@ test("applyTripUpdates adds cancelled flag using trip schedule_relationship", ()
   assert.equal(typeof merged[0].realtimeDeparture, "string");
   assert.equal(typeof merged[0].delayMin, "number");
   assert.equal(typeof merged[0].platformChanged, "boolean");
+});
+
+test("applyTripUpdates marks cancelled for SKIPPED stop_time_update", () => {
+  const baseRows = [
+    {
+      trip_id: "trip-skip",
+      stop_id: "8503000:0:2",
+      stop_sequence: 8,
+      category: "R",
+      number: "8",
+      line: "R8",
+      name: "R8",
+      destination: "Sample Destination",
+      operator: "op",
+      scheduledDeparture: "2026-02-16T10:00:00.000Z",
+      realtimeDeparture: "2026-02-16T10:00:00.000Z",
+      delayMin: 0,
+      minutesLeft: 0,
+      platform: "2",
+      platformChanged: false,
+    },
+  ];
+
+  const tripUpdates = {
+    entities: [
+      {
+        tripUpdate: {
+          trip: {
+            tripId: "trip-skip",
+            scheduleRelationship: "SCHEDULED",
+          },
+          stopTimeUpdate: [
+            {
+              stopId: "8503000:0:2",
+              stopSequence: 8,
+              scheduleRelationship: "SKIPPED",
+            },
+          ],
+        },
+      },
+    ],
+  };
+
+  const merged = applyTripUpdates(baseRows, tripUpdates);
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0].cancelled, true);
+  assert.equal(merged[0].suppressedStop, true);
+  assert.ok(Array.isArray(merged[0].tags));
+  assert.ok(merged[0].tags.includes("skipped_stop"));
+});
+
+test("dedupe preference keeps cancelled departure when duplicates collide", () => {
+  const active = {
+    trip_id: "trip-dup",
+    stop_id: "8503000:0:2",
+    stop_sequence: 8,
+    scheduledDeparture: "2026-02-16T10:00:00.000Z",
+    realtimeDeparture: "2026-02-16T10:00:00.000Z",
+    cancelled: false,
+    suppressedStop: false,
+  };
+  const cancelled = {
+    ...active,
+    cancelled: true,
+    suppressedStop: true,
+  };
+
+  assert.equal(pickPreferredMergedDeparture(active, cancelled), cancelled);
+  assert.equal(pickPreferredMergedDeparture(cancelled, active), cancelled);
+
+  const byKey = new Map();
+  for (const row of [active, cancelled]) {
+    const key = `${row.trip_id}|${row.stop_id}|${row.stop_sequence}|${row.scheduledDeparture}`;
+    const previous = byKey.get(key);
+    byKey.set(key, pickPreferredMergedDeparture(previous, row));
+  }
+
+  const dedupedSorted = Array.from(byKey.values()).sort((a, b) => {
+    const aMs = Date.parse(a?.realtimeDeparture || a?.scheduledDeparture || "");
+    const bMs = Date.parse(b?.realtimeDeparture || b?.scheduledDeparture || "");
+    return aMs - bMs;
+  });
+
+  assert.equal(dedupedSorted.length, 1);
+  assert.equal(dedupedSorted[0].trip_id, "trip-dup");
+  assert.equal(dedupedSorted[0].cancelled, true);
 });

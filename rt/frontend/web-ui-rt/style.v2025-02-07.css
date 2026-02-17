@@ -780,6 +780,17 @@ body {
   color: #ff4d4f; /* red for Supprimé */
 }
 
+.col-remark-cell .remark-debug-cancelled {
+  display: inline-block;
+  margin-left: 0.35rem;
+  padding: 0.02rem 0.28rem;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: 0.72em;
+  font-weight: 700;
+  vertical-align: baseline;
+}
+
 /* Cancelled rows: de-emphasize, keep remark prominent */
 .departures tbody tr.is-cancelled td {
   opacity: 0.65;
