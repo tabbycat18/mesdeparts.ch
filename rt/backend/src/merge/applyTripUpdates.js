@@ -66,6 +66,24 @@ function getStopSequence(stu) {
   return n === null ? null : n;
 }
 
+function getStopScheduleRelationship(stu) {
+  const rel = pick(stu, "schedule_relationship", "scheduleRelationship");
+  if (typeof rel === "string") return rel.toUpperCase();
+  const n = asNumber(rel);
+  switch (n) {
+    case 0:
+      return "SCHEDULED";
+    case 1:
+      return "SKIPPED";
+    case 2:
+      return "NO_DATA";
+    case 3:
+      return "UNSCHEDULED";
+    default:
+      return "";
+  }
+}
+
 function getDelaySeconds(stu) {
   const dep = pick(stu, "departure") || null;
   const arr = pick(stu, "arrival") || null;
@@ -88,6 +106,25 @@ function getUpdatedEpoch(stu) {
   if (depTime !== null) return depTime;
   if (arrTime !== null) return arrTime;
   return null;
+}
+
+function addTag(tags, tag) {
+  if (!Array.isArray(tags) || !tag) return;
+  if (!tags.includes(tag)) tags.push(tag);
+}
+
+function shouldApplyRealtimeEpoch(scheduledMs, realtimeMs) {
+  if (!Number.isFinite(realtimeMs)) return false;
+  if (!Number.isFinite(scheduledMs)) return true;
+
+  // TripUpdates are keyed without service date in our merge key.
+  // Guard against cross-day collisions by rejecting implausible offsets.
+  const maxDriftMinutes = Math.max(
+    30,
+    Number(process.env.RT_MERGE_MAX_DRIFT_MINUTES || "240")
+  );
+  const driftMs = Math.abs(realtimeMs - scheduledMs);
+  return driftMs <= maxDriftMinutes * 60 * 1000;
 }
 
 function buildRealtimeIndex(tripUpdates) {
@@ -181,6 +218,101 @@ function buildCancelledTripIdSet(tripUpdates) {
   return cancelled;
 }
 
+function buildStopStatusIndex(tripUpdates) {
+  if (tripUpdates?.stopStatusByKey && typeof tripUpdates.stopStatusByKey === "object") {
+    return tripUpdates.stopStatusByKey;
+  }
+
+  const entities = Array.isArray(tripUpdates?.entities)
+    ? tripUpdates.entities
+    : Array.isArray(tripUpdates?.entity)
+      ? tripUpdates.entity
+      : [];
+
+  const byKey = Object.create(null);
+  for (const entity of entities) {
+    const tu = getTripUpdate(entity);
+    if (!tu) continue;
+    const tripId = getTripIdFromUpdate(tu);
+    if (!tripId) continue;
+
+    for (const stu of getStopTimeUpdates(tu)) {
+      const stopId = getStopId(stu);
+      if (!stopId) continue;
+      const seq = getStopSequence(stu);
+      const seqPart = seqKeyPart(seq);
+      const rel = getStopScheduleRelationship(stu);
+      if (!rel) continue;
+      const epoch = getUpdatedEpoch(stu);
+      for (const sid of stopIdVariants(stopId)) {
+        const key = `${tripId}|${sid}|${seqPart}`;
+        const prev = byKey[key];
+        const prevEpoch =
+          prev && Number.isFinite(prev.updatedDepartureEpoch)
+            ? prev.updatedDepartureEpoch
+            : null;
+        const nextEpoch = Number.isFinite(epoch) ? epoch : null;
+        if (prevEpoch !== null && nextEpoch !== null && prevEpoch > nextEpoch) continue;
+        if (prevEpoch !== null && nextEpoch === null) continue;
+        byKey[key] = {
+          relationship: rel,
+          updatedDepartureEpoch: nextEpoch,
+        };
+      }
+    }
+  }
+  return byKey;
+}
+
+function buildTripFlagsByTripId(tripUpdates) {
+  if (tripUpdates?.tripFlagsByTripId && typeof tripUpdates.tripFlagsByTripId === "object") {
+    return tripUpdates.tripFlagsByTripId;
+  }
+
+  const entities = Array.isArray(tripUpdates?.entities)
+    ? tripUpdates.entities
+    : Array.isArray(tripUpdates?.entity)
+      ? tripUpdates.entity
+      : [];
+
+  const out = Object.create(null);
+  for (const entity of entities) {
+    const tu = getTripUpdate(entity);
+    if (!tu) continue;
+    const tripId = getTripIdFromUpdate(tu);
+    if (!tripId) continue;
+
+    for (const stu of getStopTimeUpdates(tu)) {
+      const rel = getStopScheduleRelationship(stu);
+      if (rel !== "SKIPPED") continue;
+
+      const seq = getStopSequence(stu);
+      const key = String(tripId);
+      const prev = out[key] || {
+        hasSuppressedStop: false,
+        maxSuppressedStopSequence: null,
+        minSuppressedStopSequence: null,
+        hasUnknownSuppressedSequence: false,
+      };
+      prev.hasSuppressedStop = true;
+      if (Number.isFinite(seq)) {
+        const n = Number(seq);
+        if (prev.maxSuppressedStopSequence === null || n > prev.maxSuppressedStopSequence) {
+          prev.maxSuppressedStopSequence = n;
+        }
+        if (prev.minSuppressedStopSequence === null || n < prev.minSuppressedStopSequence) {
+          prev.minSuppressedStopSequence = n;
+        }
+      } else {
+        prev.hasUnknownSuppressedSequence = true;
+      }
+      out[key] = prev;
+    }
+  }
+
+  return out;
+}
+
 function getDelayForRow(delayByKey, tripId, stopId, stopSequence) {
   if (!delayByKey || !tripId || !stopId) return null;
 
@@ -196,6 +328,19 @@ function getDelayForRow(delayByKey, tripId, stopId, stopSequence) {
   return null;
 }
 
+function getStopStatusForRow(stopStatusByKey, tripId, stopId, stopSequence) {
+  if (!stopStatusByKey || !tripId || !stopId) return null;
+  const seqPart = seqKeyPart(stopSequence);
+
+  for (const sid of stopIdVariants(stopId)) {
+    const withSeq = stopStatusByKey[`${tripId}|${sid}|${seqPart}`];
+    if (withSeq?.relationship) return withSeq.relationship;
+    const withoutSeq = stopStatusByKey[`${tripId}|${sid}|`];
+    if (withoutSeq?.relationship) return withoutSeq.relationship;
+  }
+  return null;
+}
+
 export function applyTripUpdates(baseRows, tripUpdates) {
   if (!Array.isArray(baseRows) || baseRows.length === 0) {
     return [];
@@ -203,11 +348,16 @@ export function applyTripUpdates(baseRows, tripUpdates) {
 
   const delayByKey = buildRealtimeIndex(tripUpdates);
   const cancelledTripIds = buildCancelledTripIdSet(tripUpdates);
+  const stopStatusByKey = buildStopStatusIndex(tripUpdates);
+  const tripFlagsByTripId = buildTripFlagsByTripId(tripUpdates);
 
   return baseRows.map((row) => {
     const merged = {
       ...row,
       cancelled: false,
+      source: row?.source || "scheduled",
+      tags: Array.isArray(row?.tags) ? [...row.tags] : [],
+      suppressedStop: false,
     };
 
     const scheduledMs = Date.parse(row.scheduledDeparture || "");
@@ -218,11 +368,14 @@ export function applyTripUpdates(baseRows, tripUpdates) {
 
     if (delay) {
       if (typeof delay.updatedDepartureEpoch === "number") {
-        realtimeMs = delay.updatedDepartureEpoch * 1000;
-        if (Number.isFinite(scheduledMs)) {
-          delayMin = Math.round((realtimeMs - scheduledMs) / 60000);
-        } else if (typeof delay.delayMin === "number") {
-          delayMin = delay.delayMin;
+        const candidateRealtimeMs = delay.updatedDepartureEpoch * 1000;
+        if (shouldApplyRealtimeEpoch(scheduledMs, candidateRealtimeMs)) {
+          realtimeMs = candidateRealtimeMs;
+          if (Number.isFinite(scheduledMs)) {
+            delayMin = Math.round((realtimeMs - scheduledMs) / 60000);
+          } else if (typeof delay.delayMin === "number") {
+            delayMin = delay.delayMin;
+          }
         }
       } else if (typeof delay.delayMin === "number") {
         delayMin = delay.delayMin;
@@ -238,6 +391,30 @@ export function applyTripUpdates(baseRows, tripUpdates) {
 
     merged.delayMin = delayMin;
     merged.cancelled = cancelledTripIds.has(String(row.trip_id || ""));
+    const stopStatus = getStopStatusForRow(
+      stopStatusByKey,
+      row.trip_id,
+      row.stop_id,
+      row.stop_sequence
+    );
+    if (stopStatus === "SKIPPED") {
+      merged.suppressedStop = true;
+      addTag(merged.tags, "skipped_stop");
+    }
+
+    const tripFlags = row?.trip_id ? tripFlagsByTripId[String(row.trip_id)] : null;
+    const rowStopSeqRaw = row?.stop_sequence;
+    const rowStopSeq = rowStopSeqRaw == null ? Number.NaN : Number(rowStopSeqRaw);
+    if (tripFlags?.hasSuppressedStop && !merged.suppressedStop) {
+      const hasDownstreamSuppression =
+        Number.isFinite(rowStopSeq) &&
+        Number.isFinite(tripFlags.maxSuppressedStopSequence) &&
+        tripFlags.maxSuppressedStopSequence > rowStopSeq;
+      const noSeqSignal = !Number.isFinite(rowStopSeq) && tripFlags.hasSuppressedStop;
+      if (hasDownstreamSuppression || noSeqSignal || tripFlags.hasUnknownSuppressedSequence) {
+        addTag(merged.tags, "short_turn");
+      }
+    }
 
     return merged;
   });

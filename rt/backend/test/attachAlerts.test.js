@@ -42,6 +42,14 @@ test("attachAlerts adds stop banners, per-departure matches, active filtering, a
         informedEntities: [{ stop_id: "Parent8501120" }],
       },
       {
+        id: "banner-sloid",
+        severity: "warning",
+        headerText: "SLOID disruption",
+        descriptionText: "sloid",
+        activePeriods: [],
+        informedEntities: [{ stop_id: "ch:1:sloid:1120" }],
+      },
+      {
         id: "trip-match",
         severity: "severe",
         headerText: "Trip issue",
@@ -94,6 +102,14 @@ test("attachAlerts adds stop banners, per-departure matches, active filtering, a
         activePeriods: [],
         informedEntities: [{ stop_id: "8501120:0:1" }, { stop_id: "8501120:0:2" }],
       },
+      {
+        id: "ev-replacement",
+        severity: "warning",
+        headerText: "EV 1",
+        descriptionText: "Ersatzverkehr",
+        activePeriods: [],
+        informedEntities: [{ route_id: "route-1" }],
+      },
     ],
   };
 
@@ -107,10 +123,11 @@ test("attachAlerts adds stop banners, per-departure matches, active filtering, a
   });
 
   const bannerIds = new Set(result.banners.map((banner) => banner.header));
-  assert.equal(result.banners.length, 3);
+  assert.equal(result.banners.length, 4);
   assert.ok(bannerIds.has("Child stop disruption"));
   assert.ok(bannerIds.has("Parent disruption"));
   assert.ok(bannerIds.has("Duplicate banner match"));
+  assert.ok(bannerIds.has("SLOID disruption"));
 
   const dep1 = result.departures.find((dep) => dep.trip_id === "trip-1");
   const dep2 = result.departures.find((dep) => dep.trip_id === "trip-2");
@@ -124,12 +141,15 @@ test("attachAlerts adds stop banners, per-departure matches, active filtering, a
     "banner-child",
     "banner-dedup",
     "banner-parent",
+    "banner-sloid",
     "dep-dedup",
+    "ev-replacement",
     "route-match",
   ]);
   assert.deepEqual(dep2Ids, [
     "banner-dedup",
     "banner-parent",
+    "banner-sloid",
     "seq-match",
     "trip-match",
   ]);
@@ -138,5 +158,61 @@ test("attachAlerts adds stop banners, per-departure matches, active filtering, a
   assert.equal(dep1Ids.filter((id) => id === "dep-dedup").length, 1);
   // Inactive alert must not match.
   assert.equal(dep1Ids.includes("inactive"), false);
+  assert.ok(dep1.tags.includes("replacement"));
 });
 
+test("attachAlerts keeps synthetic rows pinned to origin alert only", () => {
+  const now = new Date("2026-02-16T20:00:00.000Z");
+  const departures = [
+    {
+      trip_id: "synthetic_alert:origin-alert:1771287962",
+      route_id: "",
+      stop_id: "Parent8501120",
+      source: "synthetic_alert",
+      tags: ["replacement"],
+      destination: "Origin alert row",
+    },
+    {
+      trip_id: "otd-ev-fallback-row",
+      route_id: "",
+      stop_id: "Parent8501120",
+      source: "synthetic_alert",
+      tags: ["replacement"],
+      destination: "No explicit origin id",
+    },
+  ];
+  const alerts = {
+    entities: [
+      {
+        id: "origin-alert",
+        severity: "warning",
+        headerText: "Origin alert",
+        descriptionText: "replacement",
+        activePeriods: [],
+        informedEntities: [{ stop_id: "Parent8501120" }],
+      },
+      {
+        id: "other-alert",
+        severity: "warning",
+        headerText: "Other alert",
+        descriptionText: "replacement",
+        activePeriods: [],
+        informedEntities: [{ stop_id: "Parent8501120" }],
+      },
+    ],
+  };
+
+  const out = attachAlerts({
+    stopId: "Parent8501120",
+    departures,
+    alerts,
+    now,
+  });
+
+  const pinned = out.departures.find((d) => d.trip_id === "synthetic_alert:origin-alert:1771287962");
+  const noOrigin = out.departures.find((d) => d.trip_id === "otd-ev-fallback-row");
+  assert.ok(pinned);
+  assert.ok(noOrigin);
+  assert.deepEqual(pinned.alerts.map((a) => a.id), ["origin-alert"]);
+  assert.equal(noOrigin.alerts.length, 0);
+});

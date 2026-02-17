@@ -239,6 +239,24 @@ let staleBoardRetryAt = 0;
 let staleBoardEmptySince = null;
 let staleBoardDirectRescueAt = 0;
 let lastNonEmptyStationboardAt = 0;
+let refreshRequestSeq = 0;
+
+function clearBoardForStationChange() {
+  // Invalidate old in-flight refreshes and cached rows immediately.
+  refreshRequestSeq += 1;
+  lastStationboardData = null;
+  staleBoardRetryStation = null;
+  staleBoardRetryAt = 0;
+  staleBoardEmptySince = null;
+  staleBoardDirectRescueAt = 0;
+  lastNonEmptyStationboardAt = 0;
+
+  // Clear visible rows so we don't briefly show the previous station board.
+  const tbody = document.getElementById("departures-body");
+  if (tbody) {
+    tbody.innerHTML = "";
+  }
+}
 
 function shouldAutoSwitchToBoard() {
   if (appState.apiMode !== API_MODE_DIRECT) return false;
@@ -417,8 +435,17 @@ function applyStation(name, id, { syncUrl = false } = {}) {
   appState.platformFilter = null;
   appState.lineFilter = null;
   appState.lastPlatforms = {};
+  appState.platformOptions = [];
+  appState.lineOptions = [];
+  appState.lineNetworks = {};
+  appState.lastBoardIsTrain = false;
+  appState.lastBoardHasBus = false;
+  appState.lastBoardHasBusPlatform = false;
+  appState.lastBoardNetwork = appState.currentNetwork || "generic";
   emptyBoardRetryStation = null;
 
+  clearBoardForStationChange();
+  renderFilterOptions();
   persistStationSelection(stationName, appState.stationId);
   if (syncUrl) {
     updateUrlWithStation(stationName, appState.stationId);
@@ -428,6 +455,14 @@ function applyStation(name, id, { syncUrl = false } = {}) {
 }
 
 async function refreshDepartures({ retried, showLoadingHint = true } = {}) {
+  const requestSeq = ++refreshRequestSeq;
+  const requestStation = appState.STATION || "";
+  const requestStationId = appState.stationId || "";
+  const isStaleRequest = () =>
+    requestSeq !== refreshRequestSeq ||
+    requestStation !== (appState.STATION || "") ||
+    requestStationId !== (appState.stationId || "");
+
   const tStart = DEBUG_PERF ? performance.now() : 0;
   const tbody = document.getElementById("departures-body");
   if (tbody) {
@@ -439,6 +474,7 @@ async function refreshDepartures({ retried, showLoadingHint = true } = {}) {
 
   try {
     const data = await fetchStationboardRaw();
+    if (isStaleRequest()) return;
     const tAfterFetch = DEBUG_PERF ? performance.now() : 0;
     const rows = buildDeparturesGrouped(data, appState.viewMode);
     const tAfterBuild = DEBUG_PERF ? performance.now() : 0;
@@ -478,6 +514,7 @@ async function refreshDepartures({ retried, showLoadingHint = true } = {}) {
       try {
         await resolveStationId();
         const retryData = await fetchStationboardRaw();
+        if (isStaleRequest()) return;
         const retryRows = buildDeparturesGrouped(retryData, appState.viewMode);
         if (retryRows && retryRows.length) {
           lastStationboardData = retryData;
@@ -506,6 +543,7 @@ async function refreshDepartures({ retried, showLoadingHint = true } = {}) {
         staleBoardRetryAt = nowMs;
         try {
           const freshData = await fetchStationboardRaw({ allowRetry: false, bustCache: true });
+          if (isStaleRequest()) return;
           const freshRows = buildDeparturesGrouped(freshData, appState.viewMode);
           lastStationboardData = freshData;
           renderFilterOptions();
@@ -532,6 +570,7 @@ async function refreshDepartures({ retried, showLoadingHint = true } = {}) {
       appState.apiMode = API_MODE_DIRECT;
       try {
         const directData = await fetchStationboardRaw({ allowRetry: false, bustCache: true });
+        if (isStaleRequest()) return;
         const directRows = buildDeparturesGrouped(directData, appState.viewMode);
         lastStationboardData = directData;
         staleBoardEmptySince = directRows && directRows.length ? null : staleBoardEmptySince;
@@ -559,6 +598,7 @@ async function refreshDepartures({ retried, showLoadingHint = true } = {}) {
       appState.apiMode = API_MODE_DIRECT;
       try {
         const directData = await fetchStationboardRaw({ allowRetry: false, bustCache: true });
+        if (isStaleRequest()) return;
         const directRows = buildDeparturesGrouped(directData, appState.viewMode);
         lastStationboardData = directData;
         if (Array.isArray(directData?.stationboard) && directData.stationboard.length > 0) {
@@ -600,6 +640,7 @@ async function refreshDepartures({ retried, showLoadingHint = true } = {}) {
     updateDebugPanel(rows);
     publishEmbedState();
   } catch (err) {
+    if (isStaleRequest()) return;
     console.error("[MesDeparts] refresh error:", err);
 
     // Show a minimal error row
@@ -615,6 +656,7 @@ async function refreshDepartures({ retried, showLoadingHint = true } = {}) {
       tbody2.appendChild(tr);
     }
   } finally {
+    if (isStaleRequest()) return;
     if (tbody) {
       tbody.removeAttribute("aria-busy");
     }

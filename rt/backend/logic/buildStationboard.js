@@ -4,6 +4,7 @@ import {
   loadRealtimeDelayIndexOnce,
 } from "../loaders/loadRealtime.js";
 import { applyTripUpdates } from "../src/merge/applyTripUpdates.js";
+import { applyAddedTrips } from "../src/merge/applyAddedTrips.js";
 
 import fs from "node:fs";
 import path from "node:path";
@@ -186,6 +187,33 @@ function normalizeDepartureSecondsForWindow(depSec, maxSecondsRaw) {
 }
 
 /**
+ * For previous-service-day rows queried after midnight, low dep_sec values
+ * (00:xx) belong to the next civil day of that service day.
+ */
+function normalizeDepartureSecondsForServiceDay(
+  depSec,
+  {
+    maxSecondsRaw,
+    nowSecondsRaw,
+    windowMinutes,
+    serviceDayOffset,
+  }
+) {
+  const base = normalizeDepartureSecondsForWindow(depSec, maxSecondsRaw);
+  if (!Number.isFinite(base)) return null;
+
+  if (serviceDayOffset !== -1) return base;
+  if (base >= 86400) return base;
+
+  const spillMax = nowSecondsRaw + windowMinutes * 60;
+  if (base >= 0 && base <= spillMax) {
+    return base + 86400;
+  }
+
+  return base;
+}
+
+/**
  * Rough category from route_type + names.
  */
 function deriveCategoryFromRoute(routeType, routeShortName, routeId) {
@@ -219,6 +247,18 @@ function parseTrainCategoryNumber(label) {
   const cat = m[1].toUpperCase();
   const num = String(m[2]).replace(/^0+/, "") || "0";
   return { category: cat, number: num, full: cleaned };
+}
+
+function hasReplacementSignal(...values) {
+  const text = values
+    .map((v) => String(v || "").trim())
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  if (!text) return false;
+  return /\b(ev(?:\s*\d+)?|ersatz|replacement|remplacement|sostitutiv|substitute)\b/i.test(
+    text
+  );
 }
 
 function isRailLike(routeType, routeShortName, routeId) {
@@ -605,6 +645,7 @@ export async function buildStationboard(locationId, options = {}) {
 
     const rsn = String(routeShortName || "").trim();
     const tsn = String(row.trip_short_name || "").trim();
+    const rowTags = [];
 
     let lineLabel =
       rsn ||
@@ -621,6 +662,18 @@ export async function buildStationboard(locationId, options = {}) {
 
     let category = deriveCategoryFromRoute(routeType, routeShortName, routeId);
     let numberOut = lineLabel;
+    if (
+      hasReplacementSignal(
+        lineLabel,
+        row.route_desc,
+        row.trip_headsign,
+        row.route_long_name,
+        row.route_id
+      )
+    ) {
+      if (!rowTags.includes("replacement")) rowTags.push("replacement");
+      category = "B";
+    }
 
     if (isRailLike(routeType, routeShortName, routeId)) {
       const parsed = parseTrainCategoryNumber(lineLabel);
@@ -662,7 +715,12 @@ export async function buildStationboard(locationId, options = {}) {
 
     let scheduledDt = null;
     if (depSec !== null) {
-      const depSecForWindow = normalizeDepartureSecondsForWindow(depSec, maxSecondsRaw);
+      const depSecForWindow = normalizeDepartureSecondsForServiceDay(depSec, {
+        maxSecondsRaw,
+        nowSecondsRaw,
+        windowMinutes,
+        serviceDayOffset,
+      });
       scheduledDt = buildDateFromServiceDayAndSeconds(now, depSecForWindow, serviceDayOffset);
     }
     if (!scheduledDt) {
@@ -692,13 +750,38 @@ export async function buildStationboard(locationId, options = {}) {
       minutesLeft: 0,
       platform,
       platformChanged: false,
+      source: "scheduled",
+      tags: rowTags,
     });
   }
 
-  const mergedRows = applyTripUpdates(baseRows, delayIndex);
+  const mergedScheduledRows = applyTripUpdates(baseRows, delayIndex);
+  const addedRows = ENABLE_RT
+    ? applyAddedTrips({
+        tripUpdates: delayIndex,
+        stationStopIds: [stationGroupId, ...childStopIds],
+        platformByStopId,
+        stationName,
+        now,
+        windowMinutes,
+        departedGraceSeconds: DEPARTED_GRACE_SECONDS,
+        limit: queryLimit,
+      })
+    : [];
+
+  const mergedByKey = new Map();
+  for (const row of [...mergedScheduledRows, ...addedRows]) {
+    const key = `${row.trip_id || ""}|${row.stop_id || ""}|${row.stop_sequence || ""}|${
+      row.scheduledDeparture || ""
+    }`;
+    if (!mergedByKey.has(key)) mergedByKey.set(key, row);
+  }
+  const mergedRows = Array.from(mergedByKey.values());
   const departures = [];
 
   for (const row of mergedRows) {
+    if (row?.suppressedStop) continue;
+
     const realtimeDt = new Date(row.realtimeDeparture || row.scheduledDeparture);
     if (!Number.isFinite(realtimeDt.getTime())) continue;
 
@@ -716,6 +799,8 @@ export async function buildStationboard(locationId, options = {}) {
     const minutesLeft = msUntil <= 0 ? 0 : Math.floor(msUntil / 60000);
     departures.push({
       ...row,
+      source: row?.source || "scheduled",
+      tags: Array.isArray(row?.tags) ? row.tags : [],
       minutesLeft,
     });
   }

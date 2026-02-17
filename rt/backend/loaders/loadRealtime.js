@@ -157,7 +157,22 @@ function getTripUpdate(entity) {
 function getTripScheduleRelationship(tripUpdate) {
   const tripObj = pick(tripUpdate, "trip", "trip") || null;
   const rel = tripObj ? pick(tripObj, "schedule_relationship", "scheduleRelationship") : null;
-  return typeof rel === "string" ? rel.toUpperCase() : "";
+  if (typeof rel === "string") return rel.toUpperCase();
+  const relNum = asNumber(rel);
+  switch (relNum) {
+    case 0:
+      return "SCHEDULED";
+    case 1:
+      return "ADDED";
+    case 2:
+      return "UNSCHEDULED";
+    case 3:
+      return "CANCELED";
+    case 4:
+      return "DUPLICATED";
+    default:
+      return "";
+  }
 }
 
 function getStopTimeUpdates(tripUpdate) {
@@ -173,6 +188,62 @@ function getStopSequence(stu) {
   const v = pick(stu, "stop_sequence", "stopSequence");
   const n = asNumber(v);
   return n === null ? null : n;
+}
+
+function getStopTimeScheduleRelationship(stu) {
+  const rel = pick(stu, "schedule_relationship", "scheduleRelationship");
+  if (typeof rel === "string") return rel.toUpperCase();
+  const relNum = asNumber(rel);
+  switch (relNum) {
+    case 0:
+      return "SCHEDULED";
+    case 1:
+      return "SKIPPED";
+    case 2:
+      return "NO_DATA";
+    case 3:
+      return "UNSCHEDULED";
+    default:
+      return "";
+  }
+}
+
+function getTripDescriptor(update) {
+  return pick(update, "trip", "trip") || null;
+}
+
+function getTripDescriptorField(update, ...keys) {
+  const trip = getTripDescriptor(update);
+  if (!trip) return null;
+  const value = pick(trip, ...keys);
+  if (value == null) return null;
+  const out = String(value).trim();
+  return out || null;
+}
+
+function relationshipRank(rel) {
+  if (rel === "SKIPPED") return 3;
+  if (rel === "NO_DATA") return 2;
+  if (rel === "SCHEDULED") return 1;
+  return 0;
+}
+
+function shouldReplaceRelationship(prev, next) {
+  const prevEpoch =
+    prev && Number.isFinite(prev.updatedDepartureEpoch)
+      ? prev.updatedDepartureEpoch
+      : null;
+  const nextEpoch =
+    next && Number.isFinite(next.updatedDepartureEpoch)
+      ? next.updatedDepartureEpoch
+      : null;
+  if (prevEpoch !== null && nextEpoch !== null) {
+    if (nextEpoch > prevEpoch) return true;
+    if (nextEpoch < prevEpoch) return false;
+  }
+  if (prevEpoch !== null && nextEpoch === null) return false;
+  if (prevEpoch === null && nextEpoch !== null) return true;
+  return relationshipRank(next?.relationship || "") >= relationshipRank(prev?.relationship || "");
 }
 
 function getDelaySeconds(stu) {
@@ -225,6 +296,10 @@ export async function fetchGtfsRealtimeFeed() {
 export function buildDelayIndex(gtfsRtFeed) {
   const byKey = Object.create(null);
   const cancelledTripIds = new Set();
+  const stopStatusByKey = Object.create(null);
+  const tripFlagsByTripId = Object.create(null);
+  const addedTripStopUpdates = [];
+  const addedTripStopUpdateSeen = new Set();
   const rtRows = [];
   const entities = Array.isArray(gtfsRtFeed?.entities)
     ? gtfsRtFeed.entities
@@ -235,7 +310,13 @@ export function buildDelayIndex(gtfsRtFeed) {
   if (!gtfsRtFeed || entities.length === 0) {
     if (DEBUG_RT)
       console.warn("[GTFS-RT] Unexpected feed shape (no entity array).");
-    return { byKey, cancelledTripIds };
+    return {
+      byKey,
+      cancelledTripIds,
+      stopStatusByKey,
+      tripFlagsByTripId,
+      addedTripStopUpdates,
+    };
   }
 
   /* ==========================================
@@ -248,7 +329,8 @@ export function buildDelayIndex(gtfsRtFeed) {
     const tripObj = pick(tu, "trip", "trip");
     const tripId = tripObj ? pick(tripObj, "trip_id", "tripId") || null : null;
     if (!tripId) continue;
-    if (getTripScheduleRelationship(tu) === "CANCELED") {
+    const tripScheduleRelationship = getTripScheduleRelationship(tu);
+    if (tripScheduleRelationship === "CANCELED") {
       cancelledTripIds.add(String(tripId));
     }
 
@@ -262,6 +344,36 @@ export function buildDelayIndex(gtfsRtFeed) {
 
       const delaySec = getDelaySeconds(stu);
       const updatedEpoch = getUpdatedEpoch(stu);
+      const stopScheduleRelationship = getStopTimeScheduleRelationship(stu);
+
+      if (stopScheduleRelationship === "SKIPPED") {
+        const keyTrip = String(tripId);
+        const prevFlags = tripFlagsByTripId[keyTrip] || {
+          hasSuppressedStop: false,
+          maxSuppressedStopSequence: null,
+          minSuppressedStopSequence: null,
+          hasUnknownSuppressedSequence: false,
+        };
+        prevFlags.hasSuppressedStop = true;
+        if (Number.isFinite(stopSequence)) {
+          const seq = Number(stopSequence);
+          if (
+            prevFlags.maxSuppressedStopSequence === null ||
+            seq > prevFlags.maxSuppressedStopSequence
+          ) {
+            prevFlags.maxSuppressedStopSequence = seq;
+          }
+          if (
+            prevFlags.minSuppressedStopSequence === null ||
+            seq < prevFlags.minSuppressedStopSequence
+          ) {
+            prevFlags.minSuppressedStopSequence = seq;
+          }
+        } else {
+          prevFlags.hasUnknownSuppressedSequence = true;
+        }
+        tripFlagsByTripId[keyTrip] = prevFlags;
+      }
 
       if (updatedEpoch !== null) {
         rtRows.push({
@@ -275,6 +387,16 @@ export function buildDelayIndex(gtfsRtFeed) {
 
       for (const stopId of stopIdVariants(rawStopId)) {
         const key = `${tripId}|${stopId}|${seqPart}`;
+        if (stopScheduleRelationship) {
+          const nextStatus = {
+            relationship: stopScheduleRelationship,
+            updatedDepartureEpoch: updatedEpoch,
+          };
+          const prevStatus = stopStatusByKey[key];
+          if (!prevStatus || shouldReplaceRelationship(prevStatus, nextStatus)) {
+            stopStatusByKey[key] = nextStatus;
+          }
+        }
 
         const prev = byKey[key];
         if (prev) {
@@ -299,6 +421,35 @@ export function buildDelayIndex(gtfsRtFeed) {
           updatedDepartureEpoch: updatedEpoch,
         };
       }
+
+      if (tripScheduleRelationship === "ADDED") {
+        if (updatedEpoch === null) continue;
+        if (stopScheduleRelationship === "SKIPPED") {
+          continue;
+        }
+
+        const dedupeKey = `${tripId}|${rawStopId}|${seqPart}|${updatedEpoch}`;
+        if (addedTripStopUpdateSeen.has(dedupeKey)) continue;
+        addedTripStopUpdateSeen.add(dedupeKey);
+
+        addedTripStopUpdates.push({
+          tripId: String(tripId),
+          routeId: getTripDescriptorField(tu, "route_id", "routeId") || "",
+          stopId: String(rawStopId),
+          stopSequence: Number.isFinite(stopSequence) ? Number(stopSequence) : null,
+          departureEpoch: updatedEpoch,
+          delaySec,
+          delayMin: Math.round(delaySec / 60),
+          tripStartDate:
+            getTripDescriptorField(tu, "start_date", "startDate") || "",
+          tripStartTime:
+            getTripDescriptorField(tu, "start_time", "startTime") || "",
+          tripShortName:
+            getTripDescriptorField(tu, "trip_short_name", "tripShortName") || "",
+          tripHeadsign:
+            getTripDescriptorField(tu, "trip_headsign", "tripHeadsign") || "",
+        });
+      }
     }
   }
 
@@ -311,7 +462,13 @@ export function buildDelayIndex(gtfsRtFeed) {
     if (DEBUG_RT) console.warn("[GTFS-RT] persistRtUpdates error", err?.message || err);
   });
 
-  return { byKey, cancelledTripIds };
+  return {
+    byKey,
+    cancelledTripIds,
+    stopStatusByKey,
+    tripFlagsByTripId,
+    addedTripStopUpdates,
+  };
 }
 
 export function getDelayForStop(delayIndex, tripId, stopId, stopSequence) {

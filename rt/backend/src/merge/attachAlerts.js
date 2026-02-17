@@ -17,6 +17,105 @@ function normalizeStopId(value) {
   return String(value).trim();
 }
 
+function stopKeySet(value) {
+  const raw = normalizeStopId(value);
+  const out = new Set();
+  if (!raw) return out;
+
+  const lowerRaw = raw.toLowerCase();
+  out.add(lowerRaw);
+
+  const noParent = lowerRaw.startsWith("parent")
+    ? lowerRaw.slice("parent".length)
+    : lowerRaw;
+  if (noParent) out.add(noParent);
+  const isSloid = lowerRaw.includes("sloid:");
+  const isPlatformScoped = noParent.includes(":") && !isSloid;
+
+  const base = noParent.split(":")[0] || noParent;
+  if (base && !isPlatformScoped && !isSloid) out.add(base);
+
+  const sloidMatch = lowerRaw.match(/sloid:(\d+)/i);
+  if (sloidMatch?.[1]) {
+    const sl = String(Number(sloidMatch[1]));
+    if (sl && sl !== "0") out.add(sl);
+  }
+
+  if (/^\d+$/.test(base)) {
+    const normalizedDigits = String(Number(base));
+    if (
+      normalizedDigits &&
+      normalizedDigits !== "0" &&
+      !isPlatformScoped &&
+      !isSloid
+    ) {
+      out.add(normalizedDigits);
+    }
+    if (!isPlatformScoped && !isSloid && base.startsWith("850") && base.length > 3) {
+      const tail = String(Number(base.slice(3)));
+      if (tail && tail !== "0") out.add(tail);
+    }
+  }
+
+  return out;
+}
+
+function hasTokenIntersection(aSet, bSet) {
+  for (const token of aSet) {
+    if (bSet.has(token)) return true;
+  }
+  return false;
+}
+
+function isStationLevelStopId(stopId) {
+  const raw = normalizeStopId(stopId).toLowerCase();
+  if (!raw) return false;
+  if (raw.startsWith("parent")) return true;
+  if (raw.includes("sloid:")) return true;
+  if (raw.includes(":")) return false;
+  return true;
+}
+
+function uniqPush(arr, value) {
+  if (!Array.isArray(arr) || !value) return;
+  if (!arr.includes(value)) arr.push(value);
+}
+
+function inferAlertTags(alert) {
+  const effect = String(alert?.effect || "").toUpperCase();
+  const text = `${alert?.headerText || ""} ${alert?.descriptionText || ""}`.toLowerCase();
+  const tags = [];
+
+  if (
+    effect === "ADDITIONAL_SERVICE" ||
+    /\b(extra|zusatz|special|suppl[ée]mentaire)\b/i.test(text)
+  ) {
+    tags.push("extra");
+  }
+
+  if (
+    effect === "DETOUR" ||
+    effect === "MODIFIED_SERVICE" ||
+    /\b(ersatz|replacement|remplacement|sostitutiv|substitute|ev(?:\s*\d+)?)\b/i.test(
+      text
+    )
+  ) {
+    tags.push("replacement");
+  }
+
+  if (
+    /\b(short.?turn|terminate early|terminus avanc[ée]|retournement)\b/i.test(text)
+  ) {
+    tags.push("short_turn");
+  }
+
+  if (/\b(does not stop|sans arr[êe]t|h[äa]lt nicht|non effettua fermata)\b/i.test(text)) {
+    tags.push("skipped_stop");
+  }
+
+  return tags;
+}
+
 function normalizeNow(now) {
   if (now instanceof Date && Number.isFinite(now.getTime())) return now;
   return new Date();
@@ -61,12 +160,26 @@ function isParentStopId(stopId) {
   return normalizeStopId(stopId).startsWith("Parent");
 }
 
-function stopMatchesScope(informedStopId, departureStopId, requestedStopId, childStopIds) {
+function stopMatchesScope(
+  informedStopId,
+  departureStopId,
+  requestedStopId,
+  childStopIds,
+  scopeStopTokens
+) {
   const informed = normalizeStopId(informedStopId);
   const departure = normalizeStopId(departureStopId);
   const requested = normalizeStopId(requestedStopId);
   if (!informed || !departure) return false;
-  if (informed === departure) return true;
+  const informedKeys = stopKeySet(informed);
+  const departureKeys = stopKeySet(departure);
+  if (hasTokenIntersection(informedKeys, departureKeys)) return true;
+  if (
+    isStationLevelStopId(informed) &&
+    hasTokenIntersection(informedKeys, scopeStopTokens)
+  ) {
+    return true;
+  }
 
   if (!requested || !isParentStopId(requested)) return false;
 
@@ -89,8 +202,40 @@ function pickFirstAffected(informedEntities, matchFn) {
   return {};
 }
 
+function shouldAttachServiceTag(tag, matchCtx, dep) {
+  const depLine = String(dep?.line || "").trim();
+  const depSource = String(dep?.source || "").trim();
+  const depHasReplacementTag = Array.isArray(dep?.tags)
+    ? dep.tags.includes("replacement")
+    : false;
+
+  if (tag !== "replacement" && tag !== "extra") return true;
+
+  // Avoid painting the whole board as replacement from station-wide alerts.
+  // Service-class tags are reliable only when route/trip scoped, or when the
+  // departure itself already looks like a replacement-service row.
+  if (matchCtx.tripMatch || matchCtx.routeMatch) return true;
+  if (/^EV/i.test(depLine)) return true;
+  if (depSource === "synthetic_alert") return true;
+  if (depHasReplacementTag && tag === "replacement") return true;
+  return false;
+}
+
+function syntheticOriginAlertId(dep) {
+  if (String(dep?.source || "") !== "synthetic_alert") return "";
+  const tripId = String(dep?.trip_id || "");
+  if (!tripId.startsWith("synthetic_alert:")) return "";
+  const parts = tripId.split(":");
+  return parts.length >= 3 ? parts[1] : "";
+}
+
+function isSyntheticDeparture(dep) {
+  return String(dep?.source || "") === "synthetic_alert";
+}
+
 export function attachAlerts({
   stopId,
+  scopeStopIds,
   routeIds,
   tripIds,
   departures,
@@ -99,9 +244,22 @@ export function attachAlerts({
 }) {
   const sourceDepartures = Array.isArray(departures) ? departures : [];
   const requestedStopId = normalizeStopId(stopId);
-  const childStopIds = new Set(
-    sourceDepartures.map((dep) => normalizeStopId(dep?.stop_id)).filter(Boolean)
-  );
+  const childStopIds = new Set();
+  for (const dep of sourceDepartures) {
+    const sid = normalizeStopId(dep?.stop_id);
+    if (sid) childStopIds.add(sid);
+  }
+  if (Array.isArray(scopeStopIds)) {
+    for (const sid of scopeStopIds) {
+      const v = normalizeStopId(sid);
+      if (v) childStopIds.add(v);
+    }
+  }
+  const scopeStopTokens = new Set();
+  for (const sid of childStopIds) {
+    for (const key of stopKeySet(sid)) scopeStopTokens.add(key);
+  }
+  for (const key of stopKeySet(requestedStopId)) scopeStopTokens.add(key);
   const effectiveRouteIds = toSet(
     hasValues(routeIds)
       ? routeIds
@@ -118,7 +276,11 @@ export function attachAlerts({
   const banners = [];
   const bannerSeen = new Set();
 
-  const departuresOut = sourceDepartures.map((dep) => ({ ...dep, alerts: [] }));
+  const departuresOut = sourceDepartures.map((dep) => ({
+    ...dep,
+    tags: Array.isArray(dep?.tags) ? [...dep.tags] : [],
+    alerts: [],
+  }));
   const depSeenByIndex = departuresOut.map(() => new Set());
 
   for (const alert of allAlerts) {
@@ -133,7 +295,7 @@ export function attachAlerts({
     const bannerMatch = informedEntities.some((entity) => {
       const informedStop = normalizeStopId(entity?.stop_id);
       if (!informedStop) return false;
-      if (informedStop === requestedStopId) return true;
+      if (hasTokenIntersection(stopKeySet(informedStop), scopeStopTokens)) return true;
       if (isParentStopId(requestedStopId) && childStopIds.has(informedStop)) return true;
       return false;
     });
@@ -147,7 +309,7 @@ export function attachAlerts({
         affected: pickFirstAffected(informedEntities, (entity) => {
           const informedStop = normalizeStopId(entity?.stop_id);
           return (
-            informedStop === requestedStopId ||
+            hasTokenIntersection(stopKeySet(informedStop), scopeStopTokens) ||
             (isParentStopId(requestedStopId) && childStopIds.has(informedStop))
           );
         }),
@@ -157,39 +319,60 @@ export function attachAlerts({
     // B) Per-departure tags.
     for (let idx = 0; idx < departuresOut.length; idx += 1) {
       const dep = departuresOut[idx];
+      const originAlertId = syntheticOriginAlertId(dep);
+      if (isSyntheticDeparture(dep) && !originAlertId) continue;
+      if (originAlertId && String(alert.id) !== originAlertId) continue;
+      const isSyntheticOriginMatch =
+        !!originAlertId && String(alert.id) === originAlertId;
+
       const depTripId = dep?.trip_id ? String(dep.trip_id) : "";
       const depRouteId = dep?.route_id ? String(dep.route_id) : "";
       const depStopId = normalizeStopId(dep?.stop_id);
       const depStopSeq =
         dep?.stop_sequence == null ? null : Number(dep.stop_sequence);
 
-      const depMatched = informedEntities.some((entity) => {
-        const tripMatch =
-          !!depTripId &&
-          !!entity?.trip_id &&
-          String(entity.trip_id) === depTripId &&
-          (effectiveTripIds.size === 0 || effectiveTripIds.has(depTripId));
+      const matchCtx = {
+        tripMatch: false,
+        routeMatch: false,
+        stopMatch: false,
+        stopSeqMatch: false,
+      };
 
-        const routeMatch =
-          !!depRouteId &&
-          !!entity?.route_id &&
-          String(entity.route_id) === depRouteId &&
-          (effectiveRouteIds.size === 0 || effectiveRouteIds.has(depRouteId));
+      const depMatched =
+        isSyntheticOriginMatch ||
+        informedEntities.some((entity) => {
+          const tripMatch =
+            !!depTripId &&
+            !!entity?.trip_id &&
+            String(entity.trip_id) === depTripId &&
+            (effectiveTripIds.size === 0 || effectiveTripIds.has(depTripId));
 
-        const stopMatch = stopMatchesScope(
-          entity?.stop_id,
-          depStopId,
-          requestedStopId,
-          childStopIds
-        );
+          const routeMatch =
+            !!depRouteId &&
+            !!entity?.route_id &&
+            String(entity.route_id) === depRouteId &&
+            (effectiveRouteIds.size === 0 || effectiveRouteIds.has(depRouteId));
 
-        const stopSeqMatch =
-          entity?.stop_sequence != null &&
-          depStopSeq != null &&
-          Number(entity.stop_sequence) === depStopSeq;
+          const stopMatch = stopMatchesScope(
+            entity?.stop_id,
+            depStopId,
+            requestedStopId,
+            childStopIds,
+            scopeStopTokens
+          );
 
-        return tripMatch || routeMatch || stopMatch || stopSeqMatch;
-      });
+          const stopSeqMatch =
+            entity?.stop_sequence != null &&
+            depStopSeq != null &&
+            Number(entity.stop_sequence) === depStopSeq;
+
+          if (tripMatch) matchCtx.tripMatch = true;
+          if (routeMatch) matchCtx.routeMatch = true;
+          if (stopMatch) matchCtx.stopMatch = true;
+          if (stopSeqMatch) matchCtx.stopSeqMatch = true;
+
+          return tripMatch || routeMatch || stopMatch || stopSeqMatch;
+        });
 
       if (!depMatched) continue;
       if (depSeenByIndex[idx].has(alert.id)) continue;
@@ -200,6 +383,10 @@ export function attachAlerts({
         severity: alert.severity || "unknown",
         header: alert.headerText || "",
       });
+      for (const tag of inferAlertTags(alert)) {
+        if (!shouldAttachServiceTag(tag, matchCtx, dep)) continue;
+        uniqPush(dep.tags, tag);
+      }
     }
   }
 

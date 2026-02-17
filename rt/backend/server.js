@@ -54,6 +54,7 @@ import cors from "cors";
 
 const { pool } = await import("./db.js");
 const { getStationboard } = await import("./src/api/stationboard.js");
+const { fetchServiceAlerts } = await import("./src/rt/fetchServiceAlerts.js");
 
 const app = express();
 const PORT = Number(process.env.PORT || 3001);
@@ -75,6 +76,112 @@ function resolveOtdApiKey() {
     process.env.GTFS_RT_TOKEN ||
     ""
   );
+}
+
+function resolveServiceAlertsApiKey() {
+  return (
+    process.env.OPENTDATA_GTFS_SA_KEY ||
+    process.env.OPENTDATA_API_KEY ||
+    process.env.GTFS_RT_TOKEN ||
+    process.env.OPENDATA_SWISS_TOKEN ||
+    process.env.OPENTDATA_GTFS_RT_KEY ||
+    ""
+  );
+}
+
+function normalizeStopId(value) {
+  if (value == null) return "";
+  return String(value).trim();
+}
+
+function stopKeySet(value) {
+  const raw = normalizeStopId(value);
+  const out = new Set();
+  if (!raw) return out;
+
+  const lowerRaw = raw.toLowerCase();
+  out.add(lowerRaw);
+
+  const noParent = lowerRaw.startsWith("parent")
+    ? lowerRaw.slice("parent".length)
+    : lowerRaw;
+  if (noParent) out.add(noParent);
+  const isSloid = lowerRaw.includes("sloid:");
+  const isPlatformScoped = noParent.includes(":") && !isSloid;
+
+  const base = noParent.split(":")[0] || noParent;
+  if (base && !isPlatformScoped && !isSloid) out.add(base);
+
+  const sloidMatch = lowerRaw.match(/sloid:(\d+)/i);
+  if (sloidMatch?.[1]) {
+    const sl = String(Number(sloidMatch[1]));
+    if (sl && sl !== "0") out.add(sl);
+  }
+
+  if (/^\d+$/.test(base)) {
+    const normalizedDigits = String(Number(base));
+    if (normalizedDigits && normalizedDigits !== "0" && !isPlatformScoped && !isSloid) {
+      out.add(normalizedDigits);
+    }
+    if (!isPlatformScoped && !isSloid && base.startsWith("850") && base.length > 3) {
+      const tail = String(Number(base.slice(3)));
+      if (tail && tail !== "0") out.add(tail);
+    }
+  }
+
+  return out;
+}
+
+function hasTokenIntersection(aSet, bSet) {
+  for (const token of aSet) {
+    if (bSet.has(token)) return true;
+  }
+  return false;
+}
+
+function stopRoot(stopId) {
+  const s = normalizeStopId(stopId);
+  if (!s) return "";
+  if (s.startsWith("Parent")) return s.slice("Parent".length);
+  return s.split(":")[0] || s;
+}
+
+function alertIsActiveNow(alert, now) {
+  const periods = Array.isArray(alert?.activePeriods) ? alert.activePeriods : [];
+  if (periods.length === 0) return true;
+  const nowMs = now.getTime();
+  for (const p of periods) {
+    const startMs = p?.start instanceof Date ? p.start.getTime() : null;
+    const endMs = p?.end instanceof Date ? p.end.getTime() : null;
+    const afterStart = startMs == null || nowMs >= startMs;
+    const beforeEnd = endMs == null || nowMs <= endMs;
+    if (afterStart && beforeEnd) return true;
+  }
+  return false;
+}
+
+function hasReplacementSignal(alert) {
+  const effect = String(alert?.effect || "").toUpperCase();
+  const text = `${alert?.headerText || ""} ${alert?.descriptionText || ""}`.toLowerCase();
+  if (effect === "DETOUR" || effect === "MODIFIED_SERVICE" || effect === "NO_SERVICE") {
+    return true;
+  }
+  return /\b(ersatz|replacement|remplacement|sostitutiv|substitute|ev(?:\s*\d+)?)\b/i.test(
+    text
+  );
+}
+
+function informedStopMatches(entityStopId, requestedStopId) {
+  const informed = normalizeStopId(entityStopId);
+  const requested = normalizeStopId(requestedStopId);
+  if (!informed || !requested) return false;
+  const informedKeys = stopKeySet(informed);
+  const requestedKeys = stopKeySet(requested);
+  if (hasTokenIntersection(informedKeys, requestedKeys)) return true;
+  const root = stopRoot(requested);
+  if (!root) return false;
+  if (informed === root || informed.startsWith(`${root}:`)) return true;
+  return false;
 }
 
 function buildOtdUrl(pathname, queryObj = {}) {
@@ -506,12 +613,13 @@ app.get("/api/stationboard", async (req, res) => {
   try {
     const stopId = String(req.query.stop_id || "").trim();
     const limit = Number(req.query.limit || "300");
-    console.log("[API] /api/stationboard params", { stopId, limit });
+    const windowMinutes = Number(req.query.window_minutes || "0");
+    console.log("[API] /api/stationboard params", { stopId, limit, windowMinutes });
     if (!stopId) {
       return res.status(400).json({ error: "missing_stop_id", expected: ["stop_id"] });
     }
 
-    const result = await getStationboard({ stopId, limit });
+    const result = await getStationboard({ stopId, limit, windowMinutes });
     return res.json(result);
   } catch (err) {
     console.error("[API] /api/stationboard failed:", err);
@@ -522,6 +630,88 @@ app.get("/api/stationboard", async (req, res) => {
       });
     }
     return res.status(500).json({ error: "stationboard_failed" });
+  }
+});
+
+app.get("/api/debug/alerts", async (req, res) => {
+  try {
+    const stopId = String(req.query.stop_id || "").trim();
+    const sampleLimit = Math.max(1, Math.min(Number(req.query.sample || "8"), 30));
+    const now = new Date();
+    const key = resolveServiceAlertsApiKey();
+
+    const alerts = await fetchServiceAlerts({
+      apiKey: key,
+      timeoutMs: Math.max(500, Number(process.env.SERVICE_ALERTS_FETCH_TIMEOUT_MS || "3000")),
+    });
+    const entities = Array.isArray(alerts?.entities) ? alerts.entities : [];
+
+    let activeCount = 0;
+    let replacementCount = 0;
+    let replacementActiveCount = 0;
+    let stopMatchedActiveCount = 0;
+    let stopMatchedReplacementCount = 0;
+
+    const sample = [];
+    for (const alert of entities) {
+      const active = alertIsActiveNow(alert, now);
+      const replacement = hasReplacementSignal(alert);
+      const informed = Array.isArray(alert?.informedEntities) ? alert.informedEntities : [];
+      const stopIds = informed.map((e) => normalizeStopId(e?.stop_id)).filter(Boolean);
+      const matchedByStop = stopId
+        ? informed.some((e) => informedStopMatches(e?.stop_id, stopId))
+        : false;
+
+      if (active) activeCount += 1;
+      if (replacement) replacementCount += 1;
+      if (active && replacement) replacementActiveCount += 1;
+      if (active && matchedByStop) stopMatchedActiveCount += 1;
+      if (active && matchedByStop && replacement) stopMatchedReplacementCount += 1;
+
+      if (
+        sample.length < sampleLimit &&
+        (matchedByStop || (active && replacement))
+      ) {
+        sample.push({
+          id: alert?.id || "",
+          active,
+          replacement,
+          effect: alert?.effect || "",
+          severity: alert?.severity || "",
+          header: alert?.headerText || "",
+          description: String(alert?.descriptionText || "").slice(0, 240),
+          matchedByStop,
+          stopIds: stopIds.slice(0, 6),
+          routeIds: informed.map((e) => e?.route_id).filter(Boolean).slice(0, 6),
+          tripIds: informed.map((e) => e?.trip_id).filter(Boolean).slice(0, 6),
+        });
+      }
+    }
+
+    return res.json({
+      ok: true,
+      stopId,
+      now: now.toISOString(),
+      hasServiceAlertsKey: !!key,
+      feedVersion: alerts?.feedVersion || "",
+      headerTimestamp: alerts?.headerTimestamp ?? null,
+      counts: {
+        total: entities.length,
+        active: activeCount,
+        replacement: replacementCount,
+        replacementActive: replacementActiveCount,
+        stopMatchedActive: stopMatchedActiveCount,
+        stopMatchedReplacement: stopMatchedReplacementCount,
+      },
+      sample,
+    });
+  } catch (err) {
+    console.error("[API] /api/debug/alerts failed:", err);
+    return res.status(500).json({
+      ok: false,
+      error: "alerts_debug_failed",
+      detail: String(err?.message || err),
+    });
   }
 });
 

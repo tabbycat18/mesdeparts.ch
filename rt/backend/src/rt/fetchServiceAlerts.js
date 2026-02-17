@@ -183,6 +183,9 @@ function resolveApiKey(explicitApiKey) {
     explicitApiKey ||
     process.env.OPENTDATA_GTFS_SA_KEY ||
     process.env.OPENTDATA_API_KEY ||
+    process.env.GTFS_RT_TOKEN ||
+    process.env.OPENDATA_SWISS_TOKEN ||
+    process.env.OPENTDATA_GTFS_RT_KEY ||
     ""
   );
 }

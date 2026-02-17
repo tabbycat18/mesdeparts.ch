@@ -22,7 +22,7 @@ const LAZY_ASSETS = [
 ];
 
 const ASSETS = [...CORE_ASSETS, ...LAZY_ASSETS];
-const CACHE_REV = "2026-02-16-rt-backend-only-1";
+const CACHE_REV = "2026-02-17-stale-station-switch-1";
 
 function hashStrings(list) {
   const str = list.join("|");
