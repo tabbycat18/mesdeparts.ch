@@ -181,8 +181,81 @@ assert.equal(detectNetworkFromStation("Zurich HB"), "vbz");
   );
 
   try {
+    assert.equal(rows.some((row) => row.mode === "train" && row.simpleLineId === "15"), true);
     assert.equal(rows.some((row) => row.mode === "bus" && row.simpleLineId === "EV"), true);
     assert.equal(rows.some((row) => row.mode === "bus" && row.simpleLineId === "21"), false);
+  } finally {
+    appState.STATION = previous.station;
+    appState.stationId = previous.stationId;
+    appState.trainServiceFilter = previous.trainFilter;
+    appState.platformFilter = previous.platformFilter;
+    appState.lineFilter = previous.lineFilter;
+    appState.favoritesOnly = previous.favoritesOnly;
+    appState.lastPlatforms = previous.lastPlatforms;
+  }
+}
+
+// buildDeparturesGrouped should dedupe duplicated synthetic replacement rows
+{
+  const previous = {
+    station: appState.STATION,
+    stationId: appState.stationId,
+    trainFilter: appState.trainServiceFilter,
+    platformFilter: appState.platformFilter,
+    lineFilter: appState.lineFilter,
+    favoritesOnly: appState.favoritesOnly,
+    lastPlatforms: appState.lastPlatforms,
+  };
+
+  const base = new Date(Date.now() + 20 * 60 * 1000);
+  const depIso = base.toISOString();
+
+  appState.STATION = "Lausanne";
+  appState.stationId = "Parent8501120";
+  appState.trainServiceFilter = "train_all";
+  appState.platformFilter = null;
+  appState.lineFilter = null;
+  appState.favoritesOnly = false;
+  appState.lastPlatforms = {};
+
+  const rows = buildDeparturesGrouped(
+    {
+      stationboard: [
+        {
+          category: "B",
+          number: "EV",
+          name: "EV",
+          to: "Bus de remplacement",
+          source: "synthetic_alert",
+          tags: ["replacement"],
+          stop: {
+            departure: depIso,
+            departureTimestamp: Math.floor(base.getTime() / 1000),
+            platform: "",
+            prognosis: { departure: depIso, delay: 0, status: "OK" },
+          },
+        },
+        {
+          category: "B",
+          number: "EV",
+          name: "EV",
+          to: "Bus de remplacement",
+          source: "synthetic_alert",
+          tags: ["replacement"],
+          stop: {
+            departure: depIso,
+            departureTimestamp: Math.floor(base.getTime() / 1000),
+            platform: "",
+            prognosis: { departure: depIso, delay: 0, status: "OK" },
+          },
+        },
+      ],
+    },
+    VIEW_MODE_LINE,
+  );
+
+  try {
+    assert.equal(rows.filter((row) => row.mode === "bus" && row.simpleLineId === "EV").length, 1);
   } finally {
     appState.STATION = previous.station;
     appState.stationId = previous.stationId;

@@ -621,6 +621,7 @@ export function buildDeparturesGrouped(data, viewMode = VIEW_MODE_LINE) {
 
   const byLine = new Map();
   const allDeps = [];
+  const seenSyntheticReplacementRows = new Set();
   const busLines = new Set();
   const busPlatforms = new Set();
   const busNetworks = new Set();
@@ -908,6 +909,17 @@ export function buildDeparturesGrouped(data, viewMode = VIEW_MODE_LINE) {
           : Math.floor(scheduledDt.getTime() / 1000),
     };
 
+    if (source === "synthetic_alert" && isReplacementBus) {
+      const dedupeKey = [
+        depObj.line,
+        depObj.dest,
+        depObj.scheduledTimestamp,
+        depObj.platform || "",
+      ].join("|");
+      if (seenSyntheticReplacementRows.has(dedupeKey)) continue;
+      seenSyntheticReplacementRows.add(dedupeKey);
+    }
+
     if (journeyId && platform) {
       lastPlatforms[journeyId] = platform;
     }
@@ -928,7 +940,7 @@ export function buildDeparturesGrouped(data, viewMode = VIEW_MODE_LINE) {
   appState.lastBoardHasBusPlatform = busHasPlatform;
   appState.lastBoardNetwork =
     busNetworks.size > 0 ? Array.from(busNetworks)[0] : appState.currentNetwork || "generic";
-  const isTrainBoard = trainCount > 0 && busCount === 0;
+  const isTrainBoard = trainCount > 0 && (busCount === 0 || forceTrainStation);
   appState.lastBoardIsTrain = isTrainBoard;
 
   appState.platformOptions = Array.from(busPlatforms);
