@@ -63,17 +63,7 @@
           <div class="dual-picker" data-side="left">
             <section class="station-card station-card-inline">
               <div class="station-card-topline">
-                <div class="station-card-topline-right">
-                  <button
-                    id="board-mode-toggle-left"
-                    class="filters-pill mode-pill"
-                    type="button"
-                    aria-pressed="false"
-                  >
-                    <span class="mode-pill__label">Tableau</span>
-                    <span id="board-mode-state-left" class="mode-pill__state">ON</span>
-                  </button>
-                </div>
+                <div class="station-card-topline-right"></div>
               </div>
 
               <div class="station-card-collapsible">
@@ -212,17 +202,7 @@
           <div class="dual-picker" data-side="right">
             <section class="station-card station-card-inline">
               <div class="station-card-topline">
-                <div class="station-card-topline-right">
-                  <button
-                    id="board-mode-toggle-right"
-                    class="filters-pill mode-pill"
-                    type="button"
-                    aria-pressed="false"
-                  >
-                    <span class="mode-pill__label">Tableau</span>
-                    <span id="board-mode-state-right" class="mode-pill__state">ON</span>
-                  </button>
-                </div>
+                <div class="station-card-topline-right"></div>
               </div>
 
               <div class="station-card-collapsible">
@@ -392,11 +372,7 @@
       } from "./state.v2025-02-17.js";
       import { setupInfoButton } from "./infoBTN.v2025-02-17.js";
 
-      const API_MODE_BOARD = "board";
-      const API_MODE_DIRECT = "direct";
-
       const DEFAULT_LANG = initI18n();
-      appState.apiMode = API_MODE_BOARD;
       appState.STATION = "Dual board";
 
       setupInfoButton();
@@ -428,7 +404,6 @@
         stationId: "8592082",
         view: VIEW_MODE_LINE,
         hideDeparture: false,
-        apiMode: API_MODE_BOARD,
         language: currentLanguage,
       };
 
@@ -437,7 +412,6 @@
         stationId: null,
         view: VIEW_MODE_LINE,
         hideDeparture: false,
-        apiMode: API_MODE_BOARD,
         language: currentLanguage,
       };
       const BUS_VIEW_OPTIONS = [
@@ -571,19 +545,6 @@
             geoBtn.setAttribute("title", nearLabel);
           }
 
-          const modeLabel = document.querySelector(
-            `#board-mode-toggle-${suffix} .mode-pill__label`,
-          );
-          if (modeLabel) modeLabel.textContent = "Tableau";
-
-          const modeStateEl = document.getElementById(`board-mode-state-${suffix}`);
-          if (modeStateEl) {
-            const isBoard =
-              document
-                .getElementById(`board-mode-toggle-${suffix}`)
-                ?.getAttribute("aria-pressed") !== "false";
-            modeStateEl.textContent = isBoard ? "ON" : "OFF";
-          }
         });
       }
 
@@ -642,13 +603,6 @@
         return null;
       }
 
-      function parseApiModeValue(value) {
-        const raw = (value || "").toLowerCase();
-        if (raw === "direct" || raw === "off") return API_MODE_DIRECT;
-        if (raw === "board" || raw === "on") return API_MODE_BOARD;
-        return null;
-      }
-
       function normalizeState(input, defaults) {
         const base = { ...defaults };
         if (!input) return base;
@@ -668,9 +622,6 @@
         const hide = typeof input.hideDeparture === "boolean" ? input.hideDeparture : parseHide(input.hideDeparture);
         if (hide !== null) base.hideDeparture = !!hide;
 
-        const mode = parseApiModeValue(input.apiMode);
-        if (mode) base.apiMode = mode;
-
         const lang = normalizeLang(input.language);
         if (lang) base.language = lang;
 
@@ -683,7 +634,6 @@
         base.view = normalizeView(base.view) || VIEW_MODE_LINE;
         base.busView = normalizeView(base.busView);
         base.trainView = normalizeView(base.trainView);
-        base.apiMode = base.apiMode === API_MODE_DIRECT ? API_MODE_DIRECT : API_MODE_BOARD;
         base.hideDeparture = !!base.hideDeparture;
         base.language = normalizeLang(base.language) || defaults.language || DEFAULT_LANG;
 
@@ -705,7 +655,6 @@
         const view = normalizeView(params.get("view"));
         const hide = parseHide(params.get("hideDeparture"));
         const language = normalizeLang(params.get("lang"));
-        const apiMode = parseApiModeValue(params.get("mode") || params.get("apiMode"));
         const isSameApp =
           parsed.origin === window.location.origin || parsed.hostname.includes("mesdeparts");
 
@@ -715,7 +664,6 @@
           view,
           hideDeparture: hide,
           language,
-          apiMode,
         };
 
         if (!isSameApp) {
@@ -736,7 +684,6 @@
         if (s.view && VALID_VIEWS.has(s.view)) url.searchParams.set("view", s.view);
         if (s.hideDeparture) url.searchParams.set("hideDeparture", "1");
         if (s.language && VALID_LANGS.has(s.language)) url.searchParams.set("lang", s.language);
-        url.searchParams.set("mode", s.apiMode === API_MODE_DIRECT ? "direct" : "board");
 
         return url.toString();
       }
@@ -830,8 +777,6 @@
             filtersReset: document.querySelector(`[data-filter-reset='${suffix}']`),
             filtersApply: document.querySelector(`[data-filter-apply='${suffix}']`),
             filtersClose: document.querySelector(`[data-filter-close='${suffix}']`),
-            modeToggle: document.getElementById(`board-mode-toggle-${suffix}`),
-            modeState: document.getElementById(`board-mode-state-${suffix}`),
           };
 
           this.debouncedSuggest = debounce((q) => this.fetchSuggestions(q), 180);
@@ -842,7 +787,6 @@
         syncAll() {
           this.syncInputValue();
           this.renderViewControls();
-          this.syncModeToggle();
           this.syncHideToggle();
           this.syncFavToggle();
           this.renderFavoritesList();
@@ -882,18 +826,6 @@
             });
             segment.appendChild(b);
           });
-        }
-
-        syncModeToggle() {
-          if (!this.els.modeToggle) return;
-          const isBoard = this.state.apiMode !== API_MODE_DIRECT;
-          const labelEl = this.els.modeToggle.querySelector(".mode-pill__label");
-          this.els.modeToggle.classList.toggle("is-active", isBoard);
-          this.els.modeToggle.setAttribute("aria-pressed", isBoard ? "true" : "false");
-          if (labelEl) labelEl.textContent = "Tableau";
-          if (this.els.modeState) {
-            this.els.modeState.textContent = isBoard ? "ON" : "OFF";
-          }
         }
 
         syncHideToggle() {
@@ -981,14 +913,6 @@
             });
           }
 
-          if (this.els.modeToggle) {
-            this.els.modeToggle.addEventListener("click", () => {
-              this.state.apiMode =
-                this.state.apiMode === API_MODE_DIRECT ? API_MODE_BOARD : API_MODE_DIRECT;
-              this.syncModeToggle();
-              this.triggerChange();
-            });
-          }
         }
 
         setView(view) {
@@ -1329,7 +1253,6 @@
             busView: this.busView,
             trainView: this.trainView,
             hideDeparture: this.state.hideDeparture,
-            apiMode: this.state.apiMode,
             language: this.state.language,
             customUrl: this.state.customUrl || null,
           };
