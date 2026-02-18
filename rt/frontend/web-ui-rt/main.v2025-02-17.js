@@ -7,15 +7,9 @@ import {
   appState,
   DEFAULT_STATION,
   REFRESH_DEPARTURES,
-  REFRESH_DIRECT,
   DEBUG_FORCE_NOW,
   VIEW_MODE_LINE,
   VIEW_MODE_TIME,
-  API_MODE_BOARD,
-  API_MODE_DIRECT,
-  API_MODE_STORAGE_KEY,
-  API_MODE_AUTO_OFF_KEY,
-  API_MODE_AUTO_SWITCH_MS,
   TRAIN_FILTER_ALL,
   TRAIN_FILTER_REGIONAL,
   TRAIN_FILTER_LONG_DISTANCE,
@@ -36,9 +30,6 @@ import {
   setupQuickControlsCollapse,
   setupViewToggle,
   setupFilters,
-  setupBoardModeToggle,
-  refreshBoardModeToggleUi,
-  maybeShowBoardModePopover,
   renderFilterOptions,
   setupStationSearch,
   updateStationTitle,
@@ -59,7 +50,6 @@ const STORAGE_KEY = "mesdeparts.station";
 // Legacy wrong default id (Genève Cornavin) that was used for “Lausanne, motte”
 const LEGACY_DEFAULT_STATION_ID = "8587057";
 const LEGACY_DEFAULT_STATION_NAME = "Lausanne, motte";
-const DEFAULT_API_MODE = API_MODE_BOARD;
 const COUNTDOWN_REFRESH_MS = 5_000;
 const STALE_EMPTY_MAX_MS = 60_000; // force recovery if board stays empty this long while stationboard has entries
 const STALE_BOARD_RETRY_COOLDOWN_MS = 60_000; // per-station cache-bypass retry spacing
@@ -157,57 +147,6 @@ function markEmbedIfNeeded() {
   }
 }
 
-function parseApiModeParam(params) {
-  if (!params) return null;
-  const raw = (params.get("mode") || params.get("apiMode") || "").toLowerCase();
-  if (raw === "direct" || raw === "off") return API_MODE_DIRECT;
-  if (raw === "board" || raw === "on") return API_MODE_BOARD;
-  return null;
-}
-
-function getInitialApiMode() {
-  let params = null;
-  try {
-    params = new URLSearchParams(window.location.search || "");
-  } catch {
-    params = null;
-  }
-
-  const urlMode = parseApiModeParam(params);
-  if (urlMode) {
-    try {
-      localStorage.setItem(API_MODE_STORAGE_KEY, urlMode);
-      if (urlMode === API_MODE_DIRECT) {
-        localStorage.setItem(API_MODE_AUTO_OFF_KEY, "1");
-      } else {
-        localStorage.removeItem(API_MODE_AUTO_OFF_KEY);
-      }
-    } catch {
-      // ignore
-    }
-    return urlMode;
-  }
-
-  try {
-    const stored = localStorage.getItem(API_MODE_STORAGE_KEY);
-    if (stored === API_MODE_DIRECT || stored === API_MODE_BOARD) {
-      if (stored === API_MODE_DIRECT) {
-        localStorage.setItem(API_MODE_AUTO_OFF_KEY, "1");
-      }
-      return stored;
-    }
-  } catch {
-    // ignore
-  }
-
-  try {
-    localStorage.setItem(API_MODE_STORAGE_KEY, API_MODE_BOARD);
-  } catch {
-    // ignore
-  }
-  return API_MODE_BOARD;
-}
-
 function updateDebugPanel(rows) {
   const sample = (rows || []).slice(0, 4).map((d) => ({
     line: d?.simpleLineId || d?.line || "",
@@ -233,7 +172,6 @@ function updateDebugPanel(rows) {
 let refreshTimer = null;
 let countdownTimer = null;
 let lastStationboardData = null;
-let autoBoardTimer = null;
 let emptyBoardRetryStation = null;
 let staleBoardRetryStation = null;
 let staleBoardRetryAt = 0;
@@ -259,38 +197,9 @@ function clearBoardForStationChange() {
   }
 }
 
-function shouldAutoSwitchToBoard() {
-  if (appState.apiMode !== API_MODE_DIRECT) return false;
-  try {
-    return localStorage.getItem(API_MODE_AUTO_OFF_KEY) !== "1";
-  } catch {
-    return false;
-  }
-}
-
-function scheduleAutoBoardModeSwitch() {
-  if (autoBoardTimer) clearTimeout(autoBoardTimer);
-  if (!shouldAutoSwitchToBoard()) return;
-
-  autoBoardTimer = setTimeout(() => {
-    if (!shouldAutoSwitchToBoard()) return;
-    appState.apiMode = API_MODE_BOARD;
-    try {
-      localStorage.setItem(API_MODE_STORAGE_KEY, API_MODE_BOARD);
-    } catch {
-      // ignore
-    }
-    refreshBoardModeToggleUi();
-    startRefreshLoop();
-    refreshDepartures();
-    maybeShowBoardModePopover();
-  }, API_MODE_AUTO_SWITCH_MS);
-}
-
 function startRefreshLoop() {
   if (refreshTimer) clearInterval(refreshTimer);
-  const interval = appState.apiMode === API_MODE_DIRECT ? REFRESH_DIRECT : REFRESH_DEPARTURES;
-  refreshTimer = setInterval(() => refreshDepartures({ showLoadingHint: false }), interval);
+  refreshTimer = setInterval(() => refreshDepartures({ showLoadingHint: false }), REFRESH_DEPARTURES);
 }
 
 function refreshCountdownTick() {
@@ -570,8 +479,6 @@ async function refreshDepartures({ retried, showLoadingHint = true } = {}) {
       Date.now() - staleBoardDirectRescueAt >= STALE_EMPTY_MAX_MS
     ) {
       staleBoardDirectRescueAt = Date.now();
-      const prevMode = appState.apiMode;
-      appState.apiMode = API_MODE_DIRECT;
       try {
         const directData = await fetchStationboardRaw({ allowRetry: false, bustCache: true });
         if (isStaleRequest()) return;
@@ -586,8 +493,6 @@ async function refreshDepartures({ retried, showLoadingHint = true } = {}) {
         return;
       } catch (e) {
         console.warn("[MesDeparts][stale-direct-rescue] failed", e);
-      } finally {
-        appState.apiMode = prevMode;
       }
     }
 
@@ -599,8 +504,6 @@ async function refreshDepartures({ retried, showLoadingHint = true } = {}) {
       Date.now() - staleBoardDirectRescueAt >= STALE_EMPTY_MAX_MS
     ) {
       staleBoardDirectRescueAt = Date.now();
-      const prevMode = appState.apiMode;
-      appState.apiMode = API_MODE_DIRECT;
       try {
         const directData = await fetchStationboardRaw({ allowRetry: false, bustCache: true });
         if (isStaleRequest()) return;
@@ -617,8 +520,6 @@ async function refreshDepartures({ retried, showLoadingHint = true } = {}) {
         return;
       } catch (e) {
         console.warn("[MesDeparts][stale-direct-rescue-empty] failed", e);
-      } finally {
-        appState.apiMode = prevMode;
       }
     }
 
@@ -703,7 +604,6 @@ function refreshDeparturesFromCache({ allowFetch = true, skipFilters = false, sk
   markEmbedIfNeeded();
   const lang = initI18n();
   appState.language = lang;
-  appState.apiMode = getInitialApiMode();
   applyStaticTranslations();
   ensureBoardFitsViewport();
 
@@ -737,12 +637,6 @@ function refreshDeparturesFromCache({ allowFetch = true, skipFilters = false, sk
     refreshDeparturesFromCache();
   });
 
-  setupBoardModeToggle(() => {
-    refreshDepartures();
-    startRefreshLoop();
-    scheduleAutoBoardModeSwitch();
-  });
-
   setupStationSearch((name, id) => {
     applyStation(name, id, { syncUrl: true });
     refreshDepartures();
@@ -756,7 +650,6 @@ function refreshDeparturesFromCache({ allowFetch = true, skipFilters = false, sk
   // Periodic refresh
   startRefreshLoop();
   startCountdownLoop();
-  scheduleAutoBoardModeSwitch();
   if (typeof document !== "undefined") {
     document.addEventListener("visibilitychange", handleVisibilityChange, { passive: true });
   }
@@ -792,7 +685,6 @@ function setupLanguageSwitcher(onChange) {
     const applied = setLanguage(lang);
     appState.language = applied;
     applyStaticTranslations();
-    refreshBoardModeToggleUi();
     renderFilterOptions();
     ensureBoardFitsViewport();
     if (typeof appState._ensureViewSelectOptions === "function") {

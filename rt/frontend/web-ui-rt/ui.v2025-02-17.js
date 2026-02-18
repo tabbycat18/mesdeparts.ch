@@ -10,10 +10,6 @@ import {
   TRAIN_FILTER_ALL,
   TRAIN_FILTER_REGIONAL,
   TRAIN_FILTER_LONG_DISTANCE,
-  API_MODE_BOARD,
-  API_MODE_DIRECT,
-  API_MODE_STORAGE_KEY,
-  API_MODE_AUTO_OFF_KEY,
 } from "./state.v2025-02-17.js";
 import {
   fetchStationSuggestions,
@@ -33,6 +29,10 @@ import { t } from "./i18n.v2025-02-17.js";
 const QUICK_CONTROLS_STORAGE_KEY = "mesdeparts.quickControlsCollapsed";
 let quickControlsCollapsed = false;
 let quickControlsInitialized = false;
+const SERVICE_BANNER_PAGE_ROTATE_MS = 12000;
+const SERVICE_BANNER_MAX_PAGES = 3;
+let serviceBannerTimers = [];
+const serviceBannerCycleAnchors = new Map();
 
 const pad2 = (n) => String(n).padStart(2, "0");
 const CH_TIMEZONE = "Europe/Zurich";
@@ -374,10 +374,144 @@ function getServiceBannersHost() {
   return host;
 }
 
+function clearServiceBannerTimers() {
+  for (const timer of serviceBannerTimers) {
+    clearInterval(timer);
+  }
+  serviceBannerTimers = [];
+}
+
+function serviceBannerPageCharLimit() {
+  const width = typeof window !== "undefined" ? Number(window.innerWidth || 0) : 0;
+  if (width > 0 && width <= 520) return 120;
+  if (width > 0 && width <= 920) return 165;
+  if (width > 0 && width <= 1280) return 220;
+  return 280;
+}
+
+function chunkBannerText(text, maxChars) {
+  const normalized = String(text || "").replace(/\s+/g, " ").trim();
+  if (!normalized) return [];
+  const words = normalized.split(" ");
+  const out = [];
+  let current = "";
+
+  for (const word of words) {
+    const candidate = current ? `${current} ${word}` : word;
+    if (!current || candidate.length <= maxChars) {
+      current = candidate;
+      continue;
+    }
+    out.push(current);
+    current = word;
+  }
+  if (current) out.push(current);
+  return out;
+}
+
+function splitSentences(text) {
+  const normalized = String(text || "").replace(/\s+/g, " ").trim();
+  if (!normalized) return [];
+  const parts = normalized
+    .split(/(?<=[.!?])\s+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  return parts.length ? parts : [normalized];
+}
+
+function splitLongSegment(text, maxChars) {
+  const normalized = String(text || "").replace(/\s+/g, " ").trim();
+  if (!normalized) return [];
+  if (normalized.length <= maxChars) return [normalized];
+  return chunkBannerText(normalized, maxChars);
+}
+
+function buildBannerPages(text, baseMaxChars) {
+  const normalized = String(text || "").replace(/\s+/g, " ").trim();
+  if (!normalized) return [];
+  if (normalized.length <= baseMaxChars) return [normalized];
+
+  const pageCount = Math.min(
+    SERVICE_BANNER_MAX_PAGES,
+    Math.max(1, Math.ceil(normalized.length / baseMaxChars))
+  );
+  const targetChars = Math.max(baseMaxChars, Math.ceil(normalized.length / pageCount));
+
+  const sentenceChunks = [];
+  for (const sentence of splitSentences(normalized)) {
+    sentenceChunks.push(...splitLongSegment(sentence, targetChars));
+  }
+
+  const pages = [];
+  let current = "";
+  for (const segment of sentenceChunks) {
+    if (pages.length === pageCount - 1) {
+      current = current ? `${current} ${segment}` : segment;
+      continue;
+    }
+
+    const candidate = current ? `${current} ${segment}` : segment;
+    if (current && candidate.length > targetChars) {
+      pages.push(current);
+      current = segment;
+    } else {
+      current = candidate;
+    }
+  }
+  if (current) pages.push(current);
+  return pages.filter(Boolean);
+}
+
+function normalizeBannerPages(pages, targetChars = 0) {
+  const out = [];
+  for (const page of Array.isArray(pages) ? pages : []) {
+    const text = String(page || "").replace(/\s+/g, " ").trim();
+    if (!text) continue;
+    if (out.length > 0 && out[out.length - 1] === text) continue;
+    out.push(text);
+  }
+
+  if (out.length >= 3) {
+    const last = out[out.length - 1];
+    const prev = out[out.length - 2];
+    const tinyTailThreshold = Math.max(34, Math.floor(targetChars * 0.26));
+    const combinedThreshold = Math.max(160, Math.floor(targetChars * 1.3));
+    const shouldMergeTail =
+      last.length <= tinyTailThreshold ||
+      prev.length + 1 + last.length <= combinedThreshold;
+    if (shouldMergeTail) {
+      out.splice(out.length - 2, 2, `${prev} ${last}`.replace(/\s+/g, " ").trim());
+    }
+  }
+
+  if (out.length >= 3) {
+    const normalizedText = out.join(" ").replace(/\s+/g, " ").trim();
+    const twoPageTarget = Math.max(80, Math.ceil(normalizedText.length / 2));
+    const twoPages = chunkBannerText(normalizedText, twoPageTarget)
+      .map((p) => p.trim())
+      .filter(Boolean);
+    if (twoPages.length === 2) {
+      return twoPages;
+    }
+  }
+
+  return out;
+}
+
+function setBannerPage(textEl, pagerDots, pages, index) {
+  const safeIndex = Math.max(0, Math.min(index, pages.length - 1));
+  textEl.textContent = pages[safeIndex] || "";
+  pagerDots.forEach((dot, i) => {
+    dot.classList.toggle("is-active", i === safeIndex);
+  });
+}
+
 export function renderServiceBanners(banners) {
+  clearServiceBannerTimers();
   const host = getServiceBannersHost();
   if (!host) return;
   host.innerHTML = "";
+  const activeBannerKeys = new Set();
 
   const list = Array.isArray(banners) ? banners : [];
   if (list.length === 0) {
@@ -393,27 +527,103 @@ export function renderServiceBanners(banners) {
     const key = `${severity}|${header}|${description}`;
     if (seen.has(key)) continue;
     seen.add(key);
+    activeBannerKeys.add(key);
 
     const item = document.createElement("article");
     item.className = `service-banner service-banner--${severity}`;
 
+    const icon = document.createElement("img");
+    icon.className = "service-banner__icon";
+    icon.src = "./disruption-lightning.svg";
+    icon.alt = "";
+    icon.setAttribute("aria-hidden", "true");
+    item.appendChild(icon);
+
+    const body = document.createElement("div");
+    body.className = "service-banner__body";
+
+    let titleEl = null;
     if (header) {
-      const h = document.createElement("h3");
-      h.className = "service-banner__title";
-      h.textContent = header;
-      item.appendChild(h);
+      titleEl = document.createElement("h3");
+      titleEl.className = "service-banner__title";
+      titleEl.textContent = header;
+      body.appendChild(titleEl);
+    } else {
+      item.classList.add("service-banner--text-only");
     }
-    if (description) {
-      const p = document.createElement("p");
-      p.className = "service-banner__text";
-      p.textContent = description;
-      item.appendChild(p);
-    }
+
+    const textEl = document.createElement("p");
+    textEl.className = "service-banner__text";
+    body.appendChild(textEl);
+
+    const pager = document.createElement("div");
+    pager.className = "service-banner__pager";
+    pager.setAttribute("aria-hidden", "true");
+    body.appendChild(pager);
+
     if (!header && !description) continue;
+    const pageLimit = titleEl
+      ? Math.max(100, Math.floor(serviceBannerPageCharLimit() * 0.95))
+      : serviceBannerPageCharLimit();
+    const pages = normalizeBannerPages(buildBannerPages(description, pageLimit), pageLimit);
+    if (pages.length === 0 && description) pages.push(description.trim());
+    if (pages.length === 0) pages.push("");
+    const hasTextPages = pages.some((p) => String(p || "").trim() !== "");
+
+    const dots = [];
+    if (pages.length > 1 && hasTextPages) {
+      for (let i = 0; i < pages.length; i += 1) {
+        const dot = document.createElement("span");
+        dot.className = "service-banner__dot";
+        pager.appendChild(dot);
+        dots.push(dot);
+      }
+    } else {
+      pager.style.display = "none";
+    }
+
+    let pageIndex = 0;
+    if (hasTextPages) {
+      let anchorMs = serviceBannerCycleAnchors.get(key);
+      if (!Number.isFinite(anchorMs)) {
+        anchorMs = Date.now();
+        serviceBannerCycleAnchors.set(key, anchorMs);
+      }
+      if (pages.length > 1) {
+        pageIndex =
+          Math.floor((Date.now() - anchorMs) / SERVICE_BANNER_PAGE_ROTATE_MS) %
+          pages.length;
+      }
+      setBannerPage(textEl, dots, pages, pageIndex);
+    } else {
+      textEl.style.display = "none";
+    }
+    if (pages.length > 1 && hasTextPages) {
+      const anchorMs = serviceBannerCycleAnchors.get(key) || Date.now();
+      let lastIndex = pageIndex;
+      const timer = setInterval(() => {
+        const nextIndex =
+          Math.floor((Date.now() - anchorMs) / SERVICE_BANNER_PAGE_ROTATE_MS) %
+          pages.length;
+        if (nextIndex === lastIndex) return;
+        lastIndex = nextIndex;
+        setBannerPage(textEl, dots, pages, nextIndex);
+      }, 500);
+      serviceBannerTimers.push(timer);
+    }
+
+    item.appendChild(body);
     host.appendChild(item);
   }
 
   host.classList.toggle("is-visible", host.childElementCount > 0);
+
+  // Prevent unbounded growth when station/language changes alter banner keys.
+  for (const key of serviceBannerCycleAnchors.keys()) {
+    if (!activeBannerKeys.has(key)) {
+      serviceBannerCycleAnchors.delete(key);
+    }
+  }
 }
 
 // ---------------- QUICK CONTROLS COLLAPSE ----------------
@@ -687,126 +897,6 @@ const filterPending = {
   hideDeparture: false,
 };
 
-// ---------------- BOARD MODE (API) ----------------
-
-const boardModeUi = {
-  toggle: null,
-  label: null,
-  state: null,
-  popover: null,
-  okBtn: null,
-};
-
-function isBoardModeActive() {
-  return appState.apiMode !== API_MODE_DIRECT;
-}
-
-function updateBoardModeToggleUi() {
-  if (!boardModeUi.toggle) return;
-  const active = isBoardModeActive();
-  boardModeUi.toggle.classList.toggle("is-active", active);
-  boardModeUi.toggle.setAttribute("aria-pressed", active ? "true" : "false");
-  if (boardModeUi.label) boardModeUi.label.textContent = t("boardModeLabel");
-  if (boardModeUi.state) {
-    boardModeUi.state.textContent = t(active ? "boardModeStateOn" : "boardModeStateOff");
-  }
-}
-
-function openBoardModePopover() {
-  if (!boardModeUi.popover) return;
-  boardModeUi.popover.classList.remove("is-hidden");
-  boardModeUi.popover.setAttribute("aria-hidden", "false");
-  if (boardModeUi.toggle) boardModeUi.toggle.setAttribute("aria-expanded", "true");
-}
-
-function closeBoardModePopover() {
-  if (!boardModeUi.popover) return;
-  boardModeUi.popover.classList.add("is-hidden");
-  boardModeUi.popover.setAttribute("aria-hidden", "true");
-  if (boardModeUi.toggle) boardModeUi.toggle.setAttribute("aria-expanded", "false");
-}
-
-function isBoardModePopoverOpen() {
-  return boardModeUi.popover && !boardModeUi.popover.classList.contains("is-hidden");
-}
-
-export function refreshBoardModeToggleUi() {
-  updateBoardModeToggleUi();
-}
-
-export function maybeShowBoardModePopover() {
-  openBoardModePopover();
-}
-
-export function setupBoardModeToggle(onChange) {
-  boardModeUi.toggle = document.getElementById("board-mode-toggle");
-  boardModeUi.label = document.getElementById("board-mode-label");
-  boardModeUi.state = document.getElementById("board-mode-state");
-  boardModeUi.popover = document.getElementById("board-mode-popover");
-  boardModeUi.okBtn = document.getElementById("board-mode-ok");
-
-  if (!boardModeUi.toggle) return;
-
-  if (boardModeUi.popover) {
-    boardModeUi.popover.setAttribute("aria-hidden", "true");
-    boardModeUi.popover.addEventListener("click", (e) => {
-      if (e.target && e.target.dataset && e.target.dataset.boardPopoverClose === "true") {
-        closeBoardModePopover();
-      }
-    });
-  }
-
-  updateBoardModeToggleUi();
-  boardModeUi.toggle.setAttribute("aria-expanded", "false");
-
-  boardModeUi.toggle.addEventListener("click", (e) => {
-    e.stopPropagation();
-    closeFavoritesPopover();
-    closeFiltersSheet(false);
-
-    const next = isBoardModeActive() ? API_MODE_DIRECT : API_MODE_BOARD;
-    appState.apiMode = next;
-    try {
-      localStorage.setItem(API_MODE_STORAGE_KEY, next);
-      if (next === API_MODE_DIRECT) {
-        localStorage.setItem(API_MODE_AUTO_OFF_KEY, "1");
-      } else {
-        localStorage.removeItem(API_MODE_AUTO_OFF_KEY);
-      }
-    } catch {
-      // ignore
-    }
-    updateBoardModeToggleUi();
-
-    if (typeof onChange === "function") onChange(next);
-
-    maybeShowBoardModePopover();
-  });
-
-  if (boardModeUi.okBtn) {
-    boardModeUi.okBtn.addEventListener("click", () => {
-      closeBoardModePopover();
-    });
-  }
-
-  document.addEventListener("click", (e) => {
-    if (
-      isBoardModePopoverOpen() &&
-      boardModeUi.popover &&
-      !boardModeUi.popover.contains(e.target) &&
-      (!boardModeUi.toggle || !boardModeUi.toggle.contains(e.target))
-    ) {
-      closeBoardModePopover();
-    }
-  });
-
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && isBoardModePopoverOpen()) {
-      closeBoardModePopover();
-    }
-  });
-}
-
 const selectedFavorites = new Set();
 let favoritesManageMode = false;
 
@@ -975,7 +1065,6 @@ export function publishEmbedState() {
       ? appState.trainServiceFilter || TRAIN_FILTER_ALL
       : appState.viewMode || VIEW_MODE_LINE,
     hideDeparture: !!appState.hideBusDeparture,
-    apiMode: appState.apiMode,
     favoritesOnly: !!appState.favoritesOnly,
     timestamp: Date.now(),
   };

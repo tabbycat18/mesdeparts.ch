@@ -11,6 +11,7 @@ const CORE_ASSETS = [
   "./i18n.v2025-02-17.js",
   "./favourites.v2025-02-17.js",
   "./infoBTN.v2025-02-17.js",
+  "./disruption-lightning.svg",
   "./bus-icon-1.png",
   "./bus-icon-1.svg",
 ];
@@ -22,7 +23,7 @@ const LAZY_ASSETS = [
 ];
 
 const ASSETS = [...CORE_ASSETS, ...LAZY_ASSETS];
-const CACHE_REV = "2026-02-17-cancel-visibility-3";
+const CACHE_REV = "2026-02-18-disruption-banner-paged-3";
 
 function hashStrings(list) {
   const str = list.join("|");

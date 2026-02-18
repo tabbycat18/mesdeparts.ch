@@ -459,7 +459,14 @@ From `cloudflare-worker/worker.js`:
   - debug logging can be enabled with `WORKER_CACHE_DEBUG=1` (logs hit/miss/bypass and normalized cache key URL)
 
 Unknown (not found in repo): whether production stationboard traffic is currently routed through this Worker.
-Unknown (not found in repo): exact production deployment topology for `rt/backend` (single host, container platform, or serverless adapter).
+
+### RT Backend Deployment
+
+- Deployment target for `rt/backend`: **Fly.io**.
+- Docker runtime path used in this repo: `rt/backend/Dockerfile`.
+- Backend container port: `8080` (set in `rt/backend/Dockerfile`).
+
+Unknown (not found in repo): committed Fly config file path (for example `fly.toml`) and app/region/autoscaling values.
 
 ## Troubleshooting Playbooks
 

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   buildDeparturesGrouped,
   classifyMode,
+  fetchStationboardRaw,
   detectNetworkFromStation,
   fetchJourneyDetails,
   parseApiDate,
@@ -105,6 +106,48 @@ assert.equal(detectNetworkFromStation("Zurich HB"), "vbz");
     assert.equal(String(detail?.section?.journey?.category || ""), "B");
     assert.equal(String(detail?.section?.journey?.number || ""), "805");
   } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
+// fetchStationboardRaw should forward selected UI language to backend (?lang=..)
+{
+  const originalFetch = globalThis.fetch;
+  const previous = {
+    station: appState.STATION,
+    stationId: appState.stationId,
+    language: appState.language,
+  };
+
+  appState.STATION = "Brig";
+  appState.stationId = "Parent8501609";
+  appState.language = "it";
+
+  let requestedUrl = "";
+  globalThis.fetch = async (url) => {
+    requestedUrl = String(url || "");
+    return {
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      json: async () => ({
+        station: { id: "Parent8501609", name: "Brig" },
+        departures: [],
+        banners: [],
+      }),
+    };
+  };
+
+  try {
+    await fetchStationboardRaw({ allowRetry: false, bustCache: false });
+    assert.ok(requestedUrl.includes("/api/stationboard?"));
+    const parsed = new URL(requestedUrl, "http://localhost");
+    assert.equal(parsed.searchParams.get("stop_id"), "Parent8501609");
+    assert.equal(parsed.searchParams.get("lang"), "it");
+  } finally {
+    appState.STATION = previous.station;
+    appState.stationId = previous.stationId;
+    appState.language = previous.language;
     globalThis.fetch = originalFetch;
   }
 }

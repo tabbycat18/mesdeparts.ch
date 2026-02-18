@@ -38,6 +38,7 @@ function getApiBase() {
 }
 
 const apiUrl = (pathAndQuery) => `${getApiBase()}${pathAndQuery}`;
+const SUPPORTED_QUERY_LANGS = new Set(["fr", "de", "it", "en"]);
 
 // Keep stationboard requests bounded to what the UI can display
 const STATIONBOARD_LIMIT = Math.max(MAX_TRAIN_ROWS * 2, MIN_ROWS * 3, 60);
@@ -514,7 +515,9 @@ export async function fetchStationboardRaw(options = {}) {
   }
 
   const stationKey = appState.stationId || "unknown";
-  const inflightKey = `${getApiBase()}|${stationKey}|${bustCache ? "bust" : "default"}`;
+  const requestLangRaw = String(appState.language || "").trim().toLowerCase();
+  const requestLang = SUPPORTED_QUERY_LANGS.has(requestLangRaw) ? requestLangRaw : "fr";
+  const inflightKey = `${getApiBase()}|${stationKey}|${requestLang}|${bustCache ? "bust" : "default"}`;
 
   if (!fetchStationboardRaw._inflight) {
     fetchStationboardRaw._inflight = new Map();
@@ -524,10 +527,13 @@ export async function fetchStationboardRaw(options = {}) {
     return fetchStationboardRaw._inflight.get(inflightKey);
   }
 
-  const cacheBust = bustCache ? `&_ts=${Date.now()}` : "";
-  const url = apiUrl(
-    `/api/stationboard?stop_id=${encodeURIComponent(stationKey)}&limit=${encodeURIComponent(STATIONBOARD_LIMIT)}${cacheBust}`,
-  );
+  const params = new URLSearchParams({
+    stop_id: stationKey,
+    limit: String(STATIONBOARD_LIMIT),
+    lang: requestLang,
+  });
+  if (bustCache) params.set("_ts", String(Date.now()));
+  const url = apiUrl(`/api/stationboard?${params.toString()}`);
   const req = (async () => {
     try {
       const backendData = await fetchJson(url, { cache: bustCache ? "reload" : "default" });

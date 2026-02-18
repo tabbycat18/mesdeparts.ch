@@ -6,7 +6,6 @@ Static, dependency-free front-end for mesdeparts.ch. Everything in this folder i
 - Stop search with suggestions and favorites (stored locally; no account).
 - Two bus views: by line (balanced by destination) or chronological; trains are always chronological.
 - Filters for platform/line/train service plus “My favorites” mode.
-- Board mode toggle (“Tableau”) for always-on displays; direct mode for one-off checks.
 - Self-hosted SBB clock + digital clock; auto-refresh every 10–20 s (~3 h horizon).
 - Multilingual (FR/DE/IT/EN), deep links via `?stationName=...&stationId=...`, installable PWA shell (API stays online).
 
@@ -16,7 +15,7 @@ Static, dependency-free front-end for mesdeparts.ch. Everything in this folder i
 - `manifest.webmanifest` + `service-worker.js`: PWA shell; caches static assets, leaves API requests online-only.
 
 ## Architecture (versioned files)
-- `main.v*.js`: boot; reads URL/localStorage defaults (`stationName`/`stationId`, language), wires event handlers, starts refresh + countdown loops, and toggles board/direct API mode (auto-switches back to board mode after ~2 min unless overridden).
+- `main.v*.js`: boot; reads URL/localStorage defaults (`stationName`/`stationId`, language), wires event handlers, and starts refresh + countdown loops.
 - `state.v*.js`: shared config/constants (refresh cadence, horizons, view modes, thresholds) and mutable `appState`.
 - `logic.v*.js`: `rt/backend` client (`/api/stops/search`, `/api/stops/nearby`, `/api/stationboard`), station resolve/nearby search, delay/remark computation, grouping/sorting, and network detection for line colors.
 - `ui.v*.js`: DOM rendering of the board, clocks, station search with suggestions/nearby, filters (line/platform/train service), favorites popovers, view toggle, auto-fit watcher, and embed state publication.
@@ -53,6 +52,6 @@ Static, dependency-free front-end for mesdeparts.ch. Everything in this folder i
 - It is not using the old `/locations` + `/stationboard` contract anymore.
 
 ## Behavior/UX notes
-- Board mode toggle (“Tableau”) reduces API load by using the Worker cache; direct mode is faster for one-off checks. Filters/view changes are client-side only.
-- Language, favorites, board mode preference, and last station are stored in `localStorage`; nothing leaves the browser.
+- Filters/view changes are client-side only.
+- Language, favorites, and last station are stored in `localStorage`; nothing leaves the browser.
 - The service worker pre-caches the shell and serves navigations cache-first with background revalidation; API calls always hit the network.

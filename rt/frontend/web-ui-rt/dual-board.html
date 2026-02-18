@@ -384,8 +384,6 @@
       import { LANGUAGE_OPTIONS, initI18n, setLanguage, t } from "./i18n.v2025-02-17.js";
       import {
         appState,
-        API_MODE_BOARD,
-        API_MODE_DIRECT,
         VIEW_MODE_LINE,
         VIEW_MODE_TIME,
         TRAIN_FILTER_ALL,
@@ -393,6 +391,9 @@
         TRAIN_FILTER_LONG_DISTANCE,
       } from "./state.v2025-02-17.js";
       import { setupInfoButton } from "./infoBTN.v2025-02-17.js";
+
+      const API_MODE_BOARD = "board";
+      const API_MODE_DIRECT = "direct";
 
       const DEFAULT_LANG = initI18n();
       appState.apiMode = API_MODE_BOARD;
@@ -573,7 +574,7 @@
           const modeLabel = document.querySelector(
             `#board-mode-toggle-${suffix} .mode-pill__label`,
           );
-          setText(modeLabel, "boardModeLabel");
+          if (modeLabel) modeLabel.textContent = "Tableau";
 
           const modeStateEl = document.getElementById(`board-mode-state-${suffix}`);
           if (modeStateEl) {
@@ -581,7 +582,7 @@
               document
                 .getElementById(`board-mode-toggle-${suffix}`)
                 ?.getAttribute("aria-pressed") !== "false";
-            modeStateEl.textContent = isBoard ? t("boardModeStateOn") : t("boardModeStateOff");
+            modeStateEl.textContent = isBoard ? "ON" : "OFF";
           }
         });
       }
@@ -889,9 +890,9 @@
           const labelEl = this.els.modeToggle.querySelector(".mode-pill__label");
           this.els.modeToggle.classList.toggle("is-active", isBoard);
           this.els.modeToggle.setAttribute("aria-pressed", isBoard ? "true" : "false");
-          if (labelEl) labelEl.textContent = t("boardModeLabel");
+          if (labelEl) labelEl.textContent = "Tableau";
           if (this.els.modeState) {
-            this.els.modeState.textContent = isBoard ? t("boardModeStateOn") : t("boardModeStateOff");
+            this.els.modeState.textContent = isBoard ? "ON" : "OFF";
           }
         }
 

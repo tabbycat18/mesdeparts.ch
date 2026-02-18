@@ -7,6 +7,14 @@ For local legacy tooling, the default folder name has been renamed to `rt/data/g
 
 TODO: remove any remaining legacy static dataset directories after the first successful automated import to Neon.
 
+## Deployment Target
+
+- Runtime target for this backend: **Fly.io**.
+- Container file: `rt/backend/Dockerfile`.
+- Container listen port: `8080` (`ENV PORT=8080`).
+
+Unknown (not found in repo): committed `fly.toml` and Fly app-specific settings (app name, region, machine size, autoscaling).
+
 ## Stationboard Performance
 
 If stationboard requests are slow/time out on large datasets, run:

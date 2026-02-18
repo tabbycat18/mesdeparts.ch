@@ -140,16 +140,6 @@
                     </div>
                   </div>
                   <button
-                    id="board-mode-toggle"
-                    class="filters-pill mode-pill"
-                    type="button"
-                    aria-pressed="false"
-                    aria-controls="board-mode-popover"
-                  >
-                    <span id="board-mode-label">Tableau</span>
-                    <span id="board-mode-state" class="mode-pill__state">OFF</span>
-                  </button>
-                  <button
                     id="quick-controls-toggle"
                     class="quick-controls-toggle"
                     type="button"
@@ -167,59 +157,6 @@
                     </span>
                   </button>
                 </div>
-              </div>
-              <div
-                id="board-mode-popover"
-                class="mode-popover is-hidden"
-                role="dialog"
-                aria-modal="false"
-                aria-labelledby="board-mode-title"
-              >
-                <div class="mode-popover__header">
-                  <div class="mode-popover__title" id="board-mode-title">Tableau</div>
-                  <button
-                    class="mode-popover__close"
-                    type="button"
-                    aria-label="Fermer"
-                    data-board-popover-close="true"
-                  >
-                    ×
-                  </button>
-                </div>
-                <div class="mode-popover__body">
-                  <p class="mode-popover__lead" id="board-mode-desc-1">Mode tableau ON :</p>
-                  <p class="mode-popover__sub">
-                    <span id="board-mode-detail-1">
-                      Pour longue durée → Idéal quand l’écran reste ouvert. (Autoactivation dès 2 min)
-                    </span>
-                    <sup>1</sup>
-                  </p>
-                  <p class="mode-popover__lead" id="board-mode-desc-2">Mode tableau OFF :</p>
-                  <p class="mode-popover__sub">
-                    <span id="board-mode-detail-2">
-                      Pour courte durée → pratique pour des consultations ponctuelles.
-                    </span>
-                    <sup>2</sup>
-                  </p>
-                  <p class="mode-popover__footnote">
-                    <sup>1</sup>
-                    <span id="board-mode-footnote-1">
-                      Pour éviter de surcharger transport.opendata.ch, on passe par Cloudflare qui fait des appels moins
-                      fréquemment qu'en mode tableau OFF et met en cache les réponses pour que les utilisateurs se partagent
-                      un même fichier.
-                    </span>
-                  </p>
-                  <p class="mode-popover__footnote">
-                    <sup>2</sup>
-                    <span id="board-mode-footnote-2">
-                      Appelle transport.opendata.ch directement et plus fréquemment qu'en mode tableau ON pour garantir une
-                      meilleure précision de l'horaire à l'utilisateur.
-                    </span>
-                  </p>
-                </div>
-                <footer class="mode-popover__footer">
-                  <button id="board-mode-ok" class="primary-button" type="button">OK</button>
-                </footer>
               </div>
               <div id="station-card-collapsible" class="station-card-collapsible">
                 <label for="station-input">Recherche d'arrêt</label>
