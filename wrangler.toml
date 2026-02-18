@@ -5,4 +5,4 @@ compatibility_date = "2025-12-17"
 routes = ["api.mesdeparts.ch/api/*"]
 
 [vars]
-RT_BACKEND_ORIGIN = "https://api-origin.mesdeparts.ch"
+RT_BACKEND_ORIGIN = "https://mesdeparts-ch.fly.dev"
