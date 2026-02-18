@@ -1,3 +1,5 @@
+import { looksLikeDisruptionText } from "../util/text.js";
+
 function normalizeText(value) {
   if (value == null) return "";
   return String(value).trim();
@@ -80,6 +82,10 @@ export function supplementFromOtdStationboard({
     if (!hasReplacementSignal(number, name, to, category, operator)) continue;
 
     const line = number || name || "EV";
+    const destination = to || stationName || "";
+    if (!destination) continue;
+    if (looksLikeDisruptionText(destination)) continue;
+
     const scheduledIso = new Date(plannedMs).toISOString();
     const realtimeIso = new Date(realtimeMs).toISOString();
     const item = {
@@ -91,7 +97,7 @@ export function supplementFromOtdStationboard({
       number: line,
       line,
       name: line,
-      destination: to || stationName || "",
+      destination,
       operator,
       scheduledDeparture: scheduledIso,
       realtimeDeparture: realtimeIso,

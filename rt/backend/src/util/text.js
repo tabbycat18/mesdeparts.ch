@@ -41,3 +41,24 @@ export function departureReasons(dep) {
   }
   return out;
 }
+
+export function looksLikeDisruptionText(value) {
+  const text = normalizeText(value);
+  if (!text) return false;
+  const lowerText = text.toLowerCase();
+
+  if (text.length >= 80) return true;
+
+  return [
+    "limited train service",
+    "allow for delays",
+    "delays and cancellations",
+    "service disruption",
+    "line interruption",
+    "interruption de ligne",
+    "verkehr ist eingeschränkt",
+    "bahnverkehr",
+    "retards et suppressions",
+    "ritardi e soppressioni",
+  ].some((phrase) => lowerText.includes(phrase));
+}

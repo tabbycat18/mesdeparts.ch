@@ -4,11 +4,11 @@ import { query as dbQuery } from "../db/query.js";
 import { resolveStop } from "../resolve/resolveStop.js";
 import { fetchServiceAlerts } from "../loaders/fetchServiceAlerts.js";
 import { attachAlerts } from "../merge/attachAlerts.js";
-import { synthesizeFromAlerts } from "../merge/synthesizeFromAlerts.js";
 import { supplementFromOtdStationboard } from "../merge/supplementFromOtdStationboard.js";
 import { pickPreferredMergedDeparture } from "../merge/pickPreferredDeparture.js";
 import { normalizeDeparture } from "../models/stationboard.js";
 import { pickTranslation, resolveLangPrefs } from "../util/i18n.js";
+import { filterRenderableDepartures } from "../util/departureFilter.js";
 import { createCancellationTracer } from "../debug/cancellationTrace.js";
 import {
   createStationboardDebugLogger,
@@ -100,9 +100,25 @@ function localizeServiceAlerts(alerts, langPrefs) {
   };
 }
 
-function canonicalizeDepartures(departures, { stopId } = {}) {
+function canonicalizeDepartures(departures, { stopId, debugLog, debugState } = {}) {
   const rows = Array.isArray(departures) ? departures : [];
-  return rows.map((dep) => normalizeDeparture(dep, { stopId }));
+  const { kept, dropped } = filterRenderableDepartures(rows);
+
+  if (dropped.length > 0 && debugState && Array.isArray(debugState.stageCounts)) {
+    const stage = {
+      stage: "after_departure_validity_filter",
+      count: kept.length,
+      dropped: dropped.length,
+      cancelled: countCancelled(kept),
+    };
+    debugState.stageCounts.push(stage);
+    if (typeof debugLog === "function") {
+      debugLog("stage_counts", stage);
+      debugLog("departure_filter_dropped_sample", dropped.slice(0, 5));
+    }
+  }
+
+  return kept.map((dep) => normalizeDeparture(dep, { stopId }));
 }
 
 function resolveOtdApiKey() {
@@ -530,6 +546,8 @@ export async function getStationboard({
   if (!includeAlertsApplied) {
     baseResponse.departures = canonicalizeDepartures(baseResponse.departures, {
       stopId: locationId,
+      debugLog,
+      debugState,
     });
     if (debugEnabled) {
       baseResponse.debug = {
@@ -550,17 +568,7 @@ export async function getStationboard({
 
   try {
     const alerts = localizeServiceAlerts(await alertsPromise, langPrefs);
-    const syntheticDepartures = synthesizeFromAlerts({
-      alerts,
-      stopId: locationId,
-      departures: baseResponse.departures,
-      scopeStopIds,
-      stationName: canonicalName,
-      now: new Date(),
-      windowMinutes: baseWindowMinutes,
-      departedGraceSeconds: Number(process.env.DEPARTED_GRACE_SECONDS || "45"),
-      limit: Math.max(10, boundedLimit),
-    });
+    const syntheticDepartures = [];
 
     const byKey = new Map();
     for (const dep of [...baseResponse.departures, ...syntheticDepartures]) {
@@ -662,6 +670,8 @@ export async function getStationboard({
       banners: attached.banners,
       departures: canonicalizeDepartures(finalDepartures, {
         stopId: locationId,
+        debugLog,
+        debugState,
       }),
     };
     if (debugEnabled) {
@@ -685,6 +695,8 @@ export async function getStationboard({
       banners: [],
       departures: canonicalizeDepartures(baseResponse.departures, {
         stopId: locationId,
+        debugLog,
+        debugState,
       }),
     };
     if (process.env.NODE_ENV !== "production") {
