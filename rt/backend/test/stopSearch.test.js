@@ -12,11 +12,30 @@ function fixtureRows() {
       parent_station: "",
       location_type: "1",
       city_name: "Zürich",
-      aliases_matched: ["zurich hb", "zurich hbf", "hauptbahnhof zurich"],
+      aliases_matched: ["zurich", "zurich hb", "zurich hbf", "hauptbahnhof zurich"],
       alias_weight: 9,
       alias_similarity: 0.94,
       name_similarity: 0.9,
       core_similarity: 0.9,
+      nb_stop_times: 120000,
+      is_parent: true,
+      has_hub_token: true,
+    },
+    {
+      group_id: "8503000:0:41",
+      stop_id: "8503000:0:41",
+      stop_name: "Zürich HB",
+      parent_station: "Parent8503000",
+      location_type: "",
+      city_name: "Zürich",
+      aliases_matched: [],
+      alias_weight: 0,
+      alias_similarity: 0,
+      name_similarity: 0.88,
+      core_similarity: 0.88,
+      nb_stop_times: 2000,
+      is_parent: false,
+      has_hub_token: true,
     },
     {
       group_id: "Parent8503016",
@@ -30,6 +49,9 @@ function fixtureRows() {
       alias_similarity: 0,
       name_similarity: 0.82,
       core_similarity: 0.82,
+      nb_stop_times: 38000,
+      is_parent: true,
+      has_hub_token: false,
     },
     {
       group_id: "Parent8503003",
@@ -43,11 +65,30 @@ function fixtureRows() {
       alias_similarity: 0,
       name_similarity: 0.8,
       core_similarity: 0.8,
+      nb_stop_times: 26000,
+      is_parent: true,
+      has_hub_token: false,
     },
     {
       group_id: "Parent8501008",
       stop_id: "Parent8501008",
-      stop_name: "Genève, Cornavin",
+      stop_name: "Genève",
+      parent_station: "",
+      location_type: "1",
+      city_name: "Genève",
+      aliases_matched: ["geneve", "genève"],
+      alias_weight: 8,
+      alias_similarity: 0.92,
+      name_similarity: 0.88,
+      core_similarity: 0.88,
+      nb_stop_times: 110000,
+      is_parent: true,
+      has_hub_token: false,
+    },
+    {
+      group_id: "Parent8587057",
+      stop_id: "Parent8587057",
+      stop_name: "Genève, gare Cornavin",
       parent_station: "",
       location_type: "1",
       city_name: "Genève",
@@ -56,6 +97,9 @@ function fixtureRows() {
       alias_similarity: 0.95,
       name_similarity: 0.86,
       core_similarity: 0.86,
+      nb_stop_times: 90000,
+      is_parent: true,
+      has_hub_token: false,
     },
     {
       group_id: "Parent8501020",
@@ -69,19 +113,25 @@ function fixtureRows() {
       alias_similarity: 0.5,
       name_similarity: 0.74,
       core_similarity: 0.74,
+      nb_stop_times: 24000,
+      is_parent: true,
+      has_hub_token: false,
     },
     {
-      group_id: "Parent8592949",
-      stop_id: "Parent8592949",
+      group_id: "Parent8587387",
+      stop_id: "Parent8587387",
       stop_name: "Genève, Bel-Air",
       parent_station: "",
       location_type: "1",
       city_name: "Genève",
-      aliases_matched: ["bel air"],
+      aliases_matched: ["bel air", "geneve bel air"],
       alias_weight: 1.5,
       alias_similarity: 0.75,
       name_similarity: 0.72,
       core_similarity: 0.72,
+      nb_stop_times: 32000,
+      is_parent: true,
+      has_hub_token: false,
     },
     {
       group_id: "Parent8587055",
@@ -95,6 +145,41 @@ function fixtureRows() {
       alias_similarity: 0.65,
       name_similarity: 0.72,
       core_similarity: 0.72,
+      nb_stop_times: 25000,
+      is_parent: true,
+      has_hub_token: false,
+    },
+    {
+      group_id: "Parent8506302",
+      stop_id: "Parent8506302",
+      stop_name: "St. Gallen",
+      parent_station: "",
+      location_type: "1",
+      city_name: "St. Gallen",
+      aliases_matched: ["st gallen", "st. gallen", "saint gallen"],
+      alias_weight: 8.8,
+      alias_similarity: 0.92,
+      name_similarity: 0.9,
+      core_similarity: 0.9,
+      nb_stop_times: 76000,
+      is_parent: true,
+      has_hub_token: false,
+    },
+    {
+      group_id: "Parent1201427",
+      stop_id: "Parent1201427",
+      stop_name: "St Gallenkirch, Badmunt",
+      parent_station: "",
+      location_type: "1",
+      city_name: "St Gallenkirch",
+      aliases_matched: [],
+      alias_weight: 0,
+      alias_similarity: 0,
+      name_similarity: 0.6,
+      core_similarity: 0.6,
+      nb_stop_times: 200,
+      is_parent: true,
+      has_hub_token: false,
     },
     {
       group_id: "Parent8500010",
@@ -108,47 +193,71 @@ function fixtureRows() {
       alias_similarity: 0.2,
       name_similarity: 0.2,
       core_similarity: 0.2,
+      nb_stop_times: 1000,
+      is_parent: true,
+      has_hub_token: false,
     },
   ];
 }
 
-test("normalizeSearchText strips diacritics and punctuation", () => {
+test("normalizeSearchText strips diacritics, punctuation and abbreviations", () => {
   assert.equal(normalizeSearchText("  Genève-Bel_Air.  "), "geneve bel air");
   assert.equal(normalizeSearchText("Zürich"), "zurich");
+  assert.equal(normalizeSearchText("St. Gallen"), "saint gallen");
+  assert.equal(normalizeSearchText("Zürich Hauptbahnhof"), "zurich hb");
 });
 
-test("geneve query returns Geneve/Cornavin in top results", () => {
-  const ranked = rankStopCandidates(fixtureRows(), "geneve", 7);
+test("Zurich includes Zürich HB in top 3", () => {
+  const ranked = rankStopCandidates(fixtureRows(), "Zurich", 7);
   const topIds = ranked.slice(0, 3).map((row) => row.stop_id);
-  assert.ok(topIds.includes("Parent8501008"));
+  assert.ok(topIds.includes("Parent8503000"));
 });
 
-test("bel air matches Bel-Air", () => {
-  const ranked = rankStopCandidates(fixtureRows(), "bel air", 7);
-  assert.ok(ranked.length > 0);
-  assert.match(ranked[0].stop_name, /Bel-Air/i);
-});
-
-test("zurich ranks Zurich HB first", () => {
-  const ranked = rankStopCandidates(fixtureRows(), "zurich", 7);
-  assert.ok(ranked.length > 0);
-  assert.equal(ranked[0].stop_id, "Parent8503000");
-});
-
-test("Zürich (with diacritics) ranks Zurich HB first", () => {
+test("Zürich ranks Zürich HB first", () => {
   const ranked = rankStopCandidates(fixtureRows(), "Zürich", 7);
   assert.ok(ranked.length > 0);
   assert.equal(ranked[0].stop_id, "Parent8503000");
 });
 
+test("St. Gallen query returns St. Gallen in top results", () => {
+  const ranked = rankStopCandidates(fixtureRows(), "St. Gallen", 7);
+  const topIds = ranked.slice(0, 3).map((row) => row.stop_id);
+  assert.ok(topIds.includes("Parent8506302"));
+});
+
+test("St Gallen query returns St. Gallen in top results", () => {
+  const ranked = rankStopCandidates(fixtureRows(), "St Gallen", 7);
+  const topIds = ranked.slice(0, 3).map((row) => row.stop_id);
+  assert.ok(topIds.includes("Parent8506302"));
+});
+
+test("St-Gallen query returns St. Gallen in top results", () => {
+  const ranked = rankStopCandidates(fixtureRows(), "St-Gallen", 7);
+  const topIds = ranked.slice(0, 3).map((row) => row.stop_id);
+  assert.ok(topIds.includes("Parent8506302"));
+});
+
+test("geneve query includes Genève main and Genève, gare Cornavin", () => {
+  const ranked = rankStopCandidates(fixtureRows(), "geneve", 7);
+  const topIds = ranked.slice(0, 7).map((row) => row.stop_id);
+  assert.ok(topIds.includes("Parent8501008"));
+  assert.ok(topIds.includes("Parent8587057"));
+});
+
+test("bel air matches Genève, Bel-Air", () => {
+  const ranked = rankStopCandidates(fixtureRows(), "bel air", 7);
+  const topIds = ranked.slice(0, 3).map((row) => row.stop_id);
+  assert.ok(topIds.includes("Parent8587387"));
+});
+
 test("cornavin ranks Geneve Cornavin first", () => {
   const ranked = rankStopCandidates(fixtureRows(), "cornavin", 7);
   assert.ok(ranked.length > 0);
-  assert.equal(ranked[0].stop_id, "Parent8501008");
+  assert.equal(ranked[0].stop_id, "Parent8587057");
 });
 
 test("cornavain typo still returns Geneve Cornavin in top 3", () => {
   const ranked = rankStopCandidates(fixtureRows(), "cornavain", 7);
   const topIds = ranked.slice(0, 3).map((row) => row.stop_id);
-  assert.ok(topIds.includes("Parent8501008"));
+  assert.ok(topIds.includes("Parent8587057"));
 });

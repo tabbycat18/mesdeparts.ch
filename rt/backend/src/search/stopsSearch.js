@@ -7,6 +7,8 @@ const CANDIDATE_MIN = 60;
 const CANDIDATE_MAX = 320;
 const CANDIDATE_MULTIPLIER = 20;
 
+const CAPABILITY_CACHE_MS = 60_000;
+
 const GENERIC_STOP_WORDS = new Set([
   "gare",
   "bahnhof",
@@ -17,6 +19,10 @@ const GENERIC_STOP_WORDS = new Set([
 
 const HUB_WORDS = new Set(["hb", "hbf", "hauptbahnhof"]);
 
+let capabilitiesCache = null;
+let capabilitiesCacheTs = 0;
+const warningKeys = new Set();
+
 function toString(value) {
   if (value == null) return "";
   return String(value);
@@ -25,6 +31,12 @@ function toString(value) {
 function toFiniteNumber(value, fallback = 0) {
   const num = Number(value);
   return Number.isFinite(num) ? num : fallback;
+}
+
+function toBoolean(value) {
+  if (typeof value === "boolean") return value;
+  const raw = toString(value).trim().toLowerCase();
+  return raw === "1" || raw === "true" || raw === "t" || raw === "yes";
 }
 
 function clampLimit(limit) {
@@ -37,6 +49,16 @@ function candidateLimitFor(limit) {
   return Math.min(CANDIDATE_MAX, Math.max(CANDIDATE_MIN, limit * CANDIDATE_MULTIPLIER));
 }
 
+function warnOnce(key, message, details = null) {
+  if (warningKeys.has(key)) return;
+  warningKeys.add(key);
+  if (details) {
+    console.warn(message, details);
+    return;
+  }
+  console.warn(message);
+}
+
 export function normalizeSearchText(value) {
   const raw = toString(value).trim().toLowerCase();
   if (!raw) return "";
@@ -44,8 +66,10 @@ export function normalizeSearchText(value) {
   return raw
     .normalize("NFKD")
     .replace(/\p{M}+/gu, "")
-    .replace(/[-_.]+/g, " ")
+    .replace(/[-_.\/’'`]+/g, " ")
     .replace(/[^\p{L}\p{N}\s]+/gu, " ")
+    .replace(/\b(st|saint)\b/g, "saint")
+    .replace(/\b(hauptbahnhof|hbf|hb)\b/g, "hb")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -65,22 +89,16 @@ function tokenize(normalizedText) {
   return text.split(" ").filter(Boolean);
 }
 
-function tokenPrefixes(tokens) {
-  const out = new Set();
-  for (const token of tokens) {
-    if (!token) continue;
-    if (token.length >= 4) out.add(token.slice(0, 4));
-    if (token.length >= 3) out.add(token.slice(0, 3));
-    if (token.length >= 2) out.add(token.slice(0, 2));
-  }
-  return Array.from(out);
-}
-
 function hasHubWord(tokens) {
   return tokens.some((token) => HUB_WORDS.has(token));
 }
 
 function isParentLike(row) {
+  const explicitParent = row?.is_parent;
+  if (explicitParent !== undefined && explicitParent !== null) {
+    return toBoolean(explicitParent);
+  }
+
   const stopId = toString(row?.stop_id).trim();
   const parentStation = toString(row?.parent_station).trim();
   const locationType = toString(row?.location_type).trim();
@@ -121,11 +139,7 @@ function boundedLevenshtein(a, b, maxDistance) {
 
     for (let j = 1; j <= right.length; j += 1) {
       const cost = leftCode === right.charCodeAt(j - 1) ? 0 : 1;
-      const value = Math.min(
-        previous[j] + 1,
-        current[j - 1] + 1,
-        previous[j - 1] + cost
-      );
+      const value = Math.min(previous[j] + 1, current[j - 1] + 1, previous[j - 1] + cost);
       current.push(value);
       if (value < rowMin) rowMin = value;
     }
@@ -215,6 +229,7 @@ function compareScored(a, b) {
   if (a.score !== b.score) return b.score - a.score;
   if (a.tier !== b.tier) return b.tier - a.tier;
   if (a.parentBoost !== b.parentBoost) return b.parentBoost - a.parentBoost;
+  if (a.nbStopTimes !== b.nbStopTimes) return b.nbStopTimes - a.nbStopTimes;
   const nameCmp = a.stopName.localeCompare(b.stopName, "en", { sensitivity: "base" });
   if (nameCmp !== 0) return nameCmp;
   return a.stopId.localeCompare(b.stopId);
@@ -247,9 +262,12 @@ function scoreCandidate(row, queryCtx) {
   const coreSimilarity = toFiniteNumber(row?.core_similarity, 0);
   const dbSimilarity = Math.max(nameSimilarity, coreSimilarity, aliasSimilarity);
 
-  const exactName = nameNorm === queryCtx.queryNorm || (queryCtx.queryCore && coreNorm === queryCtx.queryCore);
+  const exactName =
+    nameNorm === queryCtx.queryNorm || (queryCtx.queryCore && coreNorm === queryCtx.queryCore);
   const exactAlias = aliasNorms.some(
-    (aliasNorm) => aliasNorm === queryCtx.queryNorm || (queryCtx.queryCore && aliasNorm === queryCtx.queryCore)
+    (aliasNorm) =>
+      aliasNorm === queryCtx.queryNorm ||
+      (queryCtx.queryCore && aliasNorm === queryCtx.queryCore)
   );
 
   const prefixName =
@@ -293,7 +311,11 @@ function scoreCandidate(row, queryCtx) {
       nameNorm.startsWith(`${queryCtx.cityToken} `) ||
       nameNorm === queryCtx.cityToken);
 
-  const candidateHasHubToken = hasHubWord(candidateTokens) || hasHubWord(nameTokens);
+  const hasHubTokenFlag = toBoolean(row?.has_hub_token);
+  const candidateHasHubToken =
+    hasHubTokenFlag || hasHubWord(candidateTokens) || hasHubWord(nameTokens);
+
+  const nbStopTimes = Math.max(0, Math.round(toFiniteNumber(row?.nb_stop_times, 0)));
 
   let score = tier * 10_000;
   score += Math.round(fuzzySimilarity * 1000);
@@ -302,6 +324,7 @@ function scoreCandidate(row, queryCtx) {
   else if (prefixAlias) score += 900;
 
   score += Math.round(aliasWeight * 260);
+  score += Math.round(Math.min(nbStopTimes, 120_000) / 250);
 
   if (cityMatch) score += 220;
   if (cityMatch && parentLike) score += 280;
@@ -330,9 +353,8 @@ function scoreCandidate(row, queryCtx) {
     stopName,
     parentStation: toString(row?.parent_station).trim() || null,
     locationType: toString(row?.location_type).trim(),
-    nbStopTimes: Math.max(0, Math.round(toFiniteNumber(row?.nb_stop_times, 0))),
+    nbStopTimes,
     cityName,
-    cityNorm,
     aliasesMatched,
   };
 }
@@ -395,6 +417,79 @@ export function rankStopCandidates(rows, query, limit = DEFAULT_LIMIT) {
   });
 }
 
+function emptyCapabilities() {
+  return {
+    hasStopSearchIndex: false,
+    hasStopAliases: false,
+    hasAppStopAliases: false,
+    hasNormalizeFn: false,
+    hasStripFn: false,
+    hasPgTrgm: false,
+    hasUnaccent: false,
+  };
+}
+
+export function __resetSearchCapabilitiesCacheForTests() {
+  capabilitiesCache = null;
+  capabilitiesCacheTs = 0;
+  warningKeys.clear();
+}
+
+export async function detectSearchCapabilities(db, options = {}) {
+  const force = options?.force === true;
+  if (
+    !force &&
+    capabilitiesCache &&
+    Date.now() - capabilitiesCacheTs <= CAPABILITY_CACHE_MS
+  ) {
+    return capabilitiesCache;
+  }
+
+  let caps = emptyCapabilities();
+  try {
+    const result = await db.query(`
+      SELECT
+        to_regclass('public.stop_search_index') IS NOT NULL AS has_stop_search_index,
+        to_regclass('public.stop_aliases') IS NOT NULL AS has_stop_aliases,
+        to_regclass('public.app_stop_aliases') IS NOT NULL AS has_app_stop_aliases,
+        to_regprocedure('public.normalize_stop_search_text(text)') IS NOT NULL AS has_normalize_fn,
+        to_regprocedure('public.strip_stop_search_terms(text)') IS NOT NULL AS has_strip_fn,
+        EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_trgm') AS has_pg_trgm,
+        EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'unaccent') AS has_unaccent
+    `);
+
+    const row = result.rows?.[0] || {};
+    caps = {
+      hasStopSearchIndex: row.has_stop_search_index === true,
+      hasStopAliases: row.has_stop_aliases === true,
+      hasAppStopAliases: row.has_app_stop_aliases === true,
+      hasNormalizeFn: row.has_normalize_fn === true,
+      hasStripFn: row.has_strip_fn === true,
+      hasPgTrgm: row.has_pg_trgm === true,
+      hasUnaccent: row.has_unaccent === true,
+    };
+  } catch (err) {
+    warnOnce("stop_search_caps_probe_error", "[stop-search] capability probe failed; using fallback mode", {
+      error: String(err?.message || err),
+    });
+  }
+
+  capabilitiesCache = caps;
+  capabilitiesCacheTs = Date.now();
+  return caps;
+}
+
+function supportsPrimarySearch(caps) {
+  return (
+    caps.hasStopSearchIndex &&
+    caps.hasStopAliases &&
+    caps.hasNormalizeFn &&
+    caps.hasStripFn &&
+    caps.hasPgTrgm &&
+    caps.hasUnaccent
+  );
+}
+
 const PRIMARY_SQL = `
 WITH params AS (
   SELECT
@@ -410,31 +505,20 @@ WITH params AS (
 alias_hits AS (
   SELECT
     sa.stop_id,
-    ARRAY_AGG(DISTINCT sa.alias_text ORDER BY sa.alias_text) AS aliases_matched,
+    ARRAY_AGG(DISTINCT sa.alias_text ORDER BY sa.weight DESC, sa.alias_text) AS aliases_matched,
     MAX(sa.weight)::float8 AS alias_weight,
-    MAX(similarity(public.normalize_stop_search_text(sa.alias_text), p.q_norm))::float8 AS alias_similarity
+    MAX(similarity(sa.alias_norm, p.q_norm))::float8 AS alias_similarity
   FROM public.stop_aliases sa
   CROSS JOIN params p
   WHERE
     p.q_norm <> ''
+    AND sa.alias_norm <> ''
     AND (
-      public.normalize_stop_search_text(sa.alias_text) = p.q_norm
-      OR public.normalize_stop_search_text(sa.alias_text) LIKE p.q_norm || '%'
-      OR similarity(public.normalize_stop_search_text(sa.alias_text), p.q_norm) >= p.sim_threshold
+      sa.alias_norm = p.q_norm
+      OR sa.alias_norm LIKE p.q_norm || '%'
+      OR sa.alias_norm % p.q_norm
     )
   GROUP BY sa.stop_id
-),
-base AS (
-  SELECT
-    s.stop_id,
-    s.stop_name,
-    NULLIF(to_jsonb(s) ->> 'parent_station', '') AS parent_station,
-    COALESCE(NULLIF(to_jsonb(s) ->> 'location_type', ''), '') AS location_type,
-    COALESCE(NULLIF(to_jsonb(s) ->> 'parent_station', ''), s.stop_id) AS group_id,
-    public.normalize_stop_search_text(s.stop_name) AS name_norm,
-    public.strip_stop_search_terms(public.normalize_stop_search_text(s.stop_name)) AS name_core,
-    trim(split_part(s.stop_name, ',', 1)) AS city_name
-  FROM public.gtfs_stops s
 )
 SELECT
   b.group_id,
@@ -445,6 +529,9 @@ SELECT
   b.city_name,
   b.name_norm,
   b.name_core,
+  b.is_parent,
+  b.has_hub_token,
+  b.nb_stop_times,
   COALESCE(ahs.aliases_matched, ahg.aliases_matched, ARRAY[]::text[]) AS aliases_matched,
   GREATEST(COALESCE(ahs.alias_weight, 0), COALESCE(ahg.alias_weight, 0))::float8 AS alias_weight,
   GREATEST(COALESCE(ahs.alias_similarity, 0), COALESCE(ahg.alias_similarity, 0))::float8 AS alias_similarity,
@@ -452,9 +539,8 @@ SELECT
   CASE
     WHEN p.q_core = '' THEN 0::float8
     ELSE similarity(b.name_core, p.q_core)::float8
-  END AS core_similarity,
-  0::int AS nb_stop_times
-FROM base b
+  END AS core_similarity
+FROM public.stop_search_index b
 CROSS JOIN params p
 LEFT JOIN alias_hits ahs ON ahs.stop_id = b.stop_id
 LEFT JOIN alias_hits ahg ON ahg.stop_id = b.group_id
@@ -463,57 +549,241 @@ WHERE
   AND (
     b.name_norm = p.q_norm
     OR b.name_norm LIKE p.q_norm || '%'
-    OR b.name_norm LIKE '%' || p.q_norm || '%'
-    OR b.name_norm % p.q_norm
+    OR b.search_text LIKE '%' || p.q_norm || '%'
+    OR b.search_text % p.q_norm
     OR (p.q_core <> '' AND (b.name_core LIKE p.q_core || '%' OR b.name_core % p.q_core))
     OR GREATEST(COALESCE(ahs.alias_similarity, 0), COALESCE(ahg.alias_similarity, 0)) >= p.sim_threshold
     OR GREATEST(COALESCE(ahs.alias_weight, 0), COALESCE(ahg.alias_weight, 0)) > 0
   )
 ORDER BY
   GREATEST(
-    CASE WHEN b.name_norm = p.q_norm THEN 1.5 ELSE 0 END,
-    CASE WHEN b.name_norm LIKE p.q_norm || '%' THEN 1.2 ELSE 0 END,
+    CASE WHEN b.name_norm = p.q_norm THEN 1.80 ELSE 0 END,
+    CASE WHEN b.name_norm LIKE p.q_norm || '%' THEN 1.35 ELSE 0 END,
+    CASE WHEN p.q_core <> '' AND b.name_core LIKE p.q_core || '%' THEN 1.20 ELSE 0 END,
     similarity(b.name_norm, p.q_norm),
     CASE WHEN p.q_core = '' THEN 0 ELSE similarity(b.name_core, p.q_core) END,
     GREATEST(COALESCE(ahs.alias_similarity, 0), COALESCE(ahg.alias_similarity, 0))
   ) DESC,
-  (b.parent_station IS NULL OR b.location_type = '1' OR b.stop_id LIKE 'Parent%') DESC,
+  b.is_parent DESC,
+  b.has_hub_token DESC,
+  b.nb_stop_times DESC,
   b.stop_name ASC
 LIMIT $2;
 `;
 
-const FALLBACK_SQL = `
-WITH base AS (
+const FALLBACK_TRGM_SQL = `
+WITH params AS (
+  SELECT
+    $1::text AS q_norm,
+    CASE
+      WHEN char_length($1::text) <= 4 THEN 0.48
+      WHEN char_length($1::text) <= 6 THEN 0.40
+      WHEN char_length($1::text) <= 8 THEN 0.34
+      ELSE 0.28
+    END AS sim_threshold
+),
+base AS (
   SELECT
     s.stop_id,
     s.stop_name,
     NULLIF(to_jsonb(s) ->> 'parent_station', '') AS parent_station,
-    COALESCE(NULLIF(to_jsonb(s) ->> 'location_type', ''), '') AS location_type,
     COALESCE(NULLIF(to_jsonb(s) ->> 'parent_station', ''), s.stop_id) AS group_id,
-    trim(split_part(s.stop_name, ',', 1)) AS city_name
+    COALESCE(NULLIF(to_jsonb(s) ->> 'location_type', ''), '') AS location_type,
+    trim(split_part(s.stop_name, ',', 1)) AS city_name,
+    lower(s.stop_name) AS name_lower,
+    lower(regexp_replace(s.stop_name, '[-_./''’]+', ' ', 'g')) AS name_simple
   FROM public.gtfs_stops s
+),
+candidates AS (
+  SELECT
+    b.*,
+    similarity(b.name_lower, p.q_norm)::float8 AS sim_lower,
+    similarity(b.name_simple, p.q_norm)::float8 AS sim_simple,
+    CASE
+      WHEN b.name_lower = p.q_norm OR b.name_simple = p.q_norm THEN 4
+      WHEN b.name_lower LIKE p.q_norm || '%' OR b.name_simple LIKE p.q_norm || '%' THEN 3
+      WHEN b.name_lower LIKE '%' || p.q_norm || '%' OR b.name_simple LIKE '%' || p.q_norm || '%' THEN 2
+      WHEN b.name_lower % p.q_norm OR b.name_simple % p.q_norm THEN 1
+      ELSE 0
+    END AS tier
+  FROM base b
+  CROSS JOIN params p
   WHERE
-    lower(s.stop_name) LIKE '%' || $1 || '%'
-    OR lower(s.stop_name) LIKE ANY($2::text[])
+    p.q_norm <> ''
+    AND (
+      b.name_lower LIKE p.q_norm || '%'
+      OR b.name_simple LIKE p.q_norm || '%'
+      OR b.name_lower LIKE '%' || p.q_norm || '%'
+      OR b.name_simple LIKE '%' || p.q_norm || '%'
+      OR b.name_lower % p.q_norm
+      OR b.name_simple % p.q_norm
+    )
 )
 SELECT
-  b.group_id,
-  b.stop_id,
-  b.stop_name,
-  b.parent_station,
-  b.location_type,
-  b.city_name,
+  c.group_id,
+  c.stop_id,
+  c.stop_name,
+  c.parent_station,
+  c.location_type,
+  c.city_name,
+  NULL::text AS name_norm,
+  NULL::text AS name_core,
+  ARRAY[]::text[] AS aliases_matched,
+  0::float8 AS alias_weight,
+  0::float8 AS alias_similarity,
+  GREATEST(c.sim_lower, c.sim_simple)::float8 AS name_similarity,
+  0::float8 AS core_similarity,
+  (c.parent_station IS NULL OR c.stop_id LIKE 'Parent%') AS is_parent,
+  FALSE AS has_hub_token,
+  0::int AS nb_stop_times
+FROM candidates c
+WHERE c.tier > 0
+ORDER BY
+  c.tier DESC,
+  GREATEST(c.sim_lower, c.sim_simple) DESC,
+  (c.parent_station IS NULL OR c.stop_id LIKE 'Parent%') DESC,
+  c.stop_name ASC
+LIMIT $2;
+`;
+
+const FALLBACK_PLAIN_SQL = `
+WITH params AS (
+  SELECT
+    $1::text AS q_norm,
+    split_part($1::text, ' ', 1) AS q_head,
+    left($1::text, 1) AS q_first
+),
+base AS (
+  SELECT
+    s.stop_id,
+    s.stop_name,
+    NULLIF(to_jsonb(s) ->> 'parent_station', '') AS parent_station,
+    COALESCE(NULLIF(to_jsonb(s) ->> 'parent_station', ''), s.stop_id) AS group_id,
+    COALESCE(NULLIF(to_jsonb(s) ->> 'location_type', ''), '') AS location_type,
+    trim(split_part(s.stop_name, ',', 1)) AS city_name,
+    lower(s.stop_name) AS name_lower,
+    lower(regexp_replace(s.stop_name, '[-_./''’]+', ' ', 'g')) AS name_simple
+  FROM public.gtfs_stops s
+),
+candidates AS (
+  SELECT
+    b.*,
+    CASE
+      WHEN b.name_lower = p.q_norm OR b.name_simple = p.q_norm THEN 4
+      WHEN b.name_lower LIKE p.q_norm || '%' OR b.name_simple LIKE p.q_norm || '%' THEN 3
+      WHEN p.q_head <> '' AND (
+        b.name_lower LIKE p.q_head || '%'
+        OR b.name_simple LIKE p.q_head || '%'
+      ) THEN 2
+      WHEN p.q_first <> '' AND (
+        b.name_lower LIKE p.q_first || '%'
+        OR b.name_simple LIKE p.q_first || '%'
+      ) THEN 1
+      ELSE 0
+    END AS tier
+  FROM base b
+  CROSS JOIN params p
+  WHERE
+    p.q_norm <> ''
+    AND (
+      b.name_lower LIKE p.q_norm || '%'
+      OR b.name_simple LIKE p.q_norm || '%'
+      OR (
+        p.q_head <> ''
+        AND (
+          b.name_lower LIKE p.q_head || '%'
+          OR b.name_simple LIKE p.q_head || '%'
+        )
+      )
+      OR (
+        p.q_first <> ''
+        AND (
+          b.name_lower LIKE p.q_first || '%'
+          OR b.name_simple LIKE p.q_first || '%'
+        )
+      )
+    )
+)
+SELECT
+  c.group_id,
+  c.stop_id,
+  c.stop_name,
+  c.parent_station,
+  c.location_type,
+  c.city_name,
+  NULL::text AS name_norm,
+  NULL::text AS name_core,
   ARRAY[]::text[] AS aliases_matched,
   0::float8 AS alias_weight,
   0::float8 AS alias_similarity,
   0::float8 AS name_similarity,
   0::float8 AS core_similarity,
+  (c.parent_station IS NULL OR c.stop_id LIKE 'Parent%') AS is_parent,
+  FALSE AS has_hub_token,
   0::int AS nb_stop_times
-FROM base b
-LIMIT $3;
+FROM candidates c
+WHERE c.tier > 0
+ORDER BY
+  c.tier DESC,
+  (c.parent_station IS NULL OR c.stop_id LIKE 'Parent%') DESC,
+  c.stop_name ASC
+LIMIT $2;
 `;
 
-const FALLBACK_STOP_ALIASES_SQL = `
+const FALLBACK_STOP_ALIASES_TRGM_SQL = `
+WITH params AS (
+  SELECT
+    $1::text AS q_norm,
+    CASE
+      WHEN char_length($1::text) <= 4 THEN 0.48
+      WHEN char_length($1::text) <= 6 THEN 0.40
+      WHEN char_length($1::text) <= 8 THEN 0.34
+      ELSE 0.28
+    END AS sim_threshold
+)
+SELECT
+  COALESCE(NULLIF(to_jsonb(s) ->> 'parent_station', ''), s.stop_id) AS group_id,
+  s.stop_id,
+  s.stop_name,
+  NULLIF(to_jsonb(s) ->> 'parent_station', '') AS parent_station,
+  COALESCE(NULLIF(to_jsonb(s) ->> 'location_type', ''), '') AS location_type,
+  trim(split_part(s.stop_name, ',', 1)) AS city_name,
+  ARRAY[sa.alias_text]::text[] AS aliases_matched,
+  COALESCE(sa.weight, 1)::float8 AS alias_weight,
+  similarity(sa.alias_norm, p.q_norm)::float8 AS alias_similarity,
+  0::float8 AS name_similarity,
+  0::float8 AS core_similarity,
+  (NULLIF(to_jsonb(s) ->> 'parent_station', '') IS NULL OR s.stop_id LIKE 'Parent%') AS is_parent,
+  FALSE AS has_hub_token,
+  0::int AS nb_stop_times
+FROM public.stop_aliases sa
+JOIN public.gtfs_stops s ON s.stop_id = sa.stop_id
+CROSS JOIN params p
+WHERE
+  sa.alias_norm <> ''
+  AND p.q_norm <> ''
+  AND (
+    sa.alias_norm = p.q_norm
+    OR sa.alias_norm LIKE p.q_norm || '%'
+    OR sa.alias_norm % p.q_norm
+  )
+ORDER BY
+  CASE
+    WHEN sa.alias_norm = p.q_norm THEN 4
+    WHEN sa.alias_norm LIKE p.q_norm || '%' THEN 3
+    WHEN sa.alias_norm % p.q_norm THEN 2
+    ELSE 1
+  END DESC,
+  similarity(sa.alias_norm, p.q_norm) DESC,
+  sa.weight DESC,
+  sa.alias_text ASC
+LIMIT $2;
+`;
+
+const FALLBACK_STOP_ALIASES_PLAIN_SQL = `
+WITH params AS (
+  SELECT $1::text AS q_norm
+)
 SELECT
   COALESCE(NULLIF(to_jsonb(s) ->> 'parent_station', ''), s.stop_id) AS group_id,
   s.stop_id,
@@ -526,16 +796,41 @@ SELECT
   0::float8 AS alias_similarity,
   0::float8 AS name_similarity,
   0::float8 AS core_similarity,
+  (NULLIF(to_jsonb(s) ->> 'parent_station', '') IS NULL OR s.stop_id LIKE 'Parent%') AS is_parent,
+  FALSE AS has_hub_token,
   0::int AS nb_stop_times
 FROM public.stop_aliases sa
 JOIN public.gtfs_stops s ON s.stop_id = sa.stop_id
+CROSS JOIN params p
 WHERE
-  lower(sa.alias_text) LIKE '%' || $1 || '%'
-  OR lower(sa.alias_text) LIKE ANY($2::text[])
-LIMIT $3;
+  p.q_norm <> ''
+  AND (
+    sa.alias_norm = p.q_norm
+    OR sa.alias_norm LIKE p.q_norm || '%'
+    OR sa.alias_norm LIKE left(p.q_norm, 1) || '%'
+  )
+ORDER BY
+  CASE
+    WHEN sa.alias_norm = p.q_norm THEN 3
+    WHEN sa.alias_norm LIKE p.q_norm || '%' THEN 2
+    ELSE 1
+  END DESC,
+  sa.weight DESC,
+  sa.alias_text ASC
+LIMIT $2;
 `;
 
-const FALLBACK_APP_ALIASES_SQL = `
+const FALLBACK_APP_ALIASES_TRGM_SQL = `
+WITH params AS (
+  SELECT
+    $1::text AS q_norm,
+    CASE
+      WHEN char_length($1::text) <= 4 THEN 0.48
+      WHEN char_length($1::text) <= 6 THEN 0.40
+      WHEN char_length($1::text) <= 8 THEN 0.34
+      ELSE 0.28
+    END AS sim_threshold
+)
 SELECT
   COALESCE(NULLIF(to_jsonb(s) ->> 'parent_station', ''), s.stop_id) AS group_id,
   s.stop_id,
@@ -544,69 +839,115 @@ SELECT
   COALESCE(NULLIF(to_jsonb(s) ->> 'location_type', ''), '') AS location_type,
   trim(split_part(s.stop_name, ',', 1)) AS city_name,
   ARRAY[a.alias]::text[] AS aliases_matched,
-  1::float8 AS alias_weight,
-  0::float8 AS alias_similarity,
+  1.20::float8 AS alias_weight,
+  similarity(lower(a.alias), p.q_norm)::float8 AS alias_similarity,
   0::float8 AS name_similarity,
   0::float8 AS core_similarity,
+  (NULLIF(to_jsonb(s) ->> 'parent_station', '') IS NULL OR s.stop_id LIKE 'Parent%') AS is_parent,
+  FALSE AS has_hub_token,
   0::int AS nb_stop_times
 FROM public.app_stop_aliases a
 JOIN public.gtfs_stops s ON s.stop_id = a.stop_id
+CROSS JOIN params p
 WHERE
-  lower(a.alias) LIKE '%' || $1 || '%'
-  OR lower(a.alias) LIKE ANY($2::text[])
-LIMIT $3;
+  p.q_norm <> ''
+  AND (
+    lower(a.alias) = p.q_norm
+    OR lower(a.alias) LIKE p.q_norm || '%'
+    OR lower(a.alias) % p.q_norm
+  )
+ORDER BY
+  CASE
+    WHEN lower(a.alias) = p.q_norm THEN 4
+    WHEN lower(a.alias) LIKE p.q_norm || '%' THEN 3
+    WHEN lower(a.alias) % p.q_norm THEN 2
+    ELSE 1
+  END DESC,
+  similarity(lower(a.alias), p.q_norm) DESC,
+  a.alias ASC
+LIMIT $2;
 `;
 
-async function getAliasTableCapabilities(db) {
-  try {
-    const result = await db.query(
-      `
-      SELECT
-        to_regclass('public.stop_aliases') IS NOT NULL AS has_stop_aliases,
-        to_regclass('public.app_stop_aliases') IS NOT NULL AS has_app_stop_aliases
-      `
-    );
-    const row = result.rows?.[0] || {};
-    return {
-      hasStopAliases: row.has_stop_aliases === true,
-      hasAppStopAliases: row.has_app_stop_aliases === true,
-    };
-  } catch {
-    return { hasStopAliases: false, hasAppStopAliases: false };
-  }
+const FALLBACK_APP_ALIASES_PLAIN_SQL = `
+WITH params AS (
+  SELECT $1::text AS q_norm
+)
+SELECT
+  COALESCE(NULLIF(to_jsonb(s) ->> 'parent_station', ''), s.stop_id) AS group_id,
+  s.stop_id,
+  s.stop_name,
+  NULLIF(to_jsonb(s) ->> 'parent_station', '') AS parent_station,
+  COALESCE(NULLIF(to_jsonb(s) ->> 'location_type', ''), '') AS location_type,
+  trim(split_part(s.stop_name, ',', 1)) AS city_name,
+  ARRAY[a.alias]::text[] AS aliases_matched,
+  1.20::float8 AS alias_weight,
+  0::float8 AS alias_similarity,
+  0::float8 AS name_similarity,
+  0::float8 AS core_similarity,
+  (NULLIF(to_jsonb(s) ->> 'parent_station', '') IS NULL OR s.stop_id LIKE 'Parent%') AS is_parent,
+  FALSE AS has_hub_token,
+  0::int AS nb_stop_times
+FROM public.app_stop_aliases a
+JOIN public.gtfs_stops s ON s.stop_id = a.stop_id
+CROSS JOIN params p
+WHERE
+  p.q_norm <> ''
+  AND (
+    lower(a.alias) = p.q_norm
+    OR lower(a.alias) LIKE p.q_norm || '%'
+    OR lower(a.alias) LIKE left(p.q_norm, 1) || '%'
+  )
+ORDER BY
+  CASE
+    WHEN lower(a.alias) = p.q_norm THEN 3
+    WHEN lower(a.alias) LIKE p.q_norm || '%' THEN 2
+    ELSE 1
+  END DESC,
+  a.alias ASC
+LIMIT $2;
+`;
+
+async function fetchPrimaryRows(db, qRaw, candidateLimit) {
+  const result = await db.query(PRIMARY_SQL, [qRaw, candidateLimit]);
+  return result.rows || [];
 }
 
-async function fetchFallbackAliasRows(db, queryNorm, candidateLimit) {
-  const prefixes = tokenPrefixes(tokenize(queryNorm));
-  const likePatterns = prefixes.map((prefix) => `%${prefix}%`);
-
-  const caps = await getAliasTableCapabilities(db);
+async function fetchFallbackAliasRows(db, queryNorm, candidateLimit, caps) {
   const rows = [];
+  const forcePrefixOnly = caps.hasUnaccent !== true;
 
   if (caps.hasStopAliases) {
-    const stopAliasRes = await db.query(FALLBACK_STOP_ALIASES_SQL, [queryNorm, likePatterns, candidateLimit]);
+    const stopAliasSql = !forcePrefixOnly && caps.hasPgTrgm
+      ? FALLBACK_STOP_ALIASES_TRGM_SQL
+      : FALLBACK_STOP_ALIASES_PLAIN_SQL;
+    const stopAliasRes = await db.query(stopAliasSql, [queryNorm, candidateLimit]);
     rows.push(...(stopAliasRes.rows || []));
   }
 
   if (caps.hasAppStopAliases) {
-    const appAliasRes = await db.query(FALLBACK_APP_ALIASES_SQL, [queryNorm, likePatterns, candidateLimit]);
+    const appAliasSql = !forcePrefixOnly && caps.hasPgTrgm
+      ? FALLBACK_APP_ALIASES_TRGM_SQL
+      : FALLBACK_APP_ALIASES_PLAIN_SQL;
+    const appAliasRes = await db.query(appAliasSql, [queryNorm, candidateLimit]);
     rows.push(...(appAliasRes.rows || []));
   }
 
   return rows;
 }
 
-async function runFallbackSearch(db, queryNorm, candidateLimit) {
-  const prefixes = tokenPrefixes(tokenize(queryNorm));
-  const likePatterns = prefixes.map((prefix) => `%${prefix}%`);
-
-  const baseRes = await db.query(FALLBACK_SQL, [queryNorm, likePatterns, candidateLimit]);
+async function runFallbackSearch(db, queryNorm, candidateLimit, caps) {
+  const forcePrefixOnly = caps.hasUnaccent !== true;
+  const fallbackSql = !forcePrefixOnly && caps.hasPgTrgm ? FALLBACK_TRGM_SQL : FALLBACK_PLAIN_SQL;
+  const baseRes = await db.query(fallbackSql, [queryNorm, candidateLimit]);
   const baseRows = baseRes.rows || [];
 
   let aliasRows = [];
   try {
-    aliasRows = await fetchFallbackAliasRows(db, queryNorm, candidateLimit);
-  } catch {
+    aliasRows = await fetchFallbackAliasRows(db, queryNorm, candidateLimit, caps);
+  } catch (err) {
+    warnOnce("stop_search_alias_fallback_error", "[stop-search] alias fallback unavailable", {
+      error: String(err?.message || err),
+    });
     aliasRows = [];
   }
 
@@ -621,19 +962,37 @@ export async function searchStops(db, query, limit = DEFAULT_LIMIT) {
   const lim = clampLimit(limit);
   const candidateLimit = candidateLimitFor(lim);
 
+  const caps = await detectSearchCapabilities(db);
+  const primarySupported = supportsPrimarySearch(caps);
+
+  if (!primarySupported) {
+    warnOnce(
+      "stop_search_primary_missing_caps",
+      "[stop-search] primary path unavailable; using degraded fallback",
+      {
+        status: "degraded_mode",
+        capabilities: caps,
+      }
+    );
+  }
+
   let rows = [];
   let primaryError = null;
 
-  try {
-    const result = await db.query(PRIMARY_SQL, [qRaw, candidateLimit]);
-    rows = result.rows || [];
-  } catch (err) {
-    primaryError = err;
+  if (primarySupported) {
+    try {
+      rows = await fetchPrimaryRows(db, qRaw, candidateLimit);
+    } catch (err) {
+      primaryError = err;
+      warnOnce("stop_search_primary_error", "[stop-search] primary query failed; falling back", {
+        error: String(err?.message || err),
+      });
+    }
   }
 
-  if (primaryError || rows.length < Math.min(candidateLimit, lim * 3)) {
+  if (!primarySupported || primaryError || rows.length < Math.min(candidateLimit, lim * 3)) {
     try {
-      const fallbackRows = await runFallbackSearch(db, qNorm, candidateLimit);
+      const fallbackRows = await runFallbackSearch(db, qNorm, candidateLimit, caps);
       rows = rows.concat(fallbackRows);
     } catch (fallbackErr) {
       if (primaryError) {

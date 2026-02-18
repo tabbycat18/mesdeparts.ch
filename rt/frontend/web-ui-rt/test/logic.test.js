@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   buildDeparturesGrouped,
   classifyMode,
+  fetchStationSuggestions,
   fetchStationboardRaw,
   detectNetworkFromStation,
   fetchJourneyDetails,
@@ -148,6 +149,43 @@ assert.equal(detectNetworkFromStation("Zurich HB"), "vbz");
     appState.STATION = previous.station;
     appState.stationId = previous.stationId;
     appState.language = previous.language;
+    globalThis.fetch = originalFetch;
+  }
+}
+
+// fetchStationSuggestions should use /api/stops/search and keep backend rows (no client filtering by diacritics/punctuation)
+{
+  const originalFetch = globalThis.fetch;
+
+  let requestedUrl = "";
+  globalThis.fetch = async (url) => {
+    requestedUrl = String(url || "");
+    return {
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      json: async () => ({
+        stops: [
+          { stop_id: "Parent8503000", stop_name: "Zürich HB" },
+          { stop_id: "Parent8587057", stop_name: "Genève, gare Cornavin" },
+          { stop_id: "Parent8587387", stop_name: "Genève, Bel-Air" },
+        ],
+      }),
+    };
+  };
+
+  try {
+    const rows = await fetchStationSuggestions("Zurich");
+    assert.ok(requestedUrl.includes("/api/stops/search?"));
+    const parsed = new URL(requestedUrl, "http://localhost");
+    assert.equal(parsed.searchParams.get("q"), "Zurich");
+    assert.equal(parsed.searchParams.get("limit"), "7");
+    assert.deepEqual(rows, [
+      { id: "Parent8503000", name: "Zürich HB" },
+      { id: "Parent8587057", name: "Genève, gare Cornavin" },
+      { id: "Parent8587387", name: "Genève, Bel-Air" },
+    ]);
+  } finally {
     globalThis.fetch = originalFetch;
   }
 }

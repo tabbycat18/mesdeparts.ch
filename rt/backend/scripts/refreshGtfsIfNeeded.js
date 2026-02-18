@@ -244,7 +244,47 @@ async function importIntoStage(cleanDir, env) {
   });
   await runSqlFile(path.join(SQL_DIR, "validate_stage.sql"), env);
   await runSqlFile(path.join(SQL_DIR, "swap_stage_to_live.sql"), env);
-  await runSqlFile(path.join(SQL_DIR, "optimize_stop_search.sql"), env);
+}
+
+async function runStopSearchSetup(env) {
+  const report = {
+    status: "success",
+    degraded: false,
+    steps: [],
+    errors: [],
+  };
+
+  try {
+    await runSqlFile(path.join(SQL_DIR, "optimize_stop_search.sql"), env);
+    report.steps.push({ step: "optimize_stop_search.sql", status: "ok" });
+  } catch (err) {
+    report.steps.push({ step: "optimize_stop_search.sql", status: "failed" });
+    report.errors.push({
+      step: "optimize_stop_search.sql",
+      error: String(err?.message || err),
+    });
+  }
+
+  try {
+    await runCommand("node", [path.resolve(__dirname, "syncStopSearchAliases.js")], {
+      env: { ...process.env, DATABASE_URL: env.DATABASE_URL },
+    });
+    report.steps.push({ step: "syncStopSearchAliases.js", status: "ok" });
+  } catch (err) {
+    report.steps.push({ step: "syncStopSearchAliases.js", status: "failed" });
+    report.errors.push({
+      step: "syncStopSearchAliases.js",
+      error: String(err?.message || err),
+    });
+  }
+
+  report.degraded = report.errors.length > 0;
+  if (report.degraded) {
+    report.status = "success_with_degraded_search";
+  }
+
+  console.log(`[refresh][search-setup] ${JSON.stringify(report)}`);
+  return report;
 }
 
 async function run() {
@@ -269,6 +309,7 @@ async function run() {
 
     if (dbVersion === rtVersion) {
       console.log("no update");
+      await runStopSearchSetup({ DATABASE_URL });
       await upsertFeedMeta(client, "service_alerts", rtVersion, alertsMeta.headerTimestamp);
       await upsertFeedMeta(client, "trip_updates", rtVersion, tripMeta.headerTimestamp);
       return;
@@ -292,6 +333,7 @@ async function run() {
 
     console.log("[refresh] importing cleaned GTFS into stage/live tables");
     await importIntoStage(cleanDir, { DATABASE_URL });
+    await runStopSearchSetup({ DATABASE_URL });
 
     await setDbFeedVersion(client, rtVersion);
     await upsertFeedMeta(client, "service_alerts", rtVersion, alertsMeta.headerTimestamp);
