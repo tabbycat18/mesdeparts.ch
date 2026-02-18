@@ -216,3 +216,65 @@ test("attachAlerts keeps synthetic rows pinned to origin alert only", () => {
   assert.deepEqual(pinned.alerts.map((a) => a.id), ["origin-alert"]);
   assert.equal(noOrigin.alerts.length, 0);
 });
+
+test("attachAlerts does not apply skipped_stop tag from stop-only alert to all departures", () => {
+  const now = new Date("2026-02-19T12:00:00.000Z");
+  const departures = [
+    {
+      trip_id: "trip-route-1",
+      route_id: "route-1",
+      stop_id: "8503000:0:1",
+      stop_sequence: 4,
+      destination: "A",
+      tags: [],
+      source: "scheduled",
+    },
+    {
+      trip_id: "trip-route-2",
+      route_id: "route-2",
+      stop_id: "8503000:0:2",
+      stop_sequence: 8,
+      destination: "B",
+      tags: [],
+      source: "scheduled",
+    },
+  ];
+
+  const alerts = {
+    entities: [
+      {
+        id: "stop-only-skipped",
+        severity: "warning",
+        headerText: "Network disruption",
+        descriptionText: "Die Linie EC h\u00e4lt nicht in Z\u00fcrich Flughafen.",
+        activePeriods: [],
+        informedEntities: [{ stop_id: "Parent8503000" }],
+      },
+      {
+        id: "route-scoped-skipped",
+        severity: "warning",
+        headerText: "Route specific disruption",
+        descriptionText: "The train does not stop at this station.",
+        activePeriods: [],
+        informedEntities: [{ route_id: "route-1" }],
+      },
+    ],
+  };
+
+  const out = attachAlerts({
+    stopId: "Parent8503000",
+    routeIds: departures.map((dep) => dep.route_id),
+    tripIds: departures.map((dep) => dep.trip_id),
+    departures,
+    alerts,
+    now,
+  });
+
+  const dep1 = out.departures.find((dep) => dep.trip_id === "trip-route-1");
+  const dep2 = out.departures.find((dep) => dep.trip_id === "trip-route-2");
+  assert.ok(dep1);
+  assert.ok(dep2);
+
+  assert.ok(dep1.tags.includes("skipped_stop"));
+  assert.equal(dep2.tags.includes("skipped_stop"), false);
+});

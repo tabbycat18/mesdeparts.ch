@@ -209,6 +209,14 @@ function shouldAttachServiceTag(tag, matchCtx, dep) {
     ? dep.tags.includes("replacement")
     : false;
 
+  if (tag === "skipped_stop") {
+    // A stop-level alert text like "does not stop at X" can be station-wide and
+    // must not cancel every departure unless scoped to route/trip/stop_sequence.
+    if (matchCtx.tripMatch || matchCtx.routeMatch || matchCtx.stopSeqMatch) return true;
+    if (depSource === "synthetic_alert") return true;
+    return false;
+  }
+
   if (tag !== "replacement" && tag !== "extra") return true;
 
   // Avoid painting the whole board as replacement from station-wide alerts.
