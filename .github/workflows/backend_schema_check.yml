@@ -1,0 +1,29 @@
+name: Backend Schema Check
+
+on:
+  pull_request:
+    paths:
+      - "rt/backend/**"
+      - ".github/workflows/backend_schema_check.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "rt/backend/**"
+      - ".github/workflows/backend_schema_check.yml"
+  workflow_dispatch:
+
+jobs:
+  stationboard-schema-json:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Validate stationboard schema JSON
+        run: node -e "JSON.parse(require('fs').readFileSync('rt/backend/docs/stationboard.schema.json','utf8')); console.log('stationboard.schema.json: ok')"

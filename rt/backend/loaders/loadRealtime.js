@@ -1,6 +1,6 @@
 // backend/loaders/loadRealtime.js
 import { pool } from "../db.js";
-import { fetchTripUpdates } from "../src/rt/fetchTripUpdates.js";
+import { fetchTripUpdates } from "../src/loaders/fetchTripUpdates.js";
 
 // Set DEBUG_RT=1 if you want logs
 const DEBUG_RT = process.env.DEBUG_RT === "1";

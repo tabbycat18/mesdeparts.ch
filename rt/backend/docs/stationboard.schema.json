@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mesdeparts.ch/schemas/stationboard.json",
+  "title": "MesDeparts Stationboard Response",
+  "type": "object",
+  "required": ["departures"],
+  "properties": {
+    "station": { "type": ["object", "null"] },
+    "banners": { "type": "array", "items": { "type": "object" } },
+    "resolved": { "type": ["object", "null"] },
+    "departures": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/departure" }
+    },
+    "debug": { "type": ["object", "null"] }
+  },
+  "$defs": {
+    "departure": {
+      "type": "object",
+      "required": [
+        "line",
+        "destination",
+        "scheduledDeparture",
+        "cancelled"
+      ],
+      "properties": {
+        "key": { "type": ["string", "null"] },
+        "trip_id": { "type": ["string", "null"] },
+        "route_id": { "type": ["string", "null"] },
+        "stop_id": { "type": ["string", "null"] },
+        "stop_sequence": { "type": ["integer", "null"] },
+        "category": { "type": ["string", "null"] },
+        "number": { "type": ["string", "null"] },
+        "line": { "type": ["string", "null"] },
+        "destination": { "type": ["string", "null"] },
+        "scheduledDeparture": { "type": "string", "format": "date-time" },
+        "realtimeDeparture": { "type": ["string", "null"], "format": "date-time" },
+        "delayMin": { "type": ["integer", "null"] },
+        "platform": { "type": ["string", "null"] },
+        "platformChanged": { "type": ["boolean", "null"] },
+        "cancelled": { "type": "boolean" },
+        "status": { "type": ["string", "null"] },
+        "cancelReasonCode": { "type": ["string", "null"] },
+        "stopEvent": { "type": ["string", "null"] },
+        "replacementType": { "type": ["string", "null"] },
+        "flags": { "type": "array", "items": { "type": "string" } },
+        "alerts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": ["string", "null"] },
+              "severity": { "type": ["string", "null"] },
+              "header": { "type": ["string", "null"] },
+              "description": { "type": ["string", "null"] }
+            },
+            "additionalProperties": true
+          }
+        },
+        "debug": { "type": ["object", "null"], "additionalProperties": true }
+      },
+      "additionalProperties": true
+    }
+  }
+}

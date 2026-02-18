@@ -46,3 +46,33 @@ test("supplementFromOtdStationboard keeps only replacement-like EV entries", () 
   assert.equal(out[0].source, "synthetic_alert");
   assert.ok(out[0].tags.includes("replacement"));
 });
+
+test("supplementFromOtdStationboard ignores alert-like EV rows without a timed departure", () => {
+  const now = new Date("2026-02-17T00:00:00.000Z");
+  const data = {
+    stationboard: [
+      {
+        id: "ev-banner-only",
+        number: "EV",
+        category: "B",
+        to: "Interruption de ligne, merci de consulter l'affichage",
+        operator: "SBB",
+        stop: {
+          prognosis: {
+            status: "CANCELLED",
+          },
+        },
+      },
+    ],
+  };
+
+  const out = supplementFromOtdStationboard({
+    data,
+    stationStopId: "Parent8501120",
+    stationName: "Lausanne",
+    now,
+    windowMinutes: 30,
+  });
+
+  assert.equal(out.length, 0);
+});

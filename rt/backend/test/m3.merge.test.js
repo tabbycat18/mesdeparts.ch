@@ -98,7 +98,8 @@ test("applyTripUpdates marks skipped stop suppression and short-turn tags", () =
 
   assert.equal(skipped.suppressedStop, true);
   assert.ok(skipped.tags.includes("skipped_stop"));
-  assert.equal(skipped.source, "scheduled");
+  assert.equal(skipped.cancelled, true);
+  assert.equal(skipped.source, "tripupdate");
 
   assert.equal(shortTurn.suppressedStop, false);
   assert.ok(shortTurn.tags.includes("short_turn"));
@@ -156,7 +157,7 @@ test("applyAddedTrips emits only ADDED stop_time_updates matching station scope"
   assert.ok(out[0].tags.includes("replacement"));
 });
 
-test("synthesizeFromAlerts only creates timed replacement/extra candidates", () => {
+test("synthesizeFromAlerts only creates rows when explicit timing exists", () => {
   const now = new Date("2026-02-16T20:00:00.000Z");
 
   const alerts = {
@@ -164,9 +165,9 @@ test("synthesizeFromAlerts only creates timed replacement/extra candidates", () 
       {
         id: "a1",
         effect: "MODIFIED_SERVICE",
-        headerText: "Rail replacement buses",
+        headerText: "Rail replacement buses at 21:03",
         descriptionText: "Replacement between A and B",
-        activePeriods: [{ start: new Date("2026-02-16T20:03:00.000Z"), end: null }],
+        activePeriods: [{ start: null, end: null }],
         informedEntities: [{ stop_id: "Parent8501120", route_id: "EV" }],
       },
       {
@@ -180,9 +181,10 @@ test("synthesizeFromAlerts only creates timed replacement/extra candidates", () 
       {
         id: "a3",
         effect: "MODIFIED_SERVICE",
-        headerText: "SLOID replacement",
+        headerText: "Structured replacement",
         descriptionText: "EV replacement",
-        activePeriods: [{ start: new Date("2026-02-16T19:08:00.000Z"), end: null }],
+        departureTimestamp: Math.floor(new Date("2026-02-16T20:11:00.000Z").getTime() / 1000),
+        activePeriods: [{ start: null, end: null }],
         informedEntities: [{ stop_id: "ch:1:sloid:1120", route_id: "EV" }],
       },
     ],
@@ -197,13 +199,16 @@ test("synthesizeFromAlerts only creates timed replacement/extra candidates", () 
     windowMinutes: 60,
   });
 
-  assert.equal(synthetic.length, 3);
+  assert.equal(synthetic.length, 2);
   assert.ok(synthetic.every((row) => row.source === "synthetic_alert"));
   assert.ok(synthetic.every((row) => row.tags.includes("replacement")));
-  assert.ok(synthetic.some((row) => row.line === "EV"));
+  const ids = new Set(synthetic.map((row) => row.trip_id.split(":")[1]));
+  assert.equal(ids.has("a1"), true);
+  assert.equal(ids.has("a2"), false);
+  assert.equal(ids.has("a3"), true);
 });
 
-test("synthesizeFromAlerts does not fallback stopless alerts without station signal", () => {
+test("synthesizeFromAlerts keeps banner-like alerts out of departures when no explicit times", () => {
   const now = new Date("2026-02-16T20:00:00.000Z");
   const alerts = {
     entities: [
@@ -243,8 +248,5 @@ test("synthesizeFromAlerts does not fallback stopless alerts without station sig
     windowMinutes: 60,
   });
 
-  const ids = new Set(synthetic.map((row) => row.trip_id.split(":")[1]));
-  assert.equal(ids.has("no-stop-global"), false);
-  assert.equal(ids.has("no-stop-route-overlap"), true);
-  assert.equal(ids.has("no-stop-station-hit"), true);
+  assert.equal(synthetic.length, 0);
 });

@@ -360,6 +360,62 @@ export function setBoardLoadingState(isLoading) {
   }
 }
 
+function getServiceBannersHost() {
+  let host = document.getElementById("service-banners");
+  if (host) return host;
+
+  const scroller = document.querySelector(".departures-scroller");
+  if (!scroller || !scroller.parentNode) return null;
+  host = document.createElement("section");
+  host.id = "service-banners";
+  host.className = "service-banners";
+  host.setAttribute("aria-live", "polite");
+  scroller.parentNode.insertBefore(host, scroller);
+  return host;
+}
+
+export function renderServiceBanners(banners) {
+  const host = getServiceBannersHost();
+  if (!host) return;
+  host.innerHTML = "";
+
+  const list = Array.isArray(banners) ? banners : [];
+  if (list.length === 0) {
+    host.classList.remove("is-visible");
+    return;
+  }
+
+  const seen = new Set();
+  for (const banner of list) {
+    const header = String(banner?.header || "").trim();
+    const description = String(banner?.description || "").trim();
+    const severity = String(banner?.severity || "unknown").trim().toLowerCase();
+    const key = `${severity}|${header}|${description}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    const item = document.createElement("article");
+    item.className = `service-banner service-banner--${severity}`;
+
+    if (header) {
+      const h = document.createElement("h3");
+      h.className = "service-banner__title";
+      h.textContent = header;
+      item.appendChild(h);
+    }
+    if (description) {
+      const p = document.createElement("p");
+      p.className = "service-banner__text";
+      p.textContent = description;
+      item.appendChild(p);
+    }
+    if (!header && !description) continue;
+    host.appendChild(item);
+  }
+
+  host.classList.toggle("is-visible", host.childElementCount > 0);
+}
+
 // ---------------- QUICK CONTROLS COLLAPSE ----------------
 
 function getQuickControlsEls() {

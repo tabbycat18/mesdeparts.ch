@@ -100,6 +100,10 @@ export function supplementFromOtdStationboard({
       platform: normalizeText(prognosis?.platform) || normalizeText(stop?.platform) || "",
       platformChanged: false,
       cancelled: normalizeText(prognosis?.status).toUpperCase() === "CANCELLED",
+      cancelReasons:
+        normalizeText(prognosis?.status).toUpperCase() === "CANCELLED"
+          ? ["otd_prognosis_status_cancelled"]
+          : [],
       source: "synthetic_alert",
       tags: ["replacement"],
       alerts: [],

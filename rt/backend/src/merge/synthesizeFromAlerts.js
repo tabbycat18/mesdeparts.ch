@@ -1,3 +1,9 @@
+import {
+  addDaysToYmdInt,
+  dateFromZurichServiceDateAndSeconds,
+  ymdIntInZurich,
+} from "../time/zurichTime.js";
+
 function normalize(value) {
   if (value == null) return "";
   return String(value).trim();
@@ -162,6 +168,93 @@ function pickCategory(line, tags) {
   return match ? match[0].toUpperCase() : "R";
 }
 
+function addUniqueMs(list, seen, ms, nowMs, windowMs, graceMs) {
+  if (!Number.isFinite(ms)) return;
+  if (ms < nowMs - graceMs) return;
+  if (ms > nowMs + windowMs) return;
+  const key = String(Math.trunc(ms));
+  if (seen.has(key)) return;
+  seen.add(key);
+  list.push(ms);
+}
+
+function collectExplicitTimesFromText(text) {
+  const value = String(text || "");
+  if (!value) return [];
+  const out = [];
+  const seen = new Set();
+
+  const colon = /(^|[^0-9])([01]?\d|2[0-3]):([0-5]\d)(?!\d)/g;
+  const hForm = /(^|[^0-9])([01]?\d|2[0-3])h([0-5]\d)(?!\d)/gi;
+  for (const re of [colon, hForm]) {
+    re.lastIndex = 0;
+    let m;
+    while ((m = re.exec(value)) !== null) {
+      const hh = Number(m[2] || "0");
+      const mm = Number(m[3] || "0");
+      if (!Number.isFinite(hh) || !Number.isFinite(mm)) continue;
+      const key = `${hh}:${mm}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ hour: hh, minute: mm });
+      if (out.length >= 12) return out;
+    }
+  }
+  return out;
+}
+
+function timePairToCandidateMs(nowDate, nowMs, graceMs, hour, minute) {
+  const todayYmd = ymdIntInZurich(nowDate);
+  const secOfDay = hour * 3600 + minute * 60;
+  let candidateDate = dateFromZurichServiceDateAndSeconds(todayYmd, secOfDay);
+  if (!(candidateDate instanceof Date) || !Number.isFinite(candidateDate.getTime())) return null;
+  let candidate = candidateDate.getTime();
+  if (candidate < nowMs - graceMs) {
+    const tomorrowYmd = addDaysToYmdInt(todayYmd, 1);
+    candidateDate = dateFromZurichServiceDateAndSeconds(tomorrowYmd, secOfDay);
+    if (!(candidateDate instanceof Date) || !Number.isFinite(candidateDate.getTime())) return null;
+    candidate = candidateDate.getTime();
+  }
+  return candidate;
+}
+
+function collectStructuredTimes(alert) {
+  const out = [];
+  const candidates = [
+    alert?.departureTimestamp,
+    alert?.departure_time,
+    alert?.departureTime,
+    alert?.prognosis?.departureTimestamp,
+    alert?.prognosis?.departure_time,
+    alert?.prognosis?.departureTime,
+  ];
+  for (const raw of candidates) {
+    const ms = getPeriodMs(raw);
+    if (Number.isFinite(ms)) out.push(ms);
+  }
+  return out;
+}
+
+function collectExplicitDepartureTimes(alert, nowDate, nowMs, windowMs, graceMs) {
+  const explicit = [];
+  const seen = new Set();
+
+  const text = `${alert?.headerText || ""}\n${alert?.descriptionText || ""}`;
+  const textTimes = collectExplicitTimesFromText(text);
+  for (const item of textTimes) {
+    const ms = timePairToCandidateMs(nowDate, nowMs, graceMs, item.hour, item.minute);
+    addUniqueMs(explicit, seen, ms, nowMs, windowMs, graceMs);
+  }
+
+  const structuredTimes = collectStructuredTimes(alert);
+  for (const ms of structuredTimes) {
+    addUniqueMs(explicit, seen, ms, nowMs, windowMs, graceMs);
+  }
+
+  explicit.sort((a, b) => a - b);
+  return explicit;
+}
+
 export function synthesizeFromAlerts({
   alerts,
   stopId,
@@ -230,29 +323,19 @@ export function synthesizeFromAlerts({
     }
     if (matchedStops.length === 0) continue;
 
-    const periods = Array.isArray(alert?.activePeriods) ? alert.activePeriods : [];
-    const periodList = periods.length ? periods : [{ start: null, end: null }];
-    for (const period of periodList) {
-      const startMs = getPeriodMs(period?.start);
-      const endMs = getPeriodMs(period?.end);
-      const isActiveNow =
-        (startMs == null || startMs <= nowMs) &&
-        (endMs == null || endMs >= nowMs - graceMs);
+    // Only synthesize timed rows when explicit timetable signals exist.
+    // Generic disruption text belongs in banners (attachAlerts), not departures.
+    const explicitTimes = collectExplicitDepartureTimes(
+      alert,
+      nowDate,
+      nowMs,
+      windowMs,
+      graceMs
+    );
+    if (explicitTimes.length === 0) continue;
 
-      // If an alert period already started and is still active, place a synthetic
-      // replacement row near "now" (not at original past start time).
-      let effectiveStartMs = null;
-      if (Number.isFinite(startMs)) {
-        effectiveStartMs =
-          startMs < nowMs - graceMs && isActiveNow ? nowMs + 2 * 60 * 1000 : startMs;
-      } else if (isActiveNow) {
-        effectiveStartMs = nowMs + 2 * 60 * 1000;
-      }
-      if (!Number.isFinite(effectiveStartMs)) continue;
-
+    for (const effectiveStartMs of explicitTimes) {
       const msUntil = effectiveStartMs - nowMs;
-      if (msUntil < -graceMs) continue;
-      if (msUntil > windowMs) continue;
 
       for (const entity of matchedStops) {
         const routeId = normalize(entity?.route_id);

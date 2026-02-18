@@ -58,3 +58,38 @@ Sample response shape (shortened):
   ]
 }
 ```
+
+## API Contract: /api/stationboard (RT backend)
+
+Each entry in `departures[]` is normalized by the backend into a canonical shape.
+
+### Cancellation invariants (authoritative)
+
+- `cancelled: boolean` is the authoritative cancellation signal.
+- Consumers must treat `cancelled === true` as cancelled, regardless of `status`.
+- Consumers must not key cancellation only on `status`.
+- Consumers should key behavior on `cancelled` and `delayMin`; `status` is informational and may expand.
+
+### Subtype/detail fields (non-authoritative)
+
+These fields provide detail and must not be used as the sole cancellation source:
+
+- `status: string` (for example: `"SKIPPED_STOP"`, `"CANCELLED"`)
+- `cancelReasonCode: string | null` (for example: `"SKIPPED_STOP"`, `"CANCELED_TRIP"`)
+- `stopEvent: string | null` (for example: `"SKIPPED"`)
+- `flags: string[]` (for example: `"STOP_SKIPPED"`, `"TRIP_CANCELLED"`, `"RT_CONFIRMED"`)
+
+### Delay semantics
+
+- `delayMin` is computed from scheduled vs realtime timestamps.
+- `delayMin === 0` is emitted only when realtime is confirmed.
+- When realtime is not confirmed, `delayMin` may be `null` even if times appear equal.
+
+### Debug
+
+- When `debug=1` is passed, `debug` is included for tracing only.
+- Consumers must not rely on `debug` fields for business logic.
+
+### Schema
+
+- Canonical JSON schema: `rt/backend/docs/stationboard.schema.json`

@@ -88,6 +88,7 @@ test("applyTripUpdates adds cancelled flag using trip schedule_relationship", ()
   assert.equal(merged.length, 2);
   assert.equal(merged[0].cancelled, true);
   assert.equal(merged[1].cancelled, false);
+  assert.ok(merged[0].cancelReasons.includes("trip_schedule_relationship_canceled"));
 
   // Existing shape is preserved.
   assert.equal(merged[0].trip_id, "trip-cancelled");
@@ -140,10 +141,12 @@ test("applyTripUpdates marks suppressed stop for SKIPPED stop_time_update", () =
 
   const merged = applyTripUpdates(baseRows, tripUpdates);
   assert.equal(merged.length, 1);
-  assert.equal(merged[0].cancelled, false);
+  assert.equal(merged[0].cancelled, true);
   assert.equal(merged[0].suppressedStop, true);
+  assert.equal(merged[0].source, "tripupdate");
   assert.ok(Array.isArray(merged[0].tags));
   assert.ok(merged[0].tags.includes("skipped_stop"));
+  assert.ok(merged[0].cancelReasons.includes("skipped_stop"));
 });
 
 test("dedupe preference keeps cancelled departure when duplicates collide", () => {
@@ -181,6 +184,41 @@ test("dedupe preference keeps cancelled departure when duplicates collide", () =
   assert.equal(dedupedSorted.length, 1);
   assert.equal(dedupedSorted[0].trip_id, "trip-dup");
   assert.equal(dedupedSorted[0].cancelled, true);
+});
+
+test("dedupe preference keeps replacement EV row when same-minute keys collide", () => {
+  const scheduled = {
+    trip_id: "trip-ev-collision",
+    stop_id: "8503000:0:2",
+    stop_sequence: 8,
+    scheduledDeparture: "2026-02-16T10:00:00.000Z",
+    realtimeDeparture: "2026-02-16T10:00:00.000Z",
+    delayMin: 0,
+    source: "scheduled",
+    tags: [],
+    cancelled: false,
+    suppressedStop: false,
+    line: "17",
+  };
+  const replacement = {
+    ...scheduled,
+    source: "rt_added",
+    line: "EV1",
+    tags: ["replacement"],
+  };
+
+  const byKey = new Map();
+  for (const row of [scheduled, replacement]) {
+    const key = `${row.trip_id}|${row.stop_id}|${row.stop_sequence}|${row.scheduledDeparture}`;
+    const previous = byKey.get(key);
+    byKey.set(key, pickPreferredMergedDeparture(previous, row));
+  }
+
+  const out = Array.from(byKey.values());
+  assert.equal(out.length, 1);
+  assert.equal(out[0].source, "rt_added");
+  assert.equal(out[0].line, "EV1");
+  assert.ok(out[0].tags.includes("replacement"));
 });
 
 test("applyTripUpdates cancels row when suppression starts at next stop", () => {
@@ -224,6 +262,7 @@ test("applyTripUpdates cancels row when suppression starts at next stop", () => 
   assert.equal(merged.length, 1);
   assert.equal(merged[0].suppressedStop, false);
   assert.equal(merged[0].cancelled, true);
+  assert.ok(merged[0].cancelReasons.includes("short_turn_terminus_next_stop_skipped"));
   assert.ok(merged[0].tags.includes("short_turn"));
   assert.ok(merged[0].tags.includes("short_turn_terminus"));
 });

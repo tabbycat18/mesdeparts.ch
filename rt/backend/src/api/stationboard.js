@@ -1,13 +1,20 @@
-import { buildStationboard } from "../../logic/buildStationboard.js";
+import { buildStationboard } from "../logic/buildStationboard.js";
 import { pool } from "../../db.js";
 import { query as dbQuery } from "../db/query.js";
 import { resolveStop } from "../resolve/resolveStop.js";
-import { fetchServiceAlerts } from "../rt/fetchServiceAlerts.js";
+import { fetchServiceAlerts } from "../loaders/fetchServiceAlerts.js";
 import { attachAlerts } from "../merge/attachAlerts.js";
 import { synthesizeFromAlerts } from "../merge/synthesizeFromAlerts.js";
 import { supplementFromOtdStationboard } from "../merge/supplementFromOtdStationboard.js";
 import { pickPreferredMergedDeparture } from "../merge/pickPreferredDeparture.js";
+import { normalizeDeparture } from "../models/stationboard.js";
+import { pickTranslation, resolveLangPrefs } from "../util/i18n.js";
 import { createCancellationTracer } from "../debug/cancellationTrace.js";
+import {
+  createStationboardDebugLogger,
+  summarizeCancellation,
+  shouldEnableStationboardDebug,
+} from "../debug/stationboardDebug.js";
 
 const ALERTS_CACHE_MS = Math.max(
   1_000,
@@ -73,6 +80,29 @@ async function getServiceAlertsCached() {
   }
 
   return alertsInflight;
+}
+
+function localizeServiceAlerts(alerts, langPrefs) {
+  const entities = Array.isArray(alerts?.entities) ? alerts.entities : [];
+  return {
+    ...(alerts || {}),
+    entities: entities.map((alert) => ({
+      ...alert,
+      headerText:
+        pickTranslation(alert?.headerTranslations || alert?.headerText, langPrefs) ||
+        null,
+      descriptionText:
+        pickTranslation(
+          alert?.descriptionTranslations || alert?.descriptionText,
+          langPrefs
+        ) || null,
+    })),
+  };
+}
+
+function canonicalizeDepartures(departures, { stopId } = {}) {
+  const rows = Array.isArray(departures) ? departures : [];
+  return rows.map((dep) => normalizeDeparture(dep, { stopId }));
 }
 
 function resolveOtdApiKey() {
@@ -238,6 +268,54 @@ function uniqueStopIds(values) {
   );
 }
 
+function countCancelled(rows) {
+  return (Array.isArray(rows) ? rows : []).reduce(
+    (acc, row) => acc + (row?.cancelled === true ? 1 : 0),
+    0
+  );
+}
+
+function randomRequestId() {
+  const rand = Math.random().toString(36).slice(2, 8);
+  return `sb-${Date.now().toString(36)}-${rand}`;
+}
+
+function deriveDebugSource(dep) {
+  const source = String(dep?.source || "");
+  if (source === "scheduled") return "scheduled";
+  if (source === "rt_added") return "added_trip";
+  if (source === "synthetic_alert") {
+    const cancelReasons = Array.isArray(dep?.cancelReasons) ? dep.cancelReasons : [];
+    if (cancelReasons.includes("otd_prognosis_status_cancelled")) return "supplement";
+    const tripId = String(dep?.trip_id || "");
+    if (tripId.startsWith("otd-ev:")) return "supplement";
+    return "synthesized";
+  }
+  return source || "unknown";
+}
+
+function withDebugDepartureFlags(departures) {
+  const rows = Array.isArray(departures) ? departures : [];
+  return rows.map((dep) => {
+    const debugFlags = [];
+    const debugSource = deriveDebugSource(dep);
+    debugFlags.push(`source:${debugSource}`);
+
+    const cancelReasons = Array.isArray(dep?.cancelReasons)
+      ? dep.cancelReasons.map((value) => String(value)).filter(Boolean)
+      : [];
+    for (const reason of cancelReasons) {
+      debugFlags.push(`cancel:${reason}`);
+    }
+
+    return {
+      ...dep,
+      debugSource,
+      debugFlags,
+    };
+  });
+}
+
 async function loadStationScopeStopIds(requestedStopId, stationGroupId) {
   const requested = String(requestedStopId || "").trim();
   const group = String(stationGroupId || requestedStopId || "").trim();
@@ -269,17 +347,53 @@ export async function getStationboard({
   stopId,
   stationId,
   stationName,
+  lang,
+  acceptLanguage,
   fromTs,
   toTs,
   limit,
   windowMinutes,
   includeAlerts,
+  debug,
 } = {}) {
   void fromTs;
   void toTs;
   const shouldIncludeAlerts = includeAlerts !== false;
+  const debugEnabled =
+    debug === true || shouldEnableStationboardDebug(process.env.STATIONBOARD_DEBUG_JSON);
+  const requestId = randomRequestId();
+  const debugLog = createStationboardDebugLogger({
+    enabled: debugEnabled,
+    requestId,
+    scope: "api/stationboard",
+  });
+  const debugState = {
+    requestId,
+    stopResolution: {},
+    timeWindow: null,
+    stageCounts: [],
+    langPrefs: [],
+  };
+  const langPrefs = resolveLangPrefs({
+    queryLang: lang,
+    acceptLanguageHeader: acceptLanguage,
+  });
+  debugState.langPrefs = langPrefs;
   const traceCancellation = createCancellationTracer("api/stationboard", {
     enabled: process.env.DEBUG === "1",
+  });
+
+  debugLog("request", {
+    requested: {
+      stopId: String(stopId || ""),
+      stationId: String(stationId || ""),
+      stationName: String(stationName || ""),
+      lang: String(lang || ""),
+      limit: Number(limit || 0),
+      windowMinutes: Number(windowMinutes || 0),
+      includeAlerts: shouldIncludeAlerts,
+      langPrefs,
+    },
   });
 
   const resolved = await resolveStop(
@@ -307,7 +421,7 @@ export async function getStationboard({
   const baseWindowMinutes =
     Number.isFinite(requestedWindow) && requestedWindow > 0
       ? Math.max(30, Math.min(Math.trunc(requestedWindow), 720))
-      : 180;
+      : 120;
   const sparseRetryMin = Math.max(
     0,
     Number(process.env.STATIONBOARD_SPARSE_RETRY_MIN_DEPS || "2")
@@ -320,6 +434,10 @@ export async function getStationboard({
   let board = await buildStationboard(locationId, {
     limit: boundedLimit,
     windowMinutes: baseWindowMinutes,
+    debug: debugEnabled,
+    debugLog: (event, payload) => {
+      debugLog(event, payload);
+    },
   });
   if (
     sparseRetryMin > 0 &&
@@ -330,6 +448,10 @@ export async function getStationboard({
     const expanded = await buildStationboard(locationId, {
       limit: boundedLimit,
       windowMinutes: sparseRetryWindowMinutes,
+      debug: debugEnabled,
+      debugLog: (event, payload) => {
+        debugLog(event, payload);
+      },
     });
     if ((expanded?.departures?.length || 0) > (board?.departures?.length || 0)) {
       board = expanded;
@@ -344,6 +466,27 @@ export async function getStationboard({
   const canonicalName =
     String(resolved?.displayName || resolved?.canonical?.name || stationName || "").trim() ||
     String(board?.station?.name || locationId).trim();
+  debugState.stopResolution = {
+    requestedStopId: String(stopId || stationId || ""),
+    canonicalId: locationId,
+    resolvedChildren: (resolved?.children || []).map((child) => child?.id).filter(Boolean),
+    scopeStopIds,
+    queryStopIds: Array.isArray(board?.debugMeta?.stops?.queryStopIds)
+      ? board.debugMeta.stops.queryStopIds
+      : [],
+  };
+  debugState.timeWindow = board?.debugMeta?.timeWindow || null;
+  debugLog("resolved_scope", {
+    stopResolution: debugState.stopResolution,
+    timeWindow: debugState.timeWindow,
+  });
+
+  const boardStageCounts = Array.isArray(board?.debugMeta?.stageCounts)
+    ? board.debugMeta.stageCounts
+    : [];
+  for (const stageCount of boardStageCounts) {
+    debugState.stageCounts.push(stageCount);
+  }
   const baseResponse = {
     ...board,
     station: {
@@ -365,12 +508,37 @@ export async function getStationboard({
       })
     ),
   };
+  delete baseResponse.debugMeta;
+  debugState.stageCounts.push({
+    stage: "after_base_stationboard",
+    count: baseResponse.departures.length,
+    cancelled: countCancelled(baseResponse.departures),
+  });
+  debugLog("stage_counts", debugState.stageCounts[debugState.stageCounts.length - 1]);
+  debugLog("cancelled_details", {
+    stage: "after_base_stationboard",
+    ...summarizeCancellation(baseResponse.departures),
+  });
   traceCancellation("after_base_stationboard", baseResponse.departures);
 
-  if (!shouldIncludeAlerts) return baseResponse;
+  if (!shouldIncludeAlerts) {
+    baseResponse.departures = canonicalizeDepartures(baseResponse.departures, {
+      stopId: locationId,
+    });
+    if (debugEnabled) {
+      baseResponse.debug = {
+        requestId,
+        stopResolution: debugState.stopResolution,
+        timeWindow: debugState.timeWindow,
+        stageCounts: debugState.stageCounts,
+        langPrefs,
+      };
+    }
+    return baseResponse;
+  }
 
   try {
-    const alerts = await alertsPromise;
+    const alerts = localizeServiceAlerts(await alertsPromise, langPrefs);
     const syntheticDepartures = synthesizeFromAlerts({
       alerts,
       stopId: locationId,
@@ -387,7 +555,7 @@ export async function getStationboard({
     for (const dep of [...baseResponse.departures, ...syntheticDepartures]) {
       const key = `${dep.trip_id || ""}|${dep.stop_id || ""}|${dep.stop_sequence || ""}|${
         dep.scheduledDeparture || ""
-      }|${dep.source || ""}`;
+      }`;
       const previous = byKey.get(key);
       byKey.set(key, pickPreferredMergedDeparture(previous, dep));
     }
@@ -400,6 +568,13 @@ export async function getStationboard({
         return ax - bx;
       })
       .slice(0, 1000);
+    debugState.stageCounts.push({
+      stage: "after_alert_synthesis_dedup",
+      count: mergedDepartures.length,
+      cancelled: countCancelled(mergedDepartures),
+      syntheticCandidates: syntheticDepartures.length,
+    });
+    debugLog("stage_counts", debugState.stageCounts[debugState.stageCounts.length - 1]);
     traceCancellation("after_alert_synthesis_merge", mergedDepartures);
     const routeIds = mergedDepartures.map((dep) => dep?.route_id).filter(Boolean);
     const tripIds = mergedDepartures.map((dep) => dep?.trip_id).filter(Boolean);
@@ -413,9 +588,21 @@ export async function getStationboard({
       alerts,
       now: new Date(),
     });
+    debugState.stageCounts.push({
+      stage: "after_alerts_attached",
+      count: attached.departures.length,
+      cancelled: countCancelled(attached.departures),
+      banners: Array.isArray(attached?.banners) ? attached.banners.length : 0,
+    });
+    debugLog("stage_counts", debugState.stageCounts[debugState.stageCounts.length - 1]);
+    debugLog("cancelled_details", {
+      stage: "after_alerts_attached",
+      ...summarizeCancellation(attached.departures),
+    });
     traceCancellation("after_attach_alerts", attached.departures);
 
     let finalDepartures = attached.departures;
+    let supplementCount = 0;
     if (!hasReplacementDeparture(finalDepartures)) {
       const supplement = await fetchOtdReplacementSupplement({
         stopId: locationId,
@@ -424,12 +611,13 @@ export async function getStationboard({
         windowMinutes: baseWindowMinutes,
         limit: boundedLimit,
       });
+      supplementCount = supplement.length;
       if (supplement.length > 0) {
         const bySuppKey = new Map();
         for (const dep of [...finalDepartures, ...supplement]) {
           const key = `${dep.trip_id || ""}|${dep.stop_id || ""}|${dep.stop_sequence || ""}|${
             dep.scheduledDeparture || ""
-          }|${dep.source || ""}`;
+          }`;
           const previous = bySuppKey.get(key);
           bySuppKey.set(key, pickPreferredMergedDeparture(previous, dep));
         }
@@ -444,22 +632,59 @@ export async function getStationboard({
           .slice(0, 1000);
       }
     }
+    debugState.stageCounts.push({
+      stage: "after_supplement",
+      count: finalDepartures.length,
+      cancelled: countCancelled(finalDepartures),
+      supplementAdded: supplementCount,
+      banners: Array.isArray(attached?.banners) ? attached.banners.length : 0,
+    });
+    debugLog("stage_counts", debugState.stageCounts[debugState.stageCounts.length - 1]);
+    debugLog("cancelled_details", {
+      stage: "after_supplement",
+      ...summarizeCancellation(finalDepartures),
+    });
     traceCancellation("after_otd_supplement", finalDepartures);
 
-    return {
+    const response = {
       ...baseResponse,
       banners: attached.banners,
-      departures: finalDepartures,
+      departures: canonicalizeDepartures(finalDepartures, {
+        stopId: locationId,
+      }),
     };
+    if (debugEnabled) {
+      response.debug = {
+        requestId,
+        stopResolution: debugState.stopResolution,
+        timeWindow: debugState.timeWindow,
+        stageCounts: debugState.stageCounts,
+        langPrefs,
+      };
+    }
+    return response;
   } catch (err) {
     const response = {
       ...baseResponse,
       banners: [],
+      departures: canonicalizeDepartures(baseResponse.departures, {
+        stopId: locationId,
+      }),
     };
     if (process.env.NODE_ENV !== "production") {
       response.debug = {
         ...(response.debug || {}),
         alerts_error: String(err?.message || err),
+      };
+    }
+    if (debugEnabled) {
+      response.debug = {
+        ...(response.debug || {}),
+        requestId,
+        stopResolution: debugState.stopResolution,
+        timeWindow: debugState.timeWindow,
+        stageCounts: debugState.stageCounts,
+        langPrefs,
       };
     }
     return response;

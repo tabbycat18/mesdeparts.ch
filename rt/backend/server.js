@@ -54,9 +54,9 @@ import cors from "cors";
 
 const { pool } = await import("./db.js");
 const { getStationboard } = await import("./src/api/stationboard.js");
-const { fetchServiceAlerts } = await import("./src/rt/fetchServiceAlerts.js");
-const { fetchTripUpdates } = await import("./src/rt/fetchTripUpdates.js");
-const { summarizeTripUpdates } = await import("./src/rt/tripUpdatesSummary.js");
+const { fetchServiceAlerts } = await import("./src/loaders/fetchServiceAlerts.js");
+const { fetchTripUpdates } = await import("./src/loaders/fetchTripUpdates.js");
+const { summarizeTripUpdates } = await import("./src/loaders/tripUpdatesSummary.js");
 
 const app = express();
 const PORT = Number(process.env.PORT || 3001);
@@ -621,14 +621,18 @@ app.get("/api/stationboard", async (req, res) => {
     const stopId = String(req.query.stop_id || "").trim();
     const stationId = String(req.query.stationId || req.query.station_id || "").trim();
     const stationName = String(req.query.stationName || "").trim();
+    const lang = String(req.query.lang || "").trim();
     const limit = Number(req.query.limit || "300");
     const windowMinutes = Number(req.query.window_minutes || "0");
+    const debug = String(req.query.debug || "").trim();
     console.log("[API] /api/stationboard params", {
       stopId,
       stationId,
       stationName,
+      lang,
       limit,
       windowMinutes,
+      debug,
     });
     if (!stopId && !stationId) {
       return res.status(400).json({
@@ -641,8 +645,14 @@ app.get("/api/stationboard", async (req, res) => {
       stopId,
       stationId,
       stationName,
+      lang,
+      acceptLanguage: req.headers["accept-language"],
       limit,
       windowMinutes,
+      debug:
+        debug === "1" ||
+        debug.toLowerCase() === "true" ||
+        debug.toLowerCase() === "yes",
     });
     return res.json(result);
   } catch (err) {

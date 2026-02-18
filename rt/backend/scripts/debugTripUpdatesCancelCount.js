@@ -2,8 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { fetchTripUpdates } from "../src/rt/fetchTripUpdates.js";
-import { summarizeTripUpdates } from "../src/rt/tripUpdatesSummary.js";
+import { fetchTripUpdates } from "../src/loaders/fetchTripUpdates.js";
+import { summarizeTripUpdates } from "../src/loaders/tripUpdatesSummary.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -87,4 +87,3 @@ main().catch((err) => {
   console.error(String(err?.message || err));
   process.exit(1);
 });
-

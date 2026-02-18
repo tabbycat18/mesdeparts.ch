@@ -382,6 +382,7 @@ export async function fetchStationsNearby(lat, lon, limit = 7) {
 
 function normalizeBackendStationboard(data) {
   const departures = Array.isArray(data?.departures) ? data.departures : [];
+  const banners = Array.isArray(data?.banners) ? data.banners : [];
   const stationId = String(data?.station?.id || appState.stationId || "").trim();
   const stationName = String(data?.station?.name || appState.STATION || "").trim();
   const station = { id: stationId, name: stationName };
@@ -392,7 +393,11 @@ function normalizeBackendStationboard(data) {
     const delayMin = Number.isFinite(Number(dep?.delayMin)) ? Number(dep.delayMin) : 0;
     const platformRaw = String(dep?.platform || "");
     const platform = dep?.platformChanged ? `!${platformRaw}` : platformRaw;
-    const cancelled = dep?.cancelled === true;
+    const cancelled =
+      dep?.cancelled === true ||
+      dep?.canceled === true ||
+      dep?.isCancelled === true ||
+      dep?.cancellation === true;
     const scheduledMs = Date.parse(String(scheduled || ""));
 
     return {
@@ -429,7 +434,7 @@ function normalizeBackendStationboard(data) {
     };
   });
 
-  return { station, stationboard };
+  return { station, stationboard, banners };
 }
 
 // Normalize a “simple” line id used for CSS and grouping

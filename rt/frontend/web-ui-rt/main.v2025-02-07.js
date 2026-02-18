@@ -48,6 +48,7 @@ import {
   setupAutoFitWatcher,
   publishEmbedState,
   updateCountdownRows,
+  renderServiceBanners,
 } from "./ui.v2025-02-07.js";
 
 import { setupInfoButton } from "./infoBTN.v2025-02-07.js";
@@ -298,6 +299,7 @@ function refreshCountdownTick() {
     const rows = buildDeparturesGrouped(lastStationboardData, appState.viewMode);
     const updated = updateCountdownRows(rows);
     if (!updated) {
+      renderServiceBanners(lastStationboardData?.banners || []);
       renderDepartures(rows);
     }
     publishEmbedState();
@@ -519,6 +521,7 @@ async function refreshDepartures({ retried, showLoadingHint = true } = {}) {
         if (retryRows && retryRows.length) {
           lastStationboardData = retryData;
           renderFilterOptions();
+          renderServiceBanners(retryData?.banners || []);
           renderDepartures(retryRows);
           return;
         }
@@ -547,6 +550,7 @@ async function refreshDepartures({ retried, showLoadingHint = true } = {}) {
           const freshRows = buildDeparturesGrouped(freshData, appState.viewMode);
           lastStationboardData = freshData;
           renderFilterOptions();
+          renderServiceBanners(freshData?.banners || []);
           renderDepartures(freshRows);
           updateDebugPanel(freshRows);
           publishEmbedState();
@@ -575,6 +579,7 @@ async function refreshDepartures({ retried, showLoadingHint = true } = {}) {
         lastStationboardData = directData;
         staleBoardEmptySince = directRows && directRows.length ? null : staleBoardEmptySince;
         renderFilterOptions();
+        renderServiceBanners(directData?.banners || []);
         renderDepartures(directRows);
         updateDebugPanel(directRows);
         publishEmbedState();
@@ -605,6 +610,7 @@ async function refreshDepartures({ retried, showLoadingHint = true } = {}) {
           lastNonEmptyStationboardAt = Date.now();
         }
         renderFilterOptions();
+        renderServiceBanners(directData?.banners || []);
         renderDepartures(directRows);
         updateDebugPanel(directRows);
         publishEmbedState();
@@ -626,6 +632,7 @@ async function refreshDepartures({ retried, showLoadingHint = true } = {}) {
     // Update filter dropdown options from the latest board
     renderFilterOptions();
 
+    renderServiceBanners(data?.banners || []);
     renderDepartures(rows);
     const tAfterRender = DEBUG_PERF ? performance.now() : 0;
     if (DEBUG_PERF) {
@@ -655,6 +662,7 @@ async function refreshDepartures({ retried, showLoadingHint = true } = {}) {
       tr.appendChild(td);
       tbody2.appendChild(tr);
     }
+    renderServiceBanners([]);
   } finally {
     if (isStaleRequest()) return;
     if (tbody) {
@@ -676,6 +684,7 @@ function refreshDeparturesFromCache({ allowFetch = true, skipFilters = false, sk
   try {
     const rows = buildDeparturesGrouped(lastStationboardData, appState.viewMode);
     if (!skipFilters) renderFilterOptions();
+    renderServiceBanners(lastStationboardData?.banners || []);
     renderDepartures(rows);
     if (!skipDebug) updateDebugPanel(rows);
     publishEmbedState();

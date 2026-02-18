@@ -131,6 +131,12 @@ function addTag(tags, tag) {
   if (!tags.includes(tag)) tags.push(tag);
 }
 
+function addCancelReason(row, reason) {
+  if (!reason) return;
+  if (!Array.isArray(row.cancelReasons)) row.cancelReasons = [];
+  if (!row.cancelReasons.includes(reason)) row.cancelReasons.push(reason);
+}
+
 function shouldApplyRealtimeEpoch(scheduledMs, realtimeMs) {
   if (!Number.isFinite(realtimeMs)) return false;
   if (!Number.isFinite(scheduledMs)) return true;
@@ -373,18 +379,22 @@ export function applyTripUpdates(baseRows, tripUpdates) {
     const merged = {
       ...row,
       cancelled: row?.cancelled === true,
+      cancelReasons: Array.isArray(row?.cancelReasons) ? [...row.cancelReasons] : [],
       source: row?.source || "scheduled",
       tags: Array.isArray(row?.tags) ? [...row.tags] : [],
       suppressedStop: false,
+      _rtMatched: row?._rtMatched === true,
     };
+    if (merged.cancelled) addCancelReason(merged, "preexisting_cancelled_flag");
 
     const scheduledMs = Date.parse(row.scheduledDeparture || "");
     const delay = getDelayForRow(delayByKey, row.trip_id, row.stop_id, row.stop_sequence);
 
     let realtimeMs = Number.isFinite(scheduledMs) ? scheduledMs : null;
-    let delayMin = typeof row.delayMin === "number" ? row.delayMin : 0;
+    let delayMin = typeof row.delayMin === "number" ? row.delayMin : null;
 
     if (delay) {
+      merged._rtMatched = true;
       if (typeof delay.updatedDepartureEpoch === "number") {
         const candidateRealtimeMs = delay.updatedDepartureEpoch * 1000;
         if (shouldApplyRealtimeEpoch(scheduledMs, candidateRealtimeMs)) {
@@ -408,16 +418,25 @@ export function applyTripUpdates(baseRows, tripUpdates) {
     }
 
     merged.delayMin = delayMin;
-    merged.cancelled = cancelledTripIds.has(String(row.trip_id || ""));
+    if (cancelledTripIds.has(String(row.trip_id || ""))) {
+      merged.cancelled = true;
+      addCancelReason(merged, "trip_schedule_relationship_canceled");
+      merged._rtMatched = true;
+    }
     const stopStatus = getStopStatusForRow(
       stopStatusByKey,
       row.trip_id,
       row.stop_id,
       row.stop_sequence
     );
+    if (stopStatus) {
+      merged._rtMatched = true;
+    }
     if (stopStatus === "SKIPPED") {
       merged.suppressedStop = true;
       addTag(merged.tags, "skipped_stop");
+      merged.cancelled = true;
+      addCancelReason(merged, "skipped_stop");
     }
 
     const tripFlags = row?.trip_id ? tripFlagsByTripId[String(row.trip_id)] : null;
@@ -438,8 +457,13 @@ export function applyTripUpdates(baseRows, tripUpdates) {
       }
       if (suppressionStartsAtNextStop) {
         merged.cancelled = true;
+        addCancelReason(merged, "short_turn_terminus_next_stop_skipped");
         addTag(merged.tags, "short_turn_terminus");
       }
+    }
+
+    if (merged._rtMatched && merged.source === "scheduled") {
+      merged.source = "tripupdate";
     }
 
     return merged;

@@ -382,6 +382,7 @@ export function attachAlerts({
         id: alert.id,
         severity: alert.severity || "unknown",
         header: alert.headerText || "",
+        description: alert.descriptionText || "",
       });
       for (const tag of inferAlertTags(alert)) {
         if (!shouldAttachServiceTag(tag, matchCtx, dep)) continue;
