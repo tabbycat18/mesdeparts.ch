@@ -31,7 +31,8 @@ trips_for_stops AS MATERIALIZED (
     fst.dep_sec,
     t.route_id,
     t.service_id,
-    to_jsonb(t) AS trip_json
+    t.trip_headsign,
+    to_jsonb(t) ->> 'trip_short_name' AS trip_short_name
   FROM filtered_stop_times fst
   JOIN public.gtfs_trips t ON t.trip_id = fst.trip_id
 ),
@@ -81,20 +82,16 @@ candidates AS (
     tfs.dep_sec,
     tfs.route_id,
     tfs.service_id,
-    tfs.trip_json ->> 'trip_headsign' AS trip_headsign,
-    tfs.trip_json ->> 'trip_short_name' AS trip_short_name,
-    tr.route_json ->> 'route_short_name' AS route_short_name,
-    tr.route_json ->> 'route_long_name' AS route_long_name,
-    tr.route_json ->> 'route_desc' AS route_desc,
-    tr.route_json ->> 'route_type' AS route_type,
-    tr.route_json ->> 'agency_id' AS agency_id
+    tfs.trip_headsign,
+    tfs.trip_short_name,
+    r.route_short_name,
+    r.route_long_name,
+    NULL::text AS route_desc,
+    r.route_type::text AS route_type,
+    r.agency_id
   FROM trips_for_stops tfs
   JOIN active_services a ON a.service_id = tfs.service_id
   LEFT JOIN public.gtfs_routes r ON r.route_id = tfs.route_id
-  CROSS JOIN LATERAL (
-    SELECT
-      to_jsonb(r) AS route_json
-  ) tr
 ),
 deduped AS (
   SELECT DISTINCT ON (trip_id, stop_id, stop_sequence)

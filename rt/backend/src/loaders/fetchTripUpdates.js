@@ -1,4 +1,8 @@
 const DEFAULT_TRIP_UPDATES_URL = "https://api.opentransportdata.swiss/la/gtfs-rt?format=JSON";
+const TRIP_UPDATES_FETCH_TIMEOUT_MS = Math.max(
+  500,
+  Number(process.env.GTFS_RT_FETCH_TIMEOUT_MS || "2000")
+);
 
 function pick(obj, ...keys) {
   if (!obj) return undefined;
@@ -49,10 +53,25 @@ export async function fetchTripUpdates({ apiKey, urlOverride } = {}) {
   }
 
   const url = urlOverride || DEFAULT_TRIP_UPDATES_URL;
-  const response = await fetch(url, {
-    headers: { Authorization: `Bearer ${token}` },
-    redirect: "follow",
-  });
+  const controller = new AbortController();
+  const timeoutHandle = setTimeout(() => controller.abort(), TRIP_UPDATES_FETCH_TIMEOUT_MS);
+  let response;
+  try {
+    response = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+      redirect: "follow",
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (err?.name === "AbortError") {
+      throw new Error(
+        `[GTFS-RT] fetch timeout after ${TRIP_UPDATES_FETCH_TIMEOUT_MS}ms`
+      );
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeoutHandle);
+  }
 
   if (!response.ok) {
     const body = await response.text().catch(() => "");

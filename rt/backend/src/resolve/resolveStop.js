@@ -16,6 +16,49 @@ function unique(values) {
   return Array.from(new Set((values || []).filter(Boolean)));
 }
 
+const RESOLVE_STOP_CACHE_MS = Math.max(
+  1_000,
+  Number(process.env.RESOLVE_STOP_CACHE_MS || "300000")
+);
+const RESOLVE_STOP_CACHE_MAX = Math.max(
+  100,
+  Number(process.env.RESOLVE_STOP_CACHE_MAX || "5000")
+);
+const resolveCache = new Map();
+
+function resolveCacheKey({ stopId, stationId, stationName }) {
+  return `${normalizeText(stopId)}|${normalizeText(stationId)}|${normalizeAliasKey(stationName)}`;
+}
+
+function cloneResolution(value) {
+  if (!value || typeof value !== "object") return value;
+  return {
+    ...value,
+    canonical: value.canonical ? { ...value.canonical } : value.canonical,
+    children: Array.isArray(value.children)
+      ? value.children.map((child) => ({ ...child }))
+      : [],
+    tried: Array.isArray(value.tried) ? [...value.tried] : [],
+  };
+}
+
+function getResolveCacheEntry(key) {
+  const entry = resolveCache.get(key);
+  if (!entry) return null;
+  if (Date.now() - Number(entry.ts || 0) > RESOLVE_STOP_CACHE_MS) {
+    resolveCache.delete(key);
+    return null;
+  }
+  return cloneResolution(entry.value);
+}
+
+function setResolveCacheEntry(key, value) {
+  resolveCache.set(key, { ts: Date.now(), value: cloneResolution(value) });
+  if (resolveCache.size <= RESOLVE_STOP_CACHE_MAX) return;
+  const oldestKey = resolveCache.keys().next().value;
+  if (oldestKey) resolveCache.delete(oldestKey);
+}
+
 function isNumericLike(value) {
   return /^\d+$/.test(String(value || "").trim());
 }
@@ -52,9 +95,9 @@ async function getStopById(db, stopId) {
     SELECT
       s.stop_id,
       s.stop_name,
-      to_jsonb(s) ->> 'location_type' AS location_type,
-      to_jsonb(s) ->> 'parent_station' AS parent_station,
-      to_jsonb(s) ->> 'platform_code' AS platform_code
+      ''::text AS location_type,
+      s.parent_station,
+      s.platform_code
     FROM public.gtfs_stops s
     WHERE s.stop_id = $1
     LIMIT 1
@@ -72,12 +115,12 @@ async function getChildrenByParentId(db, parentId) {
     SELECT
       s.stop_id,
       s.stop_name,
-      to_jsonb(s) ->> 'location_type' AS location_type,
-      to_jsonb(s) ->> 'parent_station' AS parent_station,
-      to_jsonb(s) ->> 'platform_code' AS platform_code
+      ''::text AS location_type,
+      s.parent_station,
+      s.platform_code
     FROM public.gtfs_stops s
-    WHERE (to_jsonb(s) ->> 'parent_station') = $1
-    ORDER BY NULLIF(to_jsonb(s) ->> 'platform_code', '') NULLS LAST, s.stop_id
+    WHERE s.parent_station = $1
+    ORDER BY NULLIF(s.platform_code, '') NULLS LAST, s.stop_id
     `,
     [id]
   );
@@ -92,11 +135,11 @@ async function getAnyChildByParentId(db, parentId) {
     SELECT
       s.stop_id,
       s.stop_name,
-      to_jsonb(s) ->> 'location_type' AS location_type,
-      to_jsonb(s) ->> 'parent_station' AS parent_station,
-      to_jsonb(s) ->> 'platform_code' AS platform_code
+      ''::text AS location_type,
+      s.parent_station,
+      s.platform_code
     FROM public.gtfs_stops s
-    WHERE (to_jsonb(s) ->> 'parent_station') = $1
+    WHERE s.parent_station = $1
     LIMIT 1
     `,
     [id]
@@ -111,7 +154,7 @@ async function hasChildrenForParent(db, parentId) {
     `
     SELECT 1 AS ok
     FROM public.gtfs_stops s
-    WHERE (to_jsonb(s) ->> 'parent_station') = $1
+    WHERE s.parent_station = $1
     LIMIT 1
     `,
     [id]
@@ -304,6 +347,9 @@ export async function resolveStop(
   const stopId = normalizeText(rawStopId);
   const stationId = normalizeText(rawStationId);
   const stationName = normalizeText(rawStationName);
+  const cacheKey = resolveCacheKey({ stopId, stationId, stationName });
+  const cached = getResolveCacheEntry(cacheKey);
+  if (cached) return cached;
 
   const directCandidates = unique([stopId, stationId]);
   const tried = [];
@@ -319,11 +365,13 @@ export async function resolveStop(
     if (!directStop) continue;
     const resolved = await finalizeResolution(db, directStop);
     if (!resolved) continue;
-    return {
+    const out = {
       ...resolved,
       source: "direct",
       tried,
     };
+    setResolveCacheEntry(cacheKey, out);
+    return out;
   }
 
   const aliasCandidates = unique(
@@ -343,11 +391,13 @@ export async function resolveStop(
     if (aliasStop) {
       const resolved = await finalizeResolution(db, aliasStop);
       if (resolved) {
-        return {
+        const out = {
           ...resolved,
           source: "alias",
           tried,
         };
+        setResolveCacheEntry(cacheKey, out);
+        return out;
       }
     }
   }
@@ -359,11 +409,13 @@ export async function resolveStop(
     if (!row) continue;
     const resolved = await finalizeResolution(db, row);
     if (!resolved) continue;
-    return {
+    const out = {
       ...resolved,
       source: "db",
       tried,
     };
+    setResolveCacheEntry(cacheKey, out);
+    return out;
   }
 
   const err = new Error("unknown_stop");

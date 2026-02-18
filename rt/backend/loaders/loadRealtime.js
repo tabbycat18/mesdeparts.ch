@@ -492,27 +492,98 @@ export async function loadRealtimeDelayIndex() {
   return buildDelayIndex(feed);
 }
 
-let cached = { promise: null, ts: 0 };
+function emptyDelayIndex() {
+  return {
+    byKey: Object.create(null),
+    cancelledTripIds: new Set(),
+    stopStatusByKey: Object.create(null),
+    tripFlagsByTripId: Object.create(null),
+    addedTripStopUpdates: [],
+  };
+}
 
-export function loadRealtimeDelayIndexOnce() {
+let cached = {
+  value: null,
+  ts: 0,
+  refreshPromise: null,
+};
+
+function runRefresh() {
+  const startedAt = Date.now();
+  const refreshPromise = loadRealtimeDelayIndex()
+    .then((next) => {
+      cached.value = next;
+      cached.ts = Date.now();
+      return next;
+    })
+    .catch((err) => {
+      if (DEBUG_RT) {
+        console.warn("[GTFS-RT] refresh failed; serving stale/empty index", err?.message || err);
+      }
+      return cached.value || emptyDelayIndex();
+    })
+    .finally(() => {
+      if (cached.refreshPromise === refreshPromise) {
+        cached.refreshPromise = null;
+      }
+      if (DEBUG_RT) {
+        console.log(`[GTFS-RT] refresh completed in ${Date.now() - startedAt}ms`);
+      }
+    });
+
+  cached.refreshPromise = refreshPromise;
+  return refreshPromise;
+}
+
+function withTimeout(promise, timeoutMs, fallbackValue) {
+  const ms = Math.max(1, Number(timeoutMs) || 0);
+  if (!Number.isFinite(ms) || ms <= 0) return promise;
+  return Promise.race([
+    promise,
+    new Promise((resolve) => {
+      setTimeout(() => resolve(fallbackValue), ms);
+    }),
+  ]);
+}
+
+export function getRealtimeDelayIndexSnapshot() {
+  return cached.value;
+}
+
+export function loadRealtimeDelayIndexOnce(options = {}) {
+  const { allowStale = true, maxWaitMs = 0 } = options || {};
   const now = Date.now();
-  const fresh = cached.promise && now - cached.ts < CACHE_TTL_MS;
-  if (fresh) return cached.promise;
+  const hasValue = cached.value && typeof cached.value === "object";
+  const age = cached.ts ? now - cached.ts : null;
+  const isFresh = hasValue && age !== null && age < CACHE_TTL_MS;
+  if (isFresh) return Promise.resolve(cached.value);
 
-  if (DEBUG_RT) {
-    const age = cached.ts ? now - cached.ts : null;
-    console.log(
-      `[GTFS-RT] refresh (ttl=${CACHE_TTL_MS}ms, min=${MIN_TTL_MS}ms, age=${
-        age === null ? "n/a" : age + "ms"
-      })`
-    );
+  if (allowStale && hasValue) {
+    if (!cached.refreshPromise) {
+      if (DEBUG_RT) {
+        console.log(
+          `[GTFS-RT] stale-while-refresh (ttl=${CACHE_TTL_MS}ms, age=${age}ms)`
+        );
+      }
+      void runRefresh();
+    }
+    return Promise.resolve(cached.value);
   }
 
-  cached.ts = now;
-  cached.promise = loadRealtimeDelayIndex().catch((err) => {
-    cached = { promise: null, ts: 0 };
-    throw err;
-  });
+  if (!cached.refreshPromise) {
+    if (DEBUG_RT) {
+      console.log(
+        `[GTFS-RT] refresh (ttl=${CACHE_TTL_MS}ms, min=${MIN_TTL_MS}ms, age=${
+          age === null ? "n/a" : age + "ms"
+        })`
+      );
+    }
+    runRefresh();
+  }
 
-  return cached.promise;
+  const fallback = cached.value || emptyDelayIndex();
+  if (maxWaitMs > 0) {
+    return withTimeout(cached.refreshPromise, maxWaitMs, fallback);
+  }
+  return cached.refreshPromise;
 }

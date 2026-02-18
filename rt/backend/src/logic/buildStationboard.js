@@ -46,11 +46,11 @@ SELECT
   t.service_id,
   t.trip_headsign,
   to_jsonb(t) ->> 'trip_short_name' AS trip_short_name,
-  to_jsonb(r) ->> 'route_short_name' AS route_short_name,
-  to_jsonb(r) ->> 'route_long_name' AS route_long_name,
-  to_jsonb(r) ->> 'route_desc' AS route_desc,
-  to_jsonb(r) ->> 'route_type' AS route_type,
-  to_jsonb(r) ->> 'agency_id' AS agency_id
+  r.route_short_name,
+  r.route_long_name,
+  NULL::text AS route_desc,
+  r.route_type::text AS route_type,
+  r.agency_id
 FROM public.gtfs_stop_times st
 JOIN public.gtfs_trips t ON t.trip_id = st.trip_id
 LEFT JOIN public.gtfs_routes r ON r.route_id = t.route_id
@@ -280,6 +280,10 @@ export async function buildStationboard(locationId, options = {}) {
     1000,
     Number(process.env.STATIONBOARD_TERMINUS_QUERY_TIMEOUT_MS || "4000")
   );
+  const rtLoadTimeoutMs = Math.max(
+    100,
+    Number(process.env.STATIONBOARD_RT_LOAD_TIMEOUT_MS || "900")
+  );
 
   const now = new Date();
   const traceCancellation = createCancellationTracer("buildStationboard", {
@@ -398,14 +402,14 @@ export async function buildStationboard(locationId, options = {}) {
       SELECT
         stop_id,
         stop_name,
-        to_jsonb(s) ->> 'platform_code' AS platform_code,
-        to_jsonb(s) ->> 'parent_station' AS parent_station
+        s.platform_code,
+        s.parent_station
       FROM public.gtfs_stops s
       WHERE stop_id = $1
-         OR (to_jsonb(s) ->> 'parent_station') = $1
+         OR s.parent_station = $1
       ORDER BY
         CASE WHEN stop_id = $1 THEN 0 ELSE 1 END,
-        CASE WHEN (to_jsonb(s) ->> 'parent_station') = $1 THEN 0 ELSE 1 END,
+        CASE WHEN s.parent_station = $1 THEN 0 ELSE 1 END,
         stop_name
       LIMIT 1;
       `,
@@ -455,9 +459,9 @@ export async function buildStationboard(locationId, options = {}) {
       SELECT
         stop_id,
         stop_name,
-        to_jsonb(s) ->> 'platform_code' AS platform_code
+        s.platform_code
       FROM public.gtfs_stops s
-      WHERE COALESCE(to_jsonb(s) ->> 'parent_station', s.stop_id) = $1
+      WHERE COALESCE(s.parent_station, s.stop_id) = $1
       ORDER BY platform_code, stop_name;
       `,
       [stationGroupId]
@@ -655,12 +659,12 @@ export async function buildStationboard(locationId, options = {}) {
     };
   }
 
-  // Terminus map
+  // Terminus map (sequence only; enough to suppress non-departing terminal rows).
   const tripIds = Array.from(
     new Set(rows.map((r) => r.trip_id).filter((x) => x != null && x !== ""))
   );
 
-  const finalStopByTripId = new Map();
+  const finalStopSeqByTripId = new Map();
   if (tripIds.length > 0) {
     const terminusStartedMs = performance.now();
     try {
@@ -668,11 +672,8 @@ export async function buildStationboard(locationId, options = {}) {
         `
         SELECT DISTINCT ON (st.trip_id)
           st.trip_id,
-          st.stop_id AS final_stop_id,
-          st.stop_sequence AS final_stop_sequence,
-          s.stop_name AS final_stop_name
+          st.stop_sequence AS final_stop_sequence
         FROM public.gtfs_stop_times st
-        JOIN public.gtfs_stops s ON s.stop_id = st.stop_id
         WHERE st.trip_id = ANY($1::text[])
         ORDER BY st.trip_id, st.stop_sequence DESC;
         `,
@@ -683,11 +684,8 @@ export async function buildStationboard(locationId, options = {}) {
       for (const r of termRes.rows || []) {
         if (!r || !r.trip_id) continue;
         const finalStopSeqRaw = Number(r.final_stop_sequence);
-        finalStopByTripId.set(r.trip_id, {
-          stopId: r.final_stop_id || "",
-          stopSequence: Number.isFinite(finalStopSeqRaw) ? finalStopSeqRaw : null,
-          name: r.final_stop_name || "",
-        });
+        if (!Number.isFinite(finalStopSeqRaw)) continue;
+        finalStopSeqByTripId.set(r.trip_id, finalStopSeqRaw);
       }
     } catch (err) {
       console.warn("[buildStationboard] terminus lookup timed out, using trip headsign fallback", {
@@ -701,7 +699,10 @@ export async function buildStationboard(locationId, options = {}) {
   // 3) Realtime delay index
   const rtLoadStartedMs = performance.now();
   const delayIndex = ENABLE_RT
-    ? await loadRealtimeDelayIndexOnce().catch((err) => {
+    ? await loadRealtimeDelayIndexOnce({
+        allowStale: true,
+        maxWaitMs: rtLoadTimeoutMs,
+      }).catch((err) => {
         console.warn("[GTFS-RT] Failed to load delay index, continuing without RT:", err);
         return { byKey: {} };
       })
@@ -757,29 +758,19 @@ export async function buildStationboard(locationId, options = {}) {
       }
     }
 
-    const finalStop = finalStopByTripId.get(row.trip_id) || null;
-    if (finalStop) {
-      const rowStopSeqRaw = Number(row.stop_sequence);
-      const rowStopSeq = Number.isFinite(rowStopSeqRaw) ? rowStopSeqRaw : null;
-      if (
-        rowStopSeq !== null &&
-        finalStop.stopSequence !== null &&
-        rowStopSeq >= finalStop.stopSequence
-      ) {
-        // Drop terminating rows from departures board.
-        continue;
-      }
-      if (
-        rowStopSeq === null &&
-        finalStop.stopId &&
-        String(finalStop.stopId) === String(row.stop_id || "")
-      ) {
-        continue;
-      }
+    const rowStopSeqRaw = Number(row.stop_sequence);
+    const rowStopSeq = Number.isFinite(rowStopSeqRaw) ? rowStopSeqRaw : null;
+    const finalStopSeq = Number(finalStopSeqByTripId.get(row.trip_id));
+    if (
+      Number.isFinite(finalStopSeq) &&
+      rowStopSeq !== null &&
+      rowStopSeq >= finalStopSeq
+    ) {
+      // Drop terminating rows from departures board.
+      continue;
     }
 
-    const finalName = finalStop?.name || "";
-    const destination = finalName || row.trip_headsign || routeLongName || stationName;
+    const destination = row.trip_headsign || routeLongName || stationName;
 
     const scheduledTimeStr = row.departure_time || row.arrival_time || row.time_str;
     const depSecRaw = Number(row.dep_sec);

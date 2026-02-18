@@ -16,5 +16,11 @@ ON public.gtfs_stops ((COALESCE(parent_station, stop_id)));
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_app_stop_aliases_alias_lower
 ON public.app_stop_aliases ((LOWER(alias)));
 
+-- Hot stationboard predicate: stop_id + departure_time_seconds range.
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_gtfs_stop_times_stop_depsec_trip_seq
+ON public.gtfs_stop_times (stop_id, departure_time_seconds, trip_id, stop_sequence)
+WHERE departure_time_seconds IS NOT NULL;
+
 ANALYZE public.gtfs_stops;
 ANALYZE public.app_stop_aliases;
+ANALYZE public.gtfs_stop_times;

@@ -91,7 +91,8 @@ function makeDb() {
 
       if (
         text.includes("from public.gtfs_stops s") &&
-        text.includes("where (to_jsonb(s) ->> 'parent_station') = $1")
+        (text.includes("where (to_jsonb(s) ->> 'parent_station') = $1") ||
+          text.includes("where s.parent_station = $1"))
       ) {
         const parent = String(params[0] || "");
         const rows = childrenByParent.get(parent) || [];
