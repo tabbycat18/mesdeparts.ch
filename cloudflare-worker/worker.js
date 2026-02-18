@@ -6,9 +6,9 @@
  *   request "/foo?x=1" -> upstream "https://transport.opendata.ch/v1/foo?x=1"
  * - Special stationboard routes:
  *   - "/stationboard" always proxies legacy upstream stationboard.
- *   - "/api/stationboard" can proxy either:
- *     - legacy upstream stationboard (default), or
- *     - RT backend stationboard when STATIONBOARD_UPSTREAM=rt and RT_BACKEND_ORIGIN is set.
+ *   - "/api/stationboard" proxies RT backend stationboard with edge cache.
+ * - API routes:
+ *   - "/api/*" (except "/api/stationboard", handled above) proxy to RT_BACKEND_ORIGIN.
  * - Path-specific behavior exists only for cache TTL hints:
  *   "/stationboard", "/connections", "/locations", default.
  */
@@ -69,6 +69,11 @@ const isLegacyStationboardPath = (pathname) => {
   return path.startsWith("/stationboard");
 };
 
+const isApiPath = (pathname) => {
+  const path = String(pathname || "");
+  return path.startsWith("/api/");
+};
+
 const isRtStationboardPath = (pathname) => {
   const path = String(pathname || "");
   return path.startsWith("/api/stationboard");
@@ -77,13 +82,18 @@ const isRtStationboardPath = (pathname) => {
 const isStationboardPath = (pathname) =>
   isLegacyStationboardPath(pathname) || isRtStationboardPath(pathname);
 
-const stationboardUpstreamMode = (env) => {
-  const raw = String(env?.STATIONBOARD_UPSTREAM || "").trim().toLowerCase();
-  return raw === "rt" ? "rt" : "legacy";
-};
-
 const shouldBypassStationboardCache = (url) => {
   return (url.searchParams.get("debug") || "") === "1";
+};
+
+const resolveRtOrigin = (env) => {
+  const raw = String(env?.RT_BACKEND_ORIGIN || "").trim();
+  if (!raw) return null;
+  try {
+    return new URL(raw);
+  } catch {
+    return null;
+  }
 };
 
 const resolveStationboardUpstream = (url, env) => {
@@ -94,27 +104,25 @@ const resolveStationboardUpstream = (url, env) => {
     };
   }
 
-  const mode = stationboardUpstreamMode(env);
-  if (mode === "rt") {
-    const rtOriginRaw = String(env?.RT_BACKEND_ORIGIN || "").trim();
-    if (rtOriginRaw) {
-      try {
-        const rtOrigin = new URL(rtOriginRaw);
-        return {
-          upstream: new URL(`/api/stationboard${url.search}`, rtOrigin),
-          mode: "rt",
-        };
-      } catch {
-        // Fall through to safe legacy fallback below when RT origin is malformed.
-      }
-    }
+  const rtOrigin = resolveRtOrigin(env);
+  if (rtOrigin) {
+    return {
+      upstream: new URL(`/api/stationboard${url.search}`, rtOrigin),
+      mode: "rt",
+    };
   }
 
-  // Safe default: keep legacy stationboard behavior until RT origin is explicitly enabled.
+  // Safe fallback when RT origin is not configured.
   return {
     upstream: new URL(`/v1/stationboard${url.search}`, ORIGIN_BASE),
-    mode: mode === "rt" ? "legacy_fallback" : "legacy",
+    mode: "legacy_fallback",
   };
+};
+
+const resolveApiUpstream = (url, env) => {
+  const rtOrigin = resolveRtOrigin(env);
+  if (!rtOrigin) return null;
+  return new URL(`${url.pathname}${url.search}`, rtOrigin);
 };
 
 const normalizeStationboardCacheKey = (requestUrl) => {
@@ -287,6 +295,30 @@ export default {
 
       ctx.waitUntil(cache.put(cacheKey, proxyRes.clone()));
       return proxyRes;
+    }
+
+    if (isApiPath(url.pathname)) {
+      const apiUpstream = resolveApiUpstream(url, env);
+      if (!apiUpstream) {
+        return addCors(
+          new Response(
+            JSON.stringify({
+              error: "rt_origin_not_configured",
+              detail: "Set RT_BACKEND_ORIGIN (e.g. https://api-origin.mesdeparts.ch).",
+            }),
+            { status: 503, headers: { "Content-Type": "application/json" } }
+          )
+        );
+      }
+
+      const res = await fetch(apiUpstream.toString(), {
+        method: "GET",
+        headers: { accept: "application/json" },
+      });
+      return addCors(res, {
+        "x-md-cache": "BYPASS",
+        "x-md-rate-remaining": perIp.remaining ?? "",
+      });
     }
 
     const cacheKey = new Request(upstream.toString());
