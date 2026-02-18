@@ -739,8 +739,8 @@ app.get("/api/_debug/tripupdates_summary", async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`MesDeparts RT backend listening on http://localhost:${PORT}`);
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`MesDeparts RT backend listening on http://0.0.0.0:${PORT}`);
   console.log("[ENV]", {
     ENABLE_RT: process.env.ENABLE_RT === "1",
     hasDATABASE_URL: !!process.env.DATABASE_URL,

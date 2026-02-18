@@ -4,8 +4,8 @@
   "type": "module",
   "main": "server.js",
   "scripts": {
-    "start": "TZ=Europe/Zurich NODE_OPTIONS=--max-old-space-size=8192 node server.js",
-    "dev": "TZ=Europe/Zurich NODE_ENV=development NODE_OPTIONS=--max-old-space-size=8192 node server.js",
+    "start": "TZ=Europe/Zurich node server.js",
+    "dev": "TZ=Europe/Zurich NODE_ENV=development node server.js",
     "import:gtfs": "bash scripts/import-gtfs.sh",
     "seed:aliases": "node scripts/seedStopAliases.js",
     "schema:drift": "node scripts/schemaDriftTask.js",

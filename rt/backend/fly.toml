@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # fly.toml app configuration file generated for mesdeparts-ch on 2026-02-18T16:26:29Z
 #
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
@@ -19,5 +20,20 @@ primary_region = 'ams'
 [[vm]]
   memory = '1gb'
   cpu_kind = 'shared'
+=======
+app = "mesdeparts-ch"
+primary_region = "ams"
+
+[http_service]
+  auto_start_machines = true
+  auto_stop_machines = true
+  force_https = true
+  internal_port = 8080
+  min_machines_running = 0
+  processes = ["app"]
+
+[[vm]]
+  cpu_kind = "shared"
+>>>>>>> 09b1b90 (harden fly runtime binding and backend startup settings)
   cpus = 1
   memory_mb = 512
