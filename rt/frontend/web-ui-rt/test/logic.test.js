@@ -7,8 +7,8 @@ import {
   detectNetworkFromStation,
   fetchJourneyDetails,
   parseApiDate,
-} from "../logic.v2025-02-18.js";
-import { appState, VIEW_MODE_LINE } from "../state.v2025-02-17.js";
+} from "../logic.v2025-02-19.js";
+import { appState, VIEW_MODE_LINE } from "../state.v2025-02-19.js";
 
 // classifyMode should categorize common transport codes
 assert.equal(classifyMode("IC"), "train");
@@ -227,6 +227,90 @@ assert.equal(detectNetworkFromStation("Zurich HB"), "vbz");
     assert.equal(rows.some((row) => row.mode === "train" && row.simpleLineId === "15"), true);
     assert.equal(rows.some((row) => row.mode === "bus" && row.simpleLineId === "EV"), true);
     assert.equal(rows.some((row) => row.mode === "bus" && row.simpleLineId === "21"), false);
+  } finally {
+    appState.STATION = previous.station;
+    appState.stationId = previous.stationId;
+    appState.trainServiceFilter = previous.trainFilter;
+    appState.platformFilter = previous.platformFilter;
+    appState.lineFilter = previous.lineFilter;
+    appState.favoritesOnly = previous.favoritesOnly;
+    appState.lastPlatforms = previous.lastPlatforms;
+  }
+}
+
+// cancellation detection should not treat generic "cancellation" wording as a cancelled trip
+{
+  const previous = {
+    station: appState.STATION,
+    stationId: appState.stationId,
+    trainFilter: appState.trainServiceFilter,
+    platformFilter: appState.platformFilter,
+    lineFilter: appState.lineFilter,
+    favoritesOnly: appState.favoritesOnly,
+    lastPlatforms: appState.lastPlatforms,
+  };
+
+  const normalDep = new Date(Date.now() + 10 * 60 * 1000);
+  const cancelledDep = new Date(normalDep.getTime() + 3 * 60 * 1000);
+
+  appState.STATION = "Zürich HB";
+  appState.stationId = "Parent8503000";
+  appState.trainServiceFilter = "train_all";
+  appState.platformFilter = null;
+  appState.lineFilter = null;
+  appState.favoritesOnly = false;
+  appState.lastPlatforms = {};
+
+  const rows = buildDeparturesGrouped(
+    {
+      stationboard: [
+        {
+          category: "IC",
+          number: "5",
+          name: "IC5",
+          to: "Lausanne",
+          source: "scheduled",
+          tags: [],
+          stop: {
+            departure: normalDep.toISOString(),
+            platform: "5",
+            prognosis: {
+              departure: normalDep.toISOString(),
+              delay: 0,
+              status: "No cancellation expected",
+            },
+          },
+        },
+        {
+          category: "IC",
+          number: "1",
+          name: "IC1",
+          to: "Genève-Aéroport",
+          source: "scheduled",
+          tags: [],
+          stop: {
+            departure: cancelledDep.toISOString(),
+            platform: "6",
+            prognosis: {
+              departure: cancelledDep.toISOString(),
+              delay: 0,
+              status: "CANCELLED",
+            },
+          },
+        },
+      ],
+    },
+    VIEW_MODE_LINE,
+  );
+
+  try {
+    assert.equal(rows.length, 2);
+    const ic5 = rows.find((row) => row.number === "5");
+    const ic1 = rows.find((row) => row.number === "1");
+    assert.ok(ic5);
+    assert.ok(ic1);
+    assert.notEqual(ic5.status, "cancelled");
+    assert.equal(ic1.status, "cancelled");
   } finally {
     appState.STATION = previous.station;
     appState.stationId = previous.stationId;

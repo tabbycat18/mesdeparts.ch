@@ -16,16 +16,16 @@
       name="description"
       content="Double tableau de départs Mes Départs avec horloge sbbUhr, installable en PWA."
     />
-    <link rel="preload" href="style.v2025-02-17.css" as="style" />
-    <link rel="modulepreload" href="logic.v2025-02-18.js" as="script" />
-    <link rel="modulepreload" href="ui.v2025-02-17.js" />
-    <link rel="modulepreload" href="state.v2025-02-17.js" />
-    <link rel="modulepreload" href="i18n.v2025-02-17.js" />
-    <link rel="modulepreload" href="infoBTN.v2025-02-17.js" />
-    <link rel="modulepreload" href="favourites.v2025-02-17.js" />
+    <link rel="preload" href="style.v2025-02-19.css" as="style" />
+    <link rel="modulepreload" href="logic.v2025-02-19.js" as="script" />
+    <link rel="modulepreload" href="ui.v2025-02-19.js" />
+    <link rel="modulepreload" href="state.v2025-02-19.js" />
+    <link rel="modulepreload" href="i18n.v2025-02-19.js" />
+    <link rel="modulepreload" href="infoBTN.v2025-02-19.js" />
+    <link rel="modulepreload" href="favourites.v2025-02-19.js" />
     <script>window.__MD_API_BASE__ = window.__MD_API_BASE__ || "";</script>
-    <link rel="modulepreload" href="main.v2025-02-17.js" />
-    <link rel="stylesheet" href="style.v2025-02-17.css" />
+    <link rel="modulepreload" href="main.v2025-02-19.js" />
+    <link rel="stylesheet" href="style.v2025-02-19.css" />
   </head>
   <body class="dual-body">
     <div class="dual-shell">
@@ -33,7 +33,7 @@
         <div>
           <div class="dual-title-row">
             <div class="dual-title">Dual board</div>
-            <div class="dual-version">v1.6</div>
+            <div class="dual-version">v1.7</div>
           </div>
           <div id="dual-status" class="dual-status" aria-live="polite"></div>
         </div>
@@ -356,12 +356,12 @@
       Afficher les contrôles
     </button>
 
-    <div class="dual-version-float" aria-label="Version">v1.6</div>
+    <div class="dual-version-float" aria-label="Version">v1.7</div>
 
     <script type="module">
-      import { fetchStationSuggestions, fetchStationsNearby } from "./logic.v2025-02-18.js";
-      import { loadFavorites, addFavorite, removeFavorite, isFavorite } from "./favourites.v2025-02-17.js";
-      import { LANGUAGE_OPTIONS, initI18n, setLanguage, t } from "./i18n.v2025-02-17.js";
+      import { fetchStationSuggestions, fetchStationsNearby } from "./logic.v2025-02-19.js";
+      import { loadFavorites, addFavorite, removeFavorite, isFavorite } from "./favourites.v2025-02-19.js";
+      import { LANGUAGE_OPTIONS, initI18n, setLanguage, t } from "./i18n.v2025-02-19.js";
       import {
         appState,
         VIEW_MODE_LINE,
@@ -369,8 +369,8 @@
         TRAIN_FILTER_ALL,
         TRAIN_FILTER_REGIONAL,
         TRAIN_FILTER_LONG_DISTANCE,
-      } from "./state.v2025-02-17.js";
-      import { setupInfoButton } from "./infoBTN.v2025-02-17.js";
+      } from "./state.v2025-02-19.js";
+      import { setupInfoButton } from "./infoBTN.v2025-02-19.js";
 
       const DEFAULT_LANG = initI18n();
       appState.STATION = "Dual board";

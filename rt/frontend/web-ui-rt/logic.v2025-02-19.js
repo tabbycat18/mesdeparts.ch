@@ -21,8 +21,8 @@ import {
   TRAIN_FILTER_REGIONAL,
   TRAIN_FILTER_LONG_DISTANCE,
   STATION_ID_STORAGE_KEY,
-} from "./state.v2025-02-17.js";
-import { t } from "./i18n.v2025-02-17.js";
+} from "./state.v2025-02-19.js";
+import { t } from "./i18n.v2025-02-19.js";
 
 // API base can be overridden by setting window.__MD_API_BASE__ before scripts load.
 // Frontend now targets rt/backend endpoints only.
@@ -490,12 +490,27 @@ function formatPlannedTime(d) {
 }
 
 function normalizeStatus(value) {
-  return String(value || "").trim().toLowerCase();
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
 }
 
 function hasCancelStatus(value) {
   const status = normalizeStatus(value);
-  return status ? status.includes("cancel") : false;
+  if (!status) return false;
+  return (
+    status === "cancel" ||
+    status === "cancelled" ||
+    status === "canceled" ||
+    status.startsWith("cancelled_") ||
+    status.startsWith("canceled_") ||
+    status === "trip_cancelled" ||
+    status === "trip_canceled" ||
+    status === "cancelled_trip" ||
+    status === "canceled_trip" ||
+    status === "skipped_stop"
+  );
 }
 
 function isCancelledEntry(entry, stop, prognosis) {

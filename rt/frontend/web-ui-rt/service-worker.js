@@ -3,14 +3,14 @@ const CORE_ASSETS = [
   "./index.html",
   "./dual-board.html",
   "./manifest.webmanifest",
-  "./style.v2025-02-17.css",
-  "./main.v2025-02-17.js",
-  "./logic.v2025-02-18.js",
-  "./ui.v2025-02-17.js",
-  "./state.v2025-02-17.js",
-  "./i18n.v2025-02-17.js",
-  "./favourites.v2025-02-17.js",
-  "./infoBTN.v2025-02-17.js",
+  "./style.v2025-02-19.css",
+  "./main.v2025-02-19.js",
+  "./logic.v2025-02-19.js",
+  "./ui.v2025-02-19.js",
+  "./state.v2025-02-19.js",
+  "./i18n.v2025-02-19.js",
+  "./favourites.v2025-02-19.js",
+  "./infoBTN.v2025-02-19.js",
   "./disruption-lightning.svg",
   "./bus-icon-1.png",
   "./bus-icon-1.svg",
@@ -23,7 +23,7 @@ const LAZY_ASSETS = [
 ];
 
 const ASSETS = [...CORE_ASSETS, ...LAZY_ASSETS];
-const CACHE_REV = "2026-02-18-disruption-banner-paged-3";
+const CACHE_REV = "2026-02-19-v1.7";
 
 function hashStrings(list) {
   const str = list.join("|");

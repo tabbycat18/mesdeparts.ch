@@ -22,6 +22,7 @@ const LAZY_ASSETS = [
 ];
 
 const ASSETS = [...CORE_ASSETS, ...LAZY_ASSETS];
+const CACHE_REV = "2026-02-18-cancel-status-strict-1";
 
 function hashStrings(list) {
   const str = list.join("|");
@@ -32,8 +33,9 @@ function hashStrings(list) {
   return hash.toString(16);
 }
 
-// Cache version derives from asset list so new builds automatically invalidate old caches.
-const CACHE_NAME = `md-static-${hashStrings(ASSETS)}`;
+// Cache version derives from asset list + explicit revision to invalidate when
+// file contents change without filename changes.
+const CACHE_NAME = `md-static-${hashStrings([...ASSETS, CACHE_REV])}`;
 
 const ASSET_PATHS = new Set(
   ASSETS.map((asset) => new URL(asset, self.registration.scope).pathname),
