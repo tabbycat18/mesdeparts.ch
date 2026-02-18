@@ -10,6 +10,7 @@ import { normalizeDeparture } from "../models/stationboard.js";
 import { pickTranslation, resolveLangPrefs } from "../util/i18n.js";
 import { filterRenderableDepartures } from "../util/departureFilter.js";
 import { createCancellationTracer } from "../debug/cancellationTrace.js";
+import { buildDepartureAudit } from "../debug/departureAudit.js";
 import {
   createStationboardDebugLogger,
   summarizeCancellation,
@@ -561,6 +562,7 @@ export async function getStationboard({
         includeAlerts: includeAlertsApplied,
         requestedIncludeAlerts: includeAlertsRequested,
         alertsFeatureEnabled,
+        departureAudit: buildDepartureAudit(baseResponse.departures),
       };
     }
     return baseResponse;
@@ -686,6 +688,7 @@ export async function getStationboard({
         includeAlerts: includeAlertsApplied,
         requestedIncludeAlerts: includeAlertsRequested,
         alertsFeatureEnabled,
+        departureAudit: buildDepartureAudit(response.departures),
       };
     }
     return response;
@@ -718,6 +721,7 @@ export async function getStationboard({
         includeAlerts: includeAlertsApplied,
         requestedIncludeAlerts: includeAlertsRequested,
         alertsFeatureEnabled,
+        departureAudit: buildDepartureAudit(response.departures),
       };
     }
     return response;

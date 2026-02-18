@@ -10,6 +10,7 @@
     "seed:aliases": "node scripts/seedStopAliases.js",
     "schema:drift": "node scripts/schemaDriftTask.js",
     "sb:filter": "node scripts/filter-stationboard.js",
+    "sanity:m1": "node scripts/sanitySweepM1.js",
     "test": "node --test test/*.test.js"
   },
   "dependencies": {

@@ -1,0 +1,131 @@
+{
+  "station": {
+    "id": "Parent8501120",
+    "name": "Lausanne"
+  },
+  "resolved": {
+    "canonicalId": "Parent8501120",
+    "source": "direct",
+    "childrenCount": 12
+  },
+  "banners": [
+    {
+      "severity": "warning",
+      "header": "Rail traffic disruption between Renens VD and Lausanne",
+      "description": "Limited train service on the Geneve - Lausanne line between Renens VD and Lausanne. Allow for delays and cancellations. Replacement buses are operating according to temporary schedules.",
+      "affected": {
+        "stop_id": "Parent8501120"
+      }
+    }
+  ],
+  "departures": [
+    {
+      "key": "synthetic_alert:replacement-ev-1|Parent8501120|2026-02-18T08:12:00.000Z",
+      "trip_id": "synthetic_alert:replacement-ev-1",
+      "route_id": "EV1",
+      "stop_id": "Parent8501120",
+      "stop_sequence": null,
+      "line": "EV1",
+      "category": "B",
+      "number": "EV1",
+      "destination": "Renens VD",
+      "scheduledDeparture": "2026-02-18T08:12:00.000Z",
+      "realtimeDeparture": "2026-02-18T08:14:00.000Z",
+      "delayMin": 2,
+      "platform": "A",
+      "platformChanged": false,
+      "cancelled": false,
+      "cancelReasonCode": null,
+      "replacementType": "EV",
+      "status": "DELAYED",
+      "stopEvent": null,
+      "flags": [
+        "REPLACEMENT_SERVICE",
+        "RT_CONFIRMED"
+      ],
+      "alerts": [
+        {
+          "id": "alert-lausanne-disruption-1",
+          "severity": "warning",
+          "header": "Rail traffic disruption between Renens VD and Lausanne",
+          "description": "Replacement bus EV1 to Renens VD."
+        }
+      ],
+      "debug": {
+        "source": "synthetic_alert",
+        "flags": [
+          "delay:from_rt_diff"
+        ]
+      }
+    },
+    {
+      "key": "348.TA.90-RE33-j26-1.3.H|8501120:0:5|2026-02-18T08:18:00.000Z",
+      "trip_id": "348.TA.90-RE33-j26-1.3.H",
+      "route_id": "90-RE33-j26-1",
+      "stop_id": "8501120:0:5",
+      "stop_sequence": 11,
+      "line": "RE33",
+      "category": "RE",
+      "number": "33",
+      "destination": "Annemasse",
+      "scheduledDeparture": "2026-02-18T08:18:00.000Z",
+      "realtimeDeparture": "2026-02-18T08:19:00.000Z",
+      "delayMin": 1,
+      "platform": "5",
+      "platformChanged": false,
+      "cancelled": false,
+      "cancelReasonCode": null,
+      "replacementType": null,
+      "status": "DELAYED",
+      "stopEvent": null,
+      "flags": [
+        "RT_CONFIRMED"
+      ],
+      "alerts": [
+        {
+          "id": "alert-lausanne-disruption-1",
+          "severity": "warning",
+          "header": "Rail traffic disruption between Renens VD and Lausanne",
+          "description": "Some services may be delayed."
+        }
+      ],
+      "debug": {
+        "source": "tripupdate",
+        "flags": [
+          "delay:from_rt_diff"
+        ]
+      }
+    },
+    {
+      "key": "451.TA.60-IR90-j26-1.2.H|8501120:0:3|2026-02-18T08:24:00.000Z",
+      "trip_id": "451.TA.60-IR90-j26-1.2.H",
+      "route_id": "60-IR90-j26-1",
+      "stop_id": "8501120:0:3",
+      "stop_sequence": 9,
+      "line": "IR90",
+      "category": "IR",
+      "number": "90",
+      "destination": "Brig",
+      "scheduledDeparture": "2026-02-18T08:24:00.000Z",
+      "realtimeDeparture": "2026-02-18T08:24:00.000Z",
+      "delayMin": 0,
+      "platform": "3",
+      "platformChanged": false,
+      "cancelled": false,
+      "cancelReasonCode": null,
+      "replacementType": null,
+      "status": "ON_TIME",
+      "stopEvent": null,
+      "flags": [
+        "RT_CONFIRMED"
+      ],
+      "alerts": [],
+      "debug": {
+        "source": "tripupdate",
+        "flags": [
+          "delay:rt_equal_confirmed_zero"
+        ]
+      }
+    }
+  ]
+}

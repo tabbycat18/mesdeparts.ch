@@ -1,0 +1,103 @@
+{
+  "station": {
+    "id": "Parent8501120",
+    "name": "Lausanne"
+  },
+  "resolved": {
+    "canonicalId": "Parent8501120",
+    "source": "direct",
+    "childrenCount": 12
+  },
+  "banners": [
+    {
+      "severity": "warning",
+      "header": "Rail traffic disruption between Renens VD and Lausanne",
+      "description": "Limited train service on the Geneve - Lausanne line between Renens VD and Lausanne. Allow for delays and cancellations. Further information is available at sbb.ch/disruptions.",
+      "affected": {
+        "stop_id": "8501120:0:1"
+      }
+    }
+  ],
+  "departures": [
+    {
+      "key": "162.TA.91-9-K-j26-1.2.H|8501120:0:1|2026-02-18T07:49:00.000Z",
+      "trip_id": "162.TA.91-9-K-j26-1.2.H",
+      "route_id": "91-9-K-j26-1",
+      "stop_id": "8501120:0:1",
+      "stop_sequence": 5,
+      "line": "R3",
+      "category": "R",
+      "number": "3",
+      "destination": "Vallorbe",
+      "scheduledDeparture": "2026-02-18T07:49:00.000Z",
+      "realtimeDeparture": "2026-02-18T07:49:00.000Z",
+      "delayMin": 0,
+      "platform": "3",
+      "platformChanged": false,
+      "cancelled": true,
+      "cancelReasonCode": "SKIPPED_STOP",
+      "replacementType": null,
+      "status": "SKIPPED_STOP",
+      "stopEvent": "SKIPPED",
+      "flags": [
+        "STOP_SKIPPED",
+        "RT_CONFIRMED"
+      ],
+      "alerts": [
+        {
+          "id": "alert-lausanne-disruption-1",
+          "severity": "warning",
+          "header": "Rail traffic disruption between Renens VD and Lausanne",
+          "description": "Limited train service on the Geneve - Lausanne line between Renens VD and Lausanne."
+        }
+      ],
+      "debug": {
+        "source": "tripupdate",
+        "flags": [
+          "cancel:skipped_stop",
+          "delay:rt_equal_confirmed_zero"
+        ]
+      }
+    },
+    {
+      "key": "265.TA.10-IC5-j26-1.4.H|8501120:0:7|2026-02-18T08:02:00.000Z",
+      "trip_id": "265.TA.10-IC5-j26-1.4.H",
+      "route_id": "10-IC5-j26-1",
+      "stop_id": "8501120:0:7",
+      "stop_sequence": 8,
+      "line": "IC5",
+      "category": "IC",
+      "number": "5",
+      "destination": "St. Gallen",
+      "scheduledDeparture": "2026-02-18T08:02:00.000Z",
+      "realtimeDeparture": "2026-02-18T08:02:00.000Z",
+      "delayMin": 0,
+      "platform": "6",
+      "platformChanged": false,
+      "cancelled": true,
+      "cancelReasonCode": "CANCELED_TRIP",
+      "replacementType": null,
+      "status": "CANCELLED",
+      "stopEvent": null,
+      "flags": [
+        "TRIP_CANCELLED",
+        "RT_CONFIRMED"
+      ],
+      "alerts": [
+        {
+          "id": "alert-lausanne-cancelled-ic5",
+          "severity": "warning",
+          "header": "Train cancelled",
+          "description": "IC5 service cancelled due to operational constraints."
+        }
+      ],
+      "debug": {
+        "source": "tripupdate",
+        "flags": [
+          "cancel:canceled_trip",
+          "delay:rt_equal_confirmed_zero"
+        ]
+      }
+    }
+  ]
+}
