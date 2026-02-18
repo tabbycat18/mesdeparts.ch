@@ -244,6 +244,7 @@ async function importIntoStage(cleanDir, env) {
   });
   await runSqlFile(path.join(SQL_DIR, "validate_stage.sql"), env);
   await runSqlFile(path.join(SQL_DIR, "swap_stage_to_live.sql"), env);
+  await runSqlFile(path.join(SQL_DIR, "optimize_stop_search.sql"), env);
 }
 
 async function run() {

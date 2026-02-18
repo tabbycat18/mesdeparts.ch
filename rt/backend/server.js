@@ -55,6 +55,7 @@ import cors from "cors";
 const { pool } = await import("./db.js");
 const { getStationboard } = await import("./src/api/stationboard.js");
 const { resolveStop } = await import("./src/resolve/resolveStop.js");
+const { searchStops } = await import("./src/search/stopsSearch.js");
 const { createStationboardRouteHandler } = await import("./src/api/stationboardRoute.js");
 const { fetchServiceAlerts } = await import("./src/loaders/fetchServiceAlerts.js");
 const { fetchTripUpdates } = await import("./src/loaders/fetchTripUpdates.js");
@@ -270,127 +271,7 @@ app.use((req, _res, next) => {
 });
 
 async function searchStopsPrefix(query, limit) {
-  const q = String(query || "").trim();
-  if (!q) return [];
-  const lim = Math.max(1, Math.min(Number(limit) || 20, 50));
-
-  let result;
-  try {
-    result = await pool.query(
-      `
-      WITH candidates AS (
-        SELECT
-          COALESCE(st.parent_station, st.stop_id) AS group_id,
-          ss.stop_id,
-          ss.stop_name,
-          ss.nb_stop_times,
-          st.parent_station,
-          trim(split_part(ss.stop_name, ',', 2)) AS after_comma
-        FROM public.search_stops ss
-        JOIN public.stops_union st ON st.stop_id = ss.stop_id
-        WHERE
-          lower(ss.stop_name) LIKE lower($1) || '%'
-          OR lower(trim(split_part(ss.stop_name, ',', 2))) LIKE lower($1) || '%'
-      ),
-      per_group AS (
-        SELECT DISTINCT ON (group_id)
-          group_id,
-          stop_id,
-          stop_name,
-          nb_stop_times,
-          parent_station,
-          after_comma
-        FROM candidates
-        ORDER BY
-          group_id,
-          (parent_station IS NULL) DESC,                 -- prefer parent rows
-          (lower(stop_name) = lower($1)) DESC,           -- exact full-name match
-          (lower(after_comma) = lower($1)) DESC,         -- exact after-comma match
-          (position(',' in stop_name) = 0) DESC,         -- no-comma first
-          nb_stop_times DESC,
-          stop_name ASC
-      )
-      SELECT
-        group_id,
-        stop_id,
-        stop_name,
-        nb_stop_times,
-        parent_station,
-        after_comma
-      FROM per_group
-      ORDER BY
-        (parent_station IS NULL) DESC,
-        (lower(stop_name) = lower($1)) DESC,
-        (lower(after_comma) = lower($1)) DESC,
-        (position(',' in stop_name) = 0) DESC,
-        nb_stop_times DESC,
-        stop_name ASC
-      LIMIT $2;
-      `,
-      [q, lim]
-    );
-  } catch (err) {
-    console.warn("[API] searchStopsPrefix fallback query (search_stops/stops_union unavailable):", err?.message || err);
-    result = await pool.query(
-      `
-      WITH candidates AS (
-        SELECT
-          COALESCE(to_jsonb(s) ->> 'parent_station', s.stop_id) AS group_id,
-          s.stop_id,
-          s.stop_name,
-          0::int AS nb_stop_times,
-          to_jsonb(s) ->> 'parent_station' AS parent_station,
-          trim(split_part(s.stop_name, ',', 2)) AS after_comma
-        FROM public.gtfs_stops s
-        WHERE
-          lower(s.stop_name) LIKE lower($1) || '%'
-          OR lower(trim(split_part(s.stop_name, ',', 2))) LIKE lower($1) || '%'
-      ),
-      per_group AS (
-        SELECT DISTINCT ON (group_id)
-          group_id,
-          stop_id,
-          stop_name,
-          nb_stop_times,
-          parent_station,
-          after_comma
-        FROM candidates
-        ORDER BY
-          group_id,
-          (parent_station IS NULL) DESC,
-          (lower(stop_name) = lower($1)) DESC,
-          (lower(after_comma) = lower($1)) DESC,
-          (position(',' in stop_name) = 0) DESC,
-          stop_name ASC
-      )
-      SELECT
-        group_id,
-        stop_id,
-        stop_name,
-        nb_stop_times,
-        parent_station,
-        after_comma
-      FROM per_group
-      ORDER BY
-        (parent_station IS NULL) DESC,
-        (lower(stop_name) = lower($1)) DESC,
-        (lower(after_comma) = lower($1)) DESC,
-        (position(',' in stop_name) = 0) DESC,
-        stop_name ASC
-      LIMIT $2;
-      `,
-      [q, lim]
-    );
-  }
-
-  return (result.rows || []).map((r) => ({
-    stop_id: r.group_id || r.stop_id,
-    group_id: r.group_id,
-    raw_stop_id: r.stop_id,
-    stop_name: r.stop_name,
-    parent_station: r.parent_station,
-    nb_stop_times: r.nb_stop_times ?? 0,
-  }));
+  return searchStops(pool, query, limit);
 }
 
 async function searchStopsNearby(lat, lon, limit) {
@@ -530,6 +411,25 @@ app.get("/api/stops/search", async (req, res) => {
       });
     }
     return res.status(500).json({ error: "stops_search_failed" });
+  }
+});
+
+app.get("/api/search", async (req, res) => {
+  try {
+    const q = String(req.query.q || req.query.query || "").trim();
+    const limit = Number(req.query.limit || "20");
+    console.log("[API] /api/search params", { q, limit });
+    const stops = await searchStopsPrefix(q, limit);
+    return res.json({ stops });
+  } catch (err) {
+    console.error("[API] /api/search failed:", err);
+    if (process.env.NODE_ENV !== "production") {
+      return res.status(500).json({
+        error: "search_failed",
+        detail: String(err?.message || err),
+      });
+    }
+    return res.status(500).json({ error: "search_failed" });
   }
 });
 
