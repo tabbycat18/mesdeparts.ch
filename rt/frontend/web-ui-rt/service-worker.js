@@ -5,7 +5,7 @@ const CORE_ASSETS = [
   "./manifest.webmanifest",
   "./style.v2025-02-17.css",
   "./main.v2025-02-17.js",
-  "./logic.v2025-02-17.js",
+  "./logic.v2025-02-18.js",
   "./ui.v2025-02-17.js",
   "./state.v2025-02-17.js",
   "./i18n.v2025-02-17.js",

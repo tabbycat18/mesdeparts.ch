@@ -23,7 +23,7 @@ import {
   fetchStationboardRaw,
   buildDeparturesGrouped,
   stationboardLooksStale,
-} from "./logic.v2025-02-17.js";
+} from "./logic.v2025-02-18.js";
 
 import {
   setupClock,
