@@ -54,6 +54,8 @@ import cors from "cors";
 
 const { pool } = await import("./db.js");
 const { getStationboard } = await import("./src/api/stationboard.js");
+const { resolveStop } = await import("./src/resolve/resolveStop.js");
+const { createStationboardRouteHandler } = await import("./src/api/stationboardRoute.js");
 const { fetchServiceAlerts } = await import("./src/loaders/fetchServiceAlerts.js");
 const { fetchTripUpdates } = await import("./src/loaders/fetchTripUpdates.js");
 const { summarizeTripUpdates } = await import("./src/loaders/tripUpdatesSummary.js");
@@ -616,62 +618,13 @@ app.get("/api/connections", async (req, res) => {
   }
 });
 
-app.get("/api/stationboard", async (req, res) => {
-  try {
-    const stopId = String(req.query.stop_id || "").trim();
-    const stationId = String(req.query.stationId || req.query.station_id || "").trim();
-    const stationName = String(req.query.stationName || "").trim();
-    const lang = String(req.query.lang || "").trim();
-    const limit = Number(req.query.limit || "300");
-    const windowMinutes = Number(req.query.window_minutes || "0");
-    const debug = String(req.query.debug || "").trim();
-    console.log("[API] /api/stationboard params", {
-      stopId,
-      stationId,
-      stationName,
-      lang,
-      limit,
-      windowMinutes,
-      debug,
-    });
-    if (!stopId && !stationId) {
-      return res.status(400).json({
-        error: "missing_stop_id",
-        expected: ["stop_id", "stationId"],
-      });
-    }
-
-    const result = await getStationboard({
-      stopId,
-      stationId,
-      stationName,
-      lang,
-      acceptLanguage: req.headers["accept-language"],
-      limit,
-      windowMinutes,
-      debug:
-        debug === "1" ||
-        debug.toLowerCase() === "true" ||
-        debug.toLowerCase() === "yes",
-    });
-    return res.json(result);
-  } catch (err) {
-    console.error("[API] /api/stationboard failed:", err);
-    if (err?.code === "unknown_stop" || Number(err?.status) === 400) {
-      return res.status(400).json({
-        error: "unknown_stop",
-        tried: Array.isArray(err?.tried) ? err.tried : [],
-      });
-    }
-    if (process.env.NODE_ENV !== "production") {
-      return res.status(500).json({
-        error: "stationboard_failed",
-        detail: String(err?.message || err),
-      });
-    }
-    return res.status(500).json({ error: "stationboard_failed" });
-  }
+const stationboardRouteHandler = createStationboardRouteHandler({
+  getStationboardLike: getStationboard,
+  resolveStopLike: resolveStop,
+  dbQueryLike: (sql, params = []) => pool.query(sql, params),
+  logger: console,
 });
+app.get("/api/stationboard", stationboardRouteHandler);
 
 app.get("/api/debug/alerts", async (req, res) => {
   try {

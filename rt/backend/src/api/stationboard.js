@@ -358,7 +358,9 @@ export async function getStationboard({
 } = {}) {
   void fromTs;
   void toTs;
-  const shouldIncludeAlerts = includeAlerts !== false;
+  const alertsFeatureEnabled = process.env.STATIONBOARD_ENABLE_M2 !== "0";
+  const includeAlertsRequested = includeAlerts !== false;
+  const includeAlertsApplied = alertsFeatureEnabled && includeAlertsRequested;
   const debugEnabled =
     debug === true || shouldEnableStationboardDebug(process.env.STATIONBOARD_DEBUG_JSON);
   const requestId = randomRequestId();
@@ -391,7 +393,11 @@ export async function getStationboard({
       lang: String(lang || ""),
       limit: Number(limit || 0),
       windowMinutes: Number(windowMinutes || 0),
-      includeAlerts: shouldIncludeAlerts,
+      includeAlertsRequested,
+      includeAlertsApplied,
+      requestedIncludeAlerts: includeAlertsRequested,
+      alertsFeatureEnabled,
+      includeAlerts: includeAlertsApplied,
       langPrefs,
     },
   });
@@ -430,7 +436,7 @@ export async function getStationboard({
     baseWindowMinutes,
     Number(process.env.STATIONBOARD_SPARSE_RETRY_WINDOW_MINUTES || "360")
   );
-  const alertsPromise = shouldIncludeAlerts ? getServiceAlertsCached() : null;
+  const alertsPromise = includeAlertsApplied ? getServiceAlertsCached() : null;
   let board = await buildStationboard(locationId, {
     limit: boundedLimit,
     windowMinutes: baseWindowMinutes,
@@ -521,7 +527,7 @@ export async function getStationboard({
   });
   traceCancellation("after_base_stationboard", baseResponse.departures);
 
-  if (!shouldIncludeAlerts) {
+  if (!includeAlertsApplied) {
     baseResponse.departures = canonicalizeDepartures(baseResponse.departures, {
       stopId: locationId,
     });
@@ -532,6 +538,11 @@ export async function getStationboard({
         timeWindow: debugState.timeWindow,
         stageCounts: debugState.stageCounts,
         langPrefs,
+        includeAlertsRequested,
+        includeAlertsApplied,
+        includeAlerts: includeAlertsApplied,
+        requestedIncludeAlerts: includeAlertsRequested,
+        alertsFeatureEnabled,
       };
     }
     return baseResponse;
@@ -660,6 +671,11 @@ export async function getStationboard({
         timeWindow: debugState.timeWindow,
         stageCounts: debugState.stageCounts,
         langPrefs,
+        includeAlertsRequested,
+        includeAlertsApplied,
+        includeAlerts: includeAlertsApplied,
+        requestedIncludeAlerts: includeAlertsRequested,
+        alertsFeatureEnabled,
       };
     }
     return response;
@@ -685,6 +701,11 @@ export async function getStationboard({
         timeWindow: debugState.timeWindow,
         stageCounts: debugState.stageCounts,
         langPrefs,
+        includeAlertsRequested,
+        includeAlertsApplied,
+        includeAlerts: includeAlertsApplied,
+        requestedIncludeAlerts: includeAlertsRequested,
+        alertsFeatureEnabled,
       };
     }
     return response;

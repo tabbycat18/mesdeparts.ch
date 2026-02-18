@@ -1,0 +1,295 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+
+import { createStationboardRouteHandler } from "../src/api/stationboardRoute.js";
+
+function makeUnknownStopError() {
+  const err = new Error("unknown_stop");
+  err.code = "unknown_stop";
+  err.status = 400;
+  return err;
+}
+
+function makeResolveStopStub(mapping) {
+  return async (input) => {
+    const key = input?.stop_id
+      ? `stop:${String(input.stop_id)}`
+      : `station:${String(input?.stationId || "")}`;
+    const match = mapping[key];
+    if (!match) throw makeUnknownStopError();
+    return {
+      canonical: { id: match.resolvedStopId || match.resolvedRootId || null },
+      rootId: match.resolvedRootId || null,
+    };
+  };
+}
+
+function makeStationboardStub(calls) {
+  return async (input) => {
+    calls.push(input);
+    const includeAlertsRequested = input.includeAlerts !== false;
+    const includeAlertsApplied =
+      process.env.STATIONBOARD_ENABLE_M2 !== "0" && includeAlertsRequested;
+
+    return {
+      station: { id: input.stopId || "Parent8501120", name: "Lausanne" },
+      departures: [
+        {
+          line: "R3",
+          destination: "Vallorbe",
+          scheduledDeparture: "2026-02-17T04:49:00.000Z",
+          cancelled: false,
+        },
+      ],
+      ...(input.debug
+        ? {
+            debug: {
+              includeAlertsRequested,
+              includeAlertsApplied,
+            },
+          }
+        : {}),
+    };
+  };
+}
+
+function makeMockRes() {
+  return {
+    statusCode: 200,
+    body: null,
+    status(code) {
+      this.statusCode = code;
+      return this;
+    },
+    json(payload) {
+      this.body = payload;
+      return this;
+    },
+  };
+}
+
+async function invokeRoute(handler, { query = {}, headers = {} } = {}) {
+  const req = { query, headers };
+  const res = makeMockRes();
+  await handler(req, res);
+  return res;
+}
+
+async function withEnv(name, value, run) {
+  const previous = process.env[name];
+  if (value === undefined) {
+    delete process.env[name];
+  } else {
+    process.env[name] = value;
+  }
+  try {
+    await run();
+  } finally {
+    if (previous === undefined) {
+      delete process.env[name];
+    } else {
+      process.env[name] = previous;
+    }
+  }
+}
+
+test("stationboard route returns 400 conflicting_stop_id when canonical roots differ", async () => {
+  const calls = [];
+  const handler = createStationboardRouteHandler({
+    getStationboardLike: makeStationboardStub(calls),
+    resolveStopLike: makeResolveStopStub({
+      "stop:ParentAAA": { resolvedStopId: "ParentAAA", resolvedRootId: "ParentAAA" },
+      "station:ParentBBB": { resolvedStopId: "ParentBBB", resolvedRootId: "ParentBBB" },
+    }),
+    dbQueryLike: async () => ({ rows: [] }),
+    logger: { log() {}, error() {} },
+  });
+
+  const res = await invokeRoute(handler, {
+    query: {
+      stop_id: "ParentAAA",
+      stationId: "ParentBBB",
+    },
+  });
+  assert.equal(res.statusCode, 400);
+  assert.equal(res.body.error, "conflicting_stop_id");
+  assert.equal(res.body.precedence, "stop_id");
+  assert.equal(res.body.received?.stop_id, "ParentAAA");
+  assert.equal(res.body.received?.stationId, "ParentBBB");
+  assert.equal(res.body.resolved?.stop_id?.stop, "ParentAAA");
+  assert.equal(res.body.resolved?.stop_id?.root, "ParentAAA");
+  assert.equal(res.body.resolved?.stationId?.stop, "ParentBBB");
+  assert.equal(res.body.resolved?.stationId?.root, "ParentBBB");
+  assert.match(String(res.body.detail || ""), /different canonical roots/i);
+
+  assert.equal(calls.length, 0);
+});
+
+test("stationboard route does not conflict when params resolve to same canonical root", async () => {
+  const calls = [];
+  const handler = createStationboardRouteHandler({
+    getStationboardLike: makeStationboardStub(calls),
+    resolveStopLike: makeResolveStopStub({
+      "stop:8501120:0:1": {
+        resolvedStopId: "8501120:0:1",
+        resolvedRootId: "Parent8501120",
+      },
+      "station:Parent8501120": {
+        resolvedStopId: "Parent8501120",
+        resolvedRootId: "Parent8501120",
+      },
+    }),
+    dbQueryLike: async () => ({ rows: [] }),
+    logger: { log() {}, error() {} },
+  });
+
+  const res = await invokeRoute(handler, {
+    query: {
+      stop_id: "8501120:0:1",
+      stationId: "Parent8501120",
+    },
+  });
+  assert.equal(res.statusCode, 200);
+  assert.ok(Array.isArray(res.body.departures));
+  assert.equal(res.body.departures.length, 1);
+
+  assert.equal(calls.length, 1);
+});
+
+test("stationboard route does not throw conflict when stationId fails resolve but stop_id resolves", async () => {
+  const calls = [];
+  const handler = createStationboardRouteHandler({
+    getStationboardLike: makeStationboardStub(calls),
+    resolveStopLike: makeResolveStopStub({
+      "stop:ParentAAA": { resolvedStopId: "ParentAAA", resolvedRootId: "ParentAAA" },
+      // station:ParentMISSING intentionally omitted to force unknown_stop for that side
+    }),
+    dbQueryLike: async () => ({ rows: [] }),
+    logger: { log() {}, error() {} },
+  });
+
+  const res = await invokeRoute(handler, {
+    query: {
+      stop_id: "ParentAAA",
+      stationId: "ParentMISSING",
+    },
+  });
+
+  assert.notEqual(res.body?.error, "conflicting_stop_id");
+  assert.equal(res.statusCode, 200);
+  assert.ok(Array.isArray(res.body.departures));
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].stopId, "ParentAAA");
+  assert.equal(calls[0].stationId, "ParentMISSING");
+});
+
+test("stationboard route does not throw conflict when stop_id fails resolve but stationId resolves", async () => {
+  const calls = [];
+  const handler = createStationboardRouteHandler({
+    getStationboardLike: makeStationboardStub(calls),
+    resolveStopLike: makeResolveStopStub({
+      // stop:ParentMISSING intentionally omitted to force unknown_stop for that side
+      "station:ParentBBB": { resolvedStopId: "ParentBBB", resolvedRootId: "ParentBBB" },
+    }),
+    dbQueryLike: async () => ({ rows: [] }),
+    logger: { log() {}, error() {} },
+  });
+
+  const res = await invokeRoute(handler, {
+    query: {
+      stop_id: "ParentMISSING",
+      stationId: "ParentBBB",
+    },
+  });
+
+  assert.notEqual(res.body?.error, "conflicting_stop_id");
+  assert.equal(res.statusCode, 200);
+  assert.ok(Array.isArray(res.body.departures));
+  assert.equal(calls.length, 1);
+  // Precedence remains stop_id even when stationId resolves and stop_id does not.
+  assert.equal(calls[0].stopId, "ParentMISSING");
+  assert.equal(calls[0].stationId, "ParentBBB");
+});
+
+test("stationboard route include_alerts=1 with STATIONBOARD_ENABLE_M2=0 keeps requested=true and applied=false in debug", async () => {
+  await withEnv("STATIONBOARD_ENABLE_M2", "0", async () => {
+    const calls = [];
+    const handler = createStationboardRouteHandler({
+      getStationboardLike: makeStationboardStub(calls),
+      resolveStopLike: makeResolveStopStub({
+        "stop:ParentAAA": { resolvedStopId: "ParentAAA", resolvedRootId: "ParentAAA" },
+      }),
+      dbQueryLike: async () => ({ rows: [] }),
+      logger: { log() {}, error() {} },
+    });
+
+    const res = await invokeRoute(handler, {
+      query: {
+        stop_id: "ParentAAA",
+        include_alerts: "1",
+        debug: "1",
+      },
+    });
+    assert.equal(res.statusCode, 200);
+    assert.ok(Array.isArray(res.body.departures));
+    assert.equal(res.body.debug?.includeAlertsRequested, true);
+    assert.equal(res.body.debug?.includeAlertsApplied, false);
+
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].includeAlerts, true);
+  });
+});
+
+test("stationboard route includeAlerts=1 camel-case also maps to requested=true with M2 gate off", async () => {
+  await withEnv("STATIONBOARD_ENABLE_M2", "0", async () => {
+    const calls = [];
+    const handler = createStationboardRouteHandler({
+      getStationboardLike: makeStationboardStub(calls),
+      resolveStopLike: makeResolveStopStub({
+        "stop:ParentAAA": { resolvedStopId: "ParentAAA", resolvedRootId: "ParentAAA" },
+      }),
+      dbQueryLike: async () => ({ rows: [] }),
+      logger: { log() {}, error() {} },
+    });
+
+    const res = await invokeRoute(handler, {
+      query: {
+        stop_id: "ParentAAA",
+        includeAlerts: "1",
+        debug: "1",
+      },
+    });
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.body.debug?.includeAlertsRequested, true);
+    assert.equal(res.body.debug?.includeAlertsApplied, false);
+
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].includeAlerts, true);
+  });
+});
+
+test("stationboard route accepts include_alerts when M2 is enabled", async () => {
+  await withEnv("STATIONBOARD_ENABLE_M2", "1", async () => {
+    const calls = [];
+    const handler = createStationboardRouteHandler({
+      getStationboardLike: makeStationboardStub(calls),
+      resolveStopLike: makeResolveStopStub({
+        "stop:ParentAAA": { resolvedStopId: "ParentAAA", resolvedRootId: "ParentAAA" },
+      }),
+      dbQueryLike: async () => ({ rows: [] }),
+      logger: { log() {}, error() {} },
+    });
+
+    const res = await invokeRoute(handler, {
+      query: {
+        stop_id: "ParentAAA",
+        include_alerts: "1",
+      },
+    });
+    assert.equal(res.statusCode, 200);
+    assert.ok(Array.isArray(res.body.departures));
+
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].includeAlerts, true);
+  });
+});
