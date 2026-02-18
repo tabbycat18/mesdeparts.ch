@@ -1,9 +1,34 @@
+/**
+ * Routing map (repo-verified)
+ * - This Worker serves as a GET-only proxy.
+ * - It does not serve static site assets/pages.
+ * - Default behavior: incoming paths are forwarded to ORIGIN_BASE with a hard "/v1" prefix:
+ *   request "/foo?x=1" -> upstream "https://transport.opendata.ch/v1/foo?x=1"
+ * - Special stationboard routes:
+ *   - "/stationboard" always proxies legacy upstream stationboard.
+ *   - "/api/stationboard" can proxy either:
+ *     - legacy upstream stationboard (default), or
+ *     - RT backend stationboard when STATIONBOARD_UPSTREAM=rt and RT_BACKEND_ORIGIN is set.
+ * - Path-specific behavior exists only for cache TTL hints:
+ *   "/stationboard", "/connections", "/locations", default.
+ */
 const ORIGIN_BASE = "https://transport.opendata.ch";
 
 const DEFAULT_RATE_LIMIT_PER_MIN = 120;
 const DEFAULT_GLOBAL_LIMIT_PER_DAY = 0;
 const RATE_LIMIT_WINDOW_SEC = 60;
 const GLOBAL_LIMIT_WINDOW_SEC = 86400;
+const STATIONBOARD_CACHE_TTL_SEC = 15;
+
+const STATIONBOARD_CACHE_PARAMS = [
+  "stop_id",
+  "stationId",
+  "limit",
+  "window_minutes",
+  "lang",
+  "include_alerts",
+  "includeAlerts",
+];
 
 const ttlFor = (url) => {
   const path = url.pathname || "";
@@ -39,6 +64,94 @@ const parseLimit = (value, fallback) => {
   return Number.isFinite(num) ? num : fallback;
 };
 
+const isLegacyStationboardPath = (pathname) => {
+  const path = String(pathname || "");
+  return path.startsWith("/stationboard");
+};
+
+const isRtStationboardPath = (pathname) => {
+  const path = String(pathname || "");
+  return path.startsWith("/api/stationboard");
+};
+
+const isStationboardPath = (pathname) =>
+  isLegacyStationboardPath(pathname) || isRtStationboardPath(pathname);
+
+const stationboardUpstreamMode = (env) => {
+  const raw = String(env?.STATIONBOARD_UPSTREAM || "").trim().toLowerCase();
+  return raw === "rt" ? "rt" : "legacy";
+};
+
+const shouldBypassStationboardCache = (url) => {
+  return (url.searchParams.get("debug") || "") === "1";
+};
+
+const resolveStationboardUpstream = (url, env) => {
+  if (isLegacyStationboardPath(url.pathname)) {
+    return {
+      upstream: new URL(`/v1/stationboard${url.search}`, ORIGIN_BASE),
+      mode: "legacy",
+    };
+  }
+
+  const mode = stationboardUpstreamMode(env);
+  if (mode === "rt") {
+    const rtOriginRaw = String(env?.RT_BACKEND_ORIGIN || "").trim();
+    if (rtOriginRaw) {
+      try {
+        const rtOrigin = new URL(rtOriginRaw);
+        return {
+          upstream: new URL(`/api/stationboard${url.search}`, rtOrigin),
+          mode: "rt",
+        };
+      } catch {
+        // Fall through to safe legacy fallback below when RT origin is malformed.
+      }
+    }
+  }
+
+  // Safe default: keep legacy stationboard behavior until RT origin is explicitly enabled.
+  return {
+    upstream: new URL(`/v1/stationboard${url.search}`, ORIGIN_BASE),
+    mode: mode === "rt" ? "legacy_fallback" : "legacy",
+  };
+};
+
+const normalizeStationboardCacheKey = (requestUrl) => {
+  const normalizedUrl = new URL(requestUrl.toString());
+  const stationId = normalizedUrl.searchParams.get("stationId");
+  const stationIdSnake = normalizedUrl.searchParams.get("station_id");
+  const effectiveStationId = stationId || stationIdSnake || "";
+
+  normalizedUrl.search = "";
+  const normalizedParams = new URLSearchParams();
+
+  for (const key of STATIONBOARD_CACHE_PARAMS) {
+    if (key === "stationId") {
+      if (effectiveStationId) {
+        normalizedParams.set("stationId", effectiveStationId);
+      }
+      continue;
+    }
+    const val = requestUrl.searchParams.get(key);
+    if (val !== null) {
+      normalizedParams.set(key, val);
+    }
+  }
+
+  normalizedUrl.search = normalizedParams.toString();
+  return new Request(normalizedUrl.toString(), { method: "GET" });
+};
+
+const cacheDebugLog = (env, message, details = null) => {
+  if (String(env?.WORKER_CACHE_DEBUG || "") !== "1") return;
+  if (details) {
+    console.log(`[worker-cache] ${message}`, details);
+    return;
+  }
+  console.log(`[worker-cache] ${message}`);
+};
+
 const limitBucketKey = (prefix, id, windowSec) => {
   const bucket = Math.floor(Date.now() / 1000 / windowSec);
   return new Request(`https://md-rate/${prefix}/${id}/${bucket}`);
@@ -69,7 +182,7 @@ export default {
 
     const url = new URL(request.url);
     const ttl = ttlFor(url);
-    // Preserve the /v1 prefix when forwarding to the upstream API
+    // Preserve the /v1 prefix for default proxy paths.
     const upstream = new URL(`/v1${url.pathname}${url.search}`, ORIGIN_BASE);
     const cache = caches.default;
 
@@ -105,6 +218,75 @@ export default {
         new Response(body, { status: 503, headers: { "Content-Type": "application/json" } }),
         { "Retry-After": String(GLOBAL_LIMIT_WINDOW_SEC) }
       );
+    }
+
+    if (isStationboardPath(url.pathname)) {
+      const stationboardTarget = resolveStationboardUpstream(url, env);
+      const bypass = shouldBypassStationboardCache(url);
+      if (bypass) {
+        cacheDebugLog(env, "stationboard bypass", {
+          reason: "debug=1",
+          path: url.pathname,
+          mode: stationboardTarget.mode,
+        });
+        const direct = await fetch(stationboardTarget.upstream.toString(), {
+          method: "GET",
+          headers: { accept: "application/json" },
+        });
+        return addCors(direct, {
+          "x-md-cache": "BYPASS",
+          "x-md-rate-remaining": perIp.remaining ?? "",
+        });
+      }
+
+      const cacheKey = normalizeStationboardCacheKey(url);
+      const cached = await cache.match(cacheKey);
+      if (cached) {
+        cacheDebugLog(env, "stationboard hit", {
+          key: cacheKey.url,
+          mode: stationboardTarget.mode,
+        });
+        return addCors(cached, {
+          "x-md-cache": "HIT",
+          "x-md-rate-remaining": perIp.remaining ?? "",
+        });
+      }
+
+      cacheDebugLog(env, "stationboard miss", {
+        key: cacheKey.url,
+        mode: stationboardTarget.mode,
+      });
+      const res = await fetch(stationboardTarget.upstream.toString(), {
+        method: "GET",
+        headers: { accept: "application/json" },
+      });
+
+      const contentType = String(res.headers.get("content-type") || "").toLowerCase();
+      const cacheable = res.ok && contentType.includes("application/json");
+      if (!cacheable) {
+        cacheDebugLog(env, "stationboard bypass", {
+          reason: !res.ok ? `status_${res.status}` : "non_json_response",
+        });
+        return addCors(res, {
+          "x-md-cache": "BYPASS",
+          "x-md-rate-remaining": perIp.remaining ?? "",
+        });
+      }
+
+      const proxyRes = new Response(res.body, res);
+      proxyRes.headers.set("Cache-Control", "public, max-age=0");
+      proxyRes.headers.set(
+        "CDN-Cache-Control",
+        `public, max-age=${STATIONBOARD_CACHE_TTL_SEC}`
+      );
+      proxyRes.headers.set("Access-Control-Allow-Origin", "*");
+      proxyRes.headers.set("x-md-cache", "MISS");
+      if (perIp.remaining !== null) {
+        proxyRes.headers.set("x-md-rate-remaining", String(perIp.remaining));
+      }
+
+      ctx.waitUntil(cache.put(cacheKey, proxyRes.clone()));
+      return proxyRes;
     }
 
     const cacheKey = new Request(upstream.toString());
