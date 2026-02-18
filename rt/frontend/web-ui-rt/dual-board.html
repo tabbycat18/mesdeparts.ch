@@ -30,7 +30,7 @@
   <body class="dual-body">
     <div class="dual-shell">
       <header class="dual-header">
-        <div>
+        <div class="dual-brand">
           <div class="dual-title-row">
             <div class="dual-title">Dual board</div>
             <div class="dual-version">v1.7</div>
@@ -1294,7 +1294,6 @@
           this.state.language = next;
           this.label = sideLabel(this.side);
           this.renderViewControls();
-          this.syncModeToggle();
           this.syncHideToggle();
           this.syncFavToggle();
           if (!silent) this.triggerChange();
