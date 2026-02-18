@@ -20,6 +20,7 @@ import {
 
 import fs from "node:fs";
 import path from "node:path";
+import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -100,26 +101,12 @@ LIMIT $4
 `;
 
 async function runTimedQuery(sql, params, timeoutMs) {
-  const client = await pool.connect();
   const effectiveTimeoutMs = Math.max(500, Math.trunc(Number(timeoutMs) || 0));
-  try {
-    await client.query("BEGIN");
-    if (Number.isFinite(effectiveTimeoutMs) && effectiveTimeoutMs > 0) {
-      await client.query(`SET LOCAL statement_timeout = '${effectiveTimeoutMs}ms'`);
-    }
-    const result = await client.query(sql, params);
-    await client.query("COMMIT");
-    return result;
-  } catch (err) {
-    try {
-      await client.query("ROLLBACK");
-    } catch {
-      // ignore rollback errors
-    }
-    throw err;
-  } finally {
-    client.release();
-  }
+  return pool.query({
+    text: sql,
+    values: params,
+    query_timeout: effectiveTimeoutMs,
+  });
 }
 
 /**
@@ -257,10 +244,27 @@ function isRailLike(routeType, routeShortName, routeId) {
  * Build a stationboard from Neon + GTFS-RT.
  */
 export async function buildStationboard(locationId, options = {}) {
-  const { limit = 100, windowMinutes = 180, debug = false, debugLog } = options;
+  const {
+    limit = 100,
+    windowMinutes = 180,
+    debug = false,
+    debugLog,
+    requestId = "",
+    resolvedScope = null,
+  } = options;
   const requestedLimit = Math.max(1, Number(limit) || 100);
   const debugEnabled = debug === true;
   const requestDebugLog = typeof debugLog === "function" ? debugLog : null;
+  const requestStartMs = performance.now();
+  const timings = {
+    requestId: String(requestId || ""),
+    stopScopeMs: 0,
+    mainSqlMs: 0,
+    terminusSqlMs: 0,
+    rtLoadMs: 0,
+    rtMergeMs: 0,
+    totalMs: 0,
+  };
   // Pull more SQL rows than the final response limit because we apply a
   // realtime/past-window filter afterwards.
   const queryLimit = Math.min(800, Math.max(requestedLimit * 6, requestedLimit + 80));
@@ -284,6 +288,7 @@ export async function buildStationboard(locationId, options = {}) {
   const ENABLE_RT = process.env.ENABLE_RT === "1";
 
   console.log("[buildStationboard] start", {
+    requestId: timings.requestId,
     locationId,
     limit,
     windowMinutes,
@@ -343,28 +348,50 @@ export async function buildStationboard(locationId, options = {}) {
     windowSeconds: debugMeta.windowSeconds,
   });
 
-  // 1) Resolve stop / station-group (including RT-only via stops_union)
-  const directGroupRes = await pool.query(
-    `
-    SELECT
-      stop_id,
-      stop_name,
-      to_jsonb(s) ->> 'platform_code' AS platform_code,
-      to_jsonb(s) ->> 'parent_station' AS parent_station
-    FROM public.gtfs_stops s
-    WHERE COALESCE(to_jsonb(s) ->> 'parent_station', s.stop_id) = $1
-    ORDER BY stop_name
-    LIMIT 1;
-    `,
-    [locationId]
-  );
+  // 1) Resolve stop / station-group.
+  const stopScopeStartedMs = performance.now();
+  const scopeFromResolver =
+    resolvedScope &&
+    typeof resolvedScope === "object" &&
+    String(resolvedScope?.stationGroupId || "").trim()
+      ? {
+          stationGroupId: String(resolvedScope.stationGroupId).trim(),
+          stationName: String(resolvedScope.stationName || "").trim(),
+          childStops: Array.isArray(resolvedScope.childStops) ? resolvedScope.childStops : [],
+        }
+      : null;
 
-  let primaryStop = null;
-  let stationGroupIdFromInput = null;
+  let stationGroupId = "";
+  let stationName = "";
+  let childStops = [];
 
-  if (directGroupRes.rowCount > 0) {
-    primaryStop = directGroupRes.rows[0];
-    stationGroupIdFromInput = locationId;
+  if (scopeFromResolver) {
+    stationGroupId = scopeFromResolver.stationGroupId;
+    stationName = scopeFromResolver.stationName || locationId || stationGroupId;
+    childStops = scopeFromResolver.childStops
+      .map((child) => ({
+        stop_id: String(child?.id || "").trim(),
+        stop_name: String(child?.name || stationName || locationId || "").trim(),
+        platform_code: String(child?.platform_code || "").trim(),
+      }))
+      .filter((row) => row.stop_id);
+
+    if (childStops.length === 0) {
+      childStops = [
+        {
+          stop_id: stationGroupId,
+          stop_name: stationName,
+          platform_code: "",
+        },
+      ];
+    }
+
+    console.log("[buildStationboard] using pre-resolved scope", {
+      requestId: timings.requestId,
+      requestedLocationId: locationId,
+      stationGroupId,
+      childCount: childStops.length,
+    });
   } else {
     const stopRes = await pool.query(
       `
@@ -376,17 +403,17 @@ export async function buildStationboard(locationId, options = {}) {
       FROM public.gtfs_stops s
       WHERE stop_id = $1
          OR (to_jsonb(s) ->> 'parent_station') = $1
-         OR LOWER(stop_name) LIKE LOWER($2)
       ORDER BY
         CASE WHEN stop_id = $1 THEN 0 ELSE 1 END,
         CASE WHEN (to_jsonb(s) ->> 'parent_station') = $1 THEN 0 ELSE 1 END,
         stop_name
       LIMIT 1;
       `,
-      [locationId, `%${locationId || ""}%`]
+      [locationId]
     );
 
     console.log("[buildStationboard] stop lookup result", {
+      requestId: timings.requestId,
       requestedLocationId: locationId,
       rowCount: stopRes.rowCount,
       row: stopRes.rows[0] || null,
@@ -394,8 +421,12 @@ export async function buildStationboard(locationId, options = {}) {
 
     if (stopRes.rowCount === 0) {
       console.warn("[buildStationboard] no stop found for locationId", {
+        requestId: timings.requestId,
         locationId,
       });
+      timings.stopScopeMs = Number((performance.now() - stopScopeStartedMs).toFixed(1));
+      timings.totalMs = Number((performance.now() - requestStartMs).toFixed(1));
+      debugMeta.timings = timings;
       return {
         station: { id: locationId || "", name: locationId || "" },
         departures: [],
@@ -403,31 +434,38 @@ export async function buildStationboard(locationId, options = {}) {
       };
     }
 
-    primaryStop = stopRes.rows[0];
+    const primaryStop = stopRes.rows[0];
+    const stationGroupIdFromInput =
+      String(primaryStop?.parent_station || "") === String(locationId || "")
+        ? locationId
+        : null;
+
+    console.log("[buildStationboard] resolved primaryStop", {
+      requestId: timings.requestId,
+      requestedLocationId: locationId,
+      stationGroupIdFromInput,
+      primaryStop,
+    });
+
+    stationGroupId = primaryStop.parent_station || primaryStop.stop_id;
+    stationName = primaryStop.stop_name || locationId || primaryStop.stop_id;
+
+    const groupRes = await pool.query(
+      `
+      SELECT
+        stop_id,
+        stop_name,
+        to_jsonb(s) ->> 'platform_code' AS platform_code
+      FROM public.gtfs_stops s
+      WHERE COALESCE(to_jsonb(s) ->> 'parent_station', s.stop_id) = $1
+      ORDER BY platform_code, stop_name;
+      `,
+      [stationGroupId]
+    );
+
+    childStops = groupRes.rows || [];
   }
-
-  console.log("[buildStationboard] resolved primaryStop", {
-    requestedLocationId: locationId,
-    stationGroupIdFromInput,
-    primaryStop,
-  });
-
-  const stationGroupId = primaryStop.parent_station || primaryStop.stop_id;
-
-  const groupRes = await pool.query(
-    `
-    SELECT
-      stop_id,
-      stop_name,
-      to_jsonb(s) ->> 'platform_code' AS platform_code
-    FROM public.gtfs_stops s
-    WHERE COALESCE(to_jsonb(s) ->> 'parent_station', s.stop_id) = $1
-    ORDER BY platform_code, stop_name;
-    `,
-    [stationGroupId]
-  );
-
-  const childStops = groupRes.rows;
+  timings.stopScopeMs = Number((performance.now() - stopScopeStartedMs).toFixed(1));
 
   const platformByStopId = new Map(
     childStops.map((row) => [row.stop_id, row.platform_code || ""])
@@ -438,10 +476,8 @@ export async function buildStationboard(locationId, options = {}) {
   if (childStopIds.length === 0) childStopIds = [stationGroupId];
   const queryStopIds = Array.from(new Set([stationGroupId, ...childStopIds].filter(Boolean)));
 
-  const stationName =
-    primaryStop.stop_name || locationId || primaryStop.stop_id;
-
   console.log("[buildStationboard] station group", {
+    requestId: timings.requestId,
     stationGroupId,
     childStopIds,
     stationName,
@@ -470,6 +506,7 @@ export async function buildStationboard(locationId, options = {}) {
   ) {
     let rowsRes;
     let usedFallback = false;
+    const queryStartedMs = performance.now();
     try {
       rowsRes = await runTimedQuery(
         STATIONBOARD_SQL,
@@ -487,10 +524,13 @@ export async function buildStationboard(locationId, options = {}) {
         fallbackQueryTimeoutMs
       );
     }
+    const queryMs = Number((performance.now() - queryStartedMs).toFixed(1));
+    timings.mainSqlMs += queryMs;
     return {
       rows: rowsRes.rows || [],
       rowCount: Number(rowsRes.rowCount) || 0,
       usedFallback,
+      queryMs,
     };
   }
 
@@ -519,6 +559,7 @@ export async function buildStationboard(locationId, options = {}) {
       })),
       rowCount: result.rowCount,
       usedFallback: result.usedFallback,
+      queryMs: result.queryMs,
     };
   }
 
@@ -539,6 +580,7 @@ export async function buildStationboard(locationId, options = {}) {
     toSeconds: maxSecondsRaw,
     rowCount: todayRowsResult.rowCount,
     usedFallback: todayRowsResult.usedFallback,
+    queryMs: todayRowsResult.queryMs,
   });
   debugMeta.rowSources = [...rowSources];
 
@@ -567,6 +609,7 @@ export async function buildStationboard(locationId, options = {}) {
       toSeconds: prevToSeconds,
       rowCount: yesterdayRowsResult.rowCount,
       usedFallback: yesterdayRowsResult.usedFallback,
+      queryMs: yesterdayRowsResult.queryMs,
     });
     debugMeta.rowSources = [...rowSources];
 
@@ -581,6 +624,7 @@ export async function buildStationboard(locationId, options = {}) {
   }
 
   console.log("[buildStationboard] rows fetched", {
+    requestId: timings.requestId,
     stationGroupId,
     queryFromSecondsRaw,
     nowSecondsRaw,
@@ -596,6 +640,9 @@ export async function buildStationboard(locationId, options = {}) {
   });
 
   if (!rows.length) {
+    timings.mainSqlMs = Number(timings.mainSqlMs.toFixed(1));
+    timings.totalMs = Number((performance.now() - requestStartMs).toFixed(1));
+    debugMeta.timings = timings;
     safeDebugLog(requestDebugLog, "build.stage_counts", {
       stage: "scheduled_rows",
       count: 0,
@@ -615,6 +662,7 @@ export async function buildStationboard(locationId, options = {}) {
 
   const finalStopByTripId = new Map();
   if (tripIds.length > 0) {
+    const terminusStartedMs = performance.now();
     try {
       const termRes = await runTimedQuery(
         `
@@ -645,16 +693,20 @@ export async function buildStationboard(locationId, options = {}) {
       console.warn("[buildStationboard] terminus lookup timed out, using trip headsign fallback", {
         message: String(err?.message || err),
       });
+    } finally {
+      timings.terminusSqlMs = Number((performance.now() - terminusStartedMs).toFixed(1));
     }
   }
 
   // 3) Realtime delay index
+  const rtLoadStartedMs = performance.now();
   const delayIndex = ENABLE_RT
     ? await loadRealtimeDelayIndexOnce().catch((err) => {
         console.warn("[GTFS-RT] Failed to load delay index, continuing without RT:", err);
         return { byKey: {} };
       })
     : { byKey: {} };
+  timings.rtLoadMs = Number((performance.now() - rtLoadStartedMs).toFixed(1));
 
   const baseRows = [];
 
@@ -791,6 +843,7 @@ export async function buildStationboard(locationId, options = {}) {
   });
   safeDebugLog(requestDebugLog, "build.stage_counts", debugMeta.stageCounts[debugMeta.stageCounts.length - 1]);
 
+  const rtMergeStartedMs = performance.now();
   const mergedScheduledRows = applyTripUpdates(baseRows, delayIndex);
   traceCancellation("after_apply_trip_updates", mergedScheduledRows);
   debugMeta.stageCounts.push({
@@ -821,6 +874,7 @@ export async function buildStationboard(locationId, options = {}) {
     mergedByKey.set(key, pickPreferredMergedDeparture(previous, row));
   }
   const mergedRows = Array.from(mergedByKey.values());
+  timings.rtMergeMs = Number((performance.now() - rtMergeStartedMs).toFixed(1));
   traceCancellation("after_added_trip_merge", mergedRows);
   debugMeta.stageCounts.push({
     stage: "after_dedup",
@@ -895,6 +949,11 @@ export async function buildStationboard(locationId, options = {}) {
       maxSecondsRaw,
     });
   }
+
+  timings.mainSqlMs = Number(timings.mainSqlMs.toFixed(1));
+  timings.totalMs = Number((performance.now() - requestStartMs).toFixed(1));
+  debugMeta.timings = timings;
+  safeDebugLog(requestDebugLog, "build.timings", timings);
 
   return {
     station: { id: stationGroupId, name: stationName },

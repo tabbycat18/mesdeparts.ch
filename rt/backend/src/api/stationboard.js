@@ -1,6 +1,6 @@
 import { buildStationboard } from "../logic/buildStationboard.js";
-import { pool } from "../../db.js";
 import { query as dbQuery } from "../db/query.js";
+import { performance } from "node:perf_hooks";
 import { resolveStop } from "../resolve/resolveStop.js";
 import { fetchServiceAlerts } from "../loaders/fetchServiceAlerts.js";
 import { attachAlerts } from "../merge/attachAlerts.js";
@@ -27,13 +27,19 @@ const ALERTS_FETCH_TIMEOUT_MS = Math.max(
 );
 const OTD_STATIONBOARD_URL = "https://transport.opendata.ch/v1/stationboard";
 const OTD_STATIONBOARD_FETCH_TIMEOUT_MS = Math.max(
-  1_000,
-  Number(process.env.OTD_STATIONBOARD_FETCH_TIMEOUT_MS || "4000")
+  500,
+  Number(process.env.OTD_STATIONBOARD_FETCH_TIMEOUT_MS || "1200")
 );
+const OTD_SUPPLEMENT_CACHE_MS = Math.max(
+  1_000,
+  Number(process.env.OTD_SUPPLEMENT_CACHE_MS || "30000")
+);
+const OTD_SUPPLEMENT_BLOCK_ON_COLD = process.env.OTD_EV_SUPPLEMENT_BLOCK_ON_COLD === "1";
 
 let alertsCacheValue = null;
 let alertsCacheTs = 0;
 let alertsInflight = null;
+const otdSupplementCache = new Map();
 
 function resolveServiceAlertsApiKey() {
   return (
@@ -266,6 +272,69 @@ async function fetchOtdReplacementSupplement({
   return merged.slice(0, Math.max(10, Number(limit || 120)));
 }
 
+function buildOtdSupplementCacheKey({ stopId, stationName, windowMinutes, limit }) {
+  return [
+    String(stopId || "").trim(),
+    String(stationName || "").trim().toLowerCase(),
+    String(Number(windowMinutes) || 0),
+    String(Number(limit) || 0),
+  ].join("|");
+}
+
+async function getOtdReplacementSupplementCached(params = {}) {
+  const key = buildOtdSupplementCacheKey(params);
+  if (!key.replace(/\|/g, "")) return [];
+  const now = Date.now();
+  const entry = otdSupplementCache.get(key) || null;
+  const isFresh = entry && now - Number(entry.ts || 0) <= OTD_SUPPLEMENT_CACHE_MS;
+
+  if (isFresh && Array.isArray(entry.value)) {
+    return entry.value;
+  }
+
+  const refresh = async () => {
+    const next = await fetchOtdReplacementSupplement(params);
+    otdSupplementCache.set(key, {
+      ts: Date.now(),
+      value: Array.isArray(next) ? next : [],
+      inflight: null,
+    });
+    return Array.isArray(next) ? next : [];
+  };
+
+  if (entry?.inflight) {
+    if (Array.isArray(entry.value)) return entry.value;
+    return OTD_SUPPLEMENT_BLOCK_ON_COLD ? entry.inflight : [];
+  }
+
+  const inflight = refresh().catch((err) => {
+    const fallback = Array.isArray(entry?.value) ? entry.value : [];
+    if (process.env.NODE_ENV !== "production") {
+      console.warn("[OTD EV] supplement cache refresh failed", {
+        stopId: params?.stopId,
+        message: String(err?.message || err),
+      });
+    }
+    otdSupplementCache.set(key, {
+      ts: Date.now(),
+      value: fallback,
+      inflight: null,
+    });
+    return fallback;
+  });
+
+  otdSupplementCache.set(key, {
+    ts: Number(entry?.ts || 0),
+    value: Array.isArray(entry?.value) ? entry.value : null,
+    inflight,
+  });
+
+  if (Array.isArray(entry?.value)) {
+    return entry.value;
+  }
+  return OTD_SUPPLEMENT_BLOCK_ON_COLD ? inflight : [];
+}
+
 function hasReplacementDeparture(departures) {
   const rows = Array.isArray(departures) ? departures : [];
   return rows.some((dep) => {
@@ -295,6 +364,12 @@ function countCancelled(rows) {
 function randomRequestId() {
   const rand = Math.random().toString(36).slice(2, 8);
   return `sb-${Date.now().toString(36)}-${rand}`;
+}
+
+function roundMs(value) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return 0;
+  return Number(num.toFixed(1));
 }
 
 function deriveDebugSource(dep) {
@@ -333,39 +408,13 @@ function withDebugDepartureFlags(departures) {
   });
 }
 
-async function loadStationScopeStopIds(requestedStopId, stationGroupId) {
-  const requested = String(requestedStopId || "").trim();
-  const group = String(stationGroupId || requestedStopId || "").trim();
-  if (!group && !requested) return [];
-
-  const roots = Array.from(new Set([requested, group].filter(Boolean)));
-  if (roots.length === 0) return [];
-
-  try {
-    const res = await pool.query(
-      `
-      SELECT stop_id
-      FROM public.gtfs_stops s
-      WHERE
-        s.stop_id = ANY($1::text[])
-        OR COALESCE(to_jsonb(s) ->> 'parent_station', s.stop_id) = ANY($1::text[])
-      `,
-      [roots]
-    );
-    return Array.from(
-      new Set((res.rows || []).map((row) => String(row?.stop_id || "").trim()).filter(Boolean))
-    );
-  } catch {
-    return [];
-  }
-}
-
 export async function getStationboard({
   stopId,
   stationId,
   stationName,
   lang,
   acceptLanguage,
+  requestId: requestIdRaw,
   fromTs,
   toTs,
   limit,
@@ -380,7 +429,27 @@ export async function getStationboard({
   const includeAlertsApplied = alertsFeatureEnabled && includeAlertsRequested;
   const debugEnabled =
     debug === true || shouldEnableStationboardDebug(process.env.STATIONBOARD_DEBUG_JSON);
-  const requestId = randomRequestId();
+  const requestId = String(requestIdRaw || "").trim() || randomRequestId();
+  const requestStartedMs = performance.now();
+  const timing = {
+    requestId,
+    resolveStopMs: 0,
+    buildStationboardMs: 0,
+    sparseRetryTriggered: false,
+    sparseRetryMs: 0,
+    scopeStopIdsMs: 0,
+    alertsWaitMs: 0,
+    alertsMergeMs: 0,
+    supplementMs: 0,
+    totalMs: 0,
+  };
+  const logTiming = (extra = {}) => {
+    timing.totalMs = roundMs(performance.now() - requestStartedMs);
+    console.log("[stationboard-timing]", {
+      ...timing,
+      ...extra,
+    });
+  };
   const debugLog = createStationboardDebugLogger({
     enabled: debugEnabled,
     requestId,
@@ -419,6 +488,7 @@ export async function getStationboard({
     },
   });
 
+  const resolveStartedMs = performance.now();
   const resolved = await resolveStop(
     {
       stop_id: stopId,
@@ -429,6 +499,7 @@ export async function getStationboard({
       db: { query: dbQuery },
     }
   );
+  timing.resolveStopMs = roundMs(performance.now() - resolveStartedMs);
 
   const locationId = String(resolved?.canonical?.id || "").trim();
   if (!locationId) {
@@ -436,6 +507,7 @@ export async function getStationboard({
     err.code = "unknown_stop";
     err.status = 400;
     err.tried = Array.isArray(resolved?.tried) ? resolved.tried : [];
+    logTiming({ outcome: "unknown_stop" });
     throw err;
   }
 
@@ -453,39 +525,59 @@ export async function getStationboard({
     baseWindowMinutes,
     Number(process.env.STATIONBOARD_SPARSE_RETRY_WINDOW_MINUTES || "360")
   );
+  const resolvedScope = {
+    stationGroupId: locationId,
+    stationName:
+      String(resolved?.displayName || resolved?.canonical?.name || stationName || locationId).trim() ||
+      locationId,
+    childStops: Array.isArray(resolved?.children) ? resolved.children : [],
+  };
   const alertsPromise = includeAlertsApplied ? getServiceAlertsCached() : null;
+  const buildStartedMs = performance.now();
   let board = await buildStationboard(locationId, {
     limit: boundedLimit,
     windowMinutes: baseWindowMinutes,
     debug: debugEnabled,
+    requestId,
+    resolvedScope,
     debugLog: (event, payload) => {
       debugLog(event, payload);
     },
   });
+  timing.buildStationboardMs = roundMs(performance.now() - buildStartedMs);
   if (
     sparseRetryMin > 0 &&
     Array.isArray(board?.departures) &&
     board.departures.length < sparseRetryMin &&
     sparseRetryWindowMinutes > baseWindowMinutes
   ) {
+    timing.sparseRetryTriggered = true;
+    const sparseRetryStartedMs = performance.now();
     const expanded = await buildStationboard(locationId, {
       limit: boundedLimit,
       windowMinutes: sparseRetryWindowMinutes,
       debug: debugEnabled,
+      requestId,
+      resolvedScope,
       debugLog: (event, payload) => {
         debugLog(event, payload);
       },
     });
+    timing.sparseRetryMs = roundMs(performance.now() - sparseRetryStartedMs);
     if ((expanded?.departures?.length || 0) > (board?.departures?.length || 0)) {
       board = expanded;
     }
   }
 
   const departures = Array.isArray(board?.departures) ? board.departures : [];
+  const scopeStartedMs = performance.now();
   const scopeStopIds = uniqueStopIds([
     ...(resolved?.children || []).map((child) => child?.id),
-    ...(await loadStationScopeStopIds(locationId, board?.station?.id)),
+    ...(Array.isArray(board?.debugMeta?.stops?.queryStopIds)
+      ? board.debugMeta.stops.queryStopIds
+      : []),
   ]);
+  timing.scopeStopIdsMs = roundMs(performance.now() - scopeStartedMs);
   const canonicalName =
     String(resolved?.displayName || resolved?.canonical?.name || stationName || "").trim() ||
     String(board?.station?.name || locationId).trim();
@@ -565,11 +657,19 @@ export async function getStationboard({
         departureAudit: buildDepartureAudit(baseResponse.departures),
       };
     }
+    logTiming({
+      outcome: "ok_no_alerts",
+      departures: baseResponse.departures.length,
+      buildTimings: board?.debugMeta?.timings || null,
+    });
     return baseResponse;
   }
 
   try {
+    const alertsWaitStartedMs = performance.now();
     const alerts = localizeServiceAlerts(await alertsPromise, langPrefs);
+    timing.alertsWaitMs = roundMs(performance.now() - alertsWaitStartedMs);
+    const alertsMergeStartedMs = performance.now();
     const syntheticDepartures = [];
 
     const byKey = new Map();
@@ -625,13 +725,15 @@ export async function getStationboard({
     let finalDepartures = attached.departures;
     let supplementCount = 0;
     if (!hasReplacementDeparture(finalDepartures)) {
-      const supplement = await fetchOtdReplacementSupplement({
+      const supplementStartedMs = performance.now();
+      const supplement = await getOtdReplacementSupplementCached({
         stopId: locationId,
         stationName: canonicalName,
         now: new Date(),
         windowMinutes: baseWindowMinutes,
         limit: boundedLimit,
       });
+      timing.supplementMs = roundMs(performance.now() - supplementStartedMs);
       supplementCount = supplement.length;
       if (supplement.length > 0) {
         const bySuppKey = new Map();
@@ -653,6 +755,7 @@ export async function getStationboard({
           .slice(0, 1000);
       }
     }
+    timing.alertsMergeMs = roundMs(performance.now() - alertsMergeStartedMs);
     debugState.stageCounts.push({
       stage: "after_supplement",
       count: finalDepartures.length,
@@ -691,6 +794,12 @@ export async function getStationboard({
         departureAudit: buildDepartureAudit(response.departures),
       };
     }
+    logTiming({
+      outcome: "ok_with_alerts",
+      departures: response.departures.length,
+      banners: Array.isArray(response?.banners) ? response.banners.length : 0,
+      buildTimings: board?.debugMeta?.timings || null,
+    });
     return response;
   } catch (err) {
     const response = {
@@ -724,6 +833,12 @@ export async function getStationboard({
         departureAudit: buildDepartureAudit(response.departures),
       };
     }
+    logTiming({
+      outcome: "alerts_fallback",
+      departures: response.departures.length,
+      error: String(err?.message || err),
+      buildTimings: board?.debugMeta?.timings || null,
+    });
     return response;
   }
 }

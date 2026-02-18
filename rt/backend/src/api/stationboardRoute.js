@@ -1,3 +1,5 @@
+import { performance } from "node:perf_hooks";
+
 function text(value) {
   return String(value || "").trim();
 }
@@ -12,6 +14,33 @@ function parseBooleanish(value) {
   if (["1", "true", "yes", "on"].includes(raw)) return true;
   if (["0", "false", "no", "off"].includes(raw)) return false;
   return null;
+}
+
+function randomRequestId() {
+  const rand = Math.random().toString(36).slice(2, 8);
+  return `sb-${Date.now().toString(36)}-${rand}`;
+}
+
+function roundMs(value) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return 0;
+  return Number(num.toFixed(1));
+}
+
+function setResponseHeader(res, key, value) {
+  if (!res || !key) return;
+  const val = String(value);
+  if (typeof res.setHeader === "function") {
+    res.setHeader(key, val);
+    return;
+  }
+  if (typeof res.set === "function") {
+    res.set(key, val);
+    return;
+  }
+  if (res.headers && typeof res.headers === "object") {
+    res.headers[key] = val;
+  }
 }
 
 export function deriveResolvedIdentity(resolved) {
@@ -95,6 +124,12 @@ export function createStationboardRouteHandler({
   }
 
   return async function stationboardRouteHandler(req, res) {
+    const routeStartedMs = performance.now();
+    const requestId =
+      text(req.headers["x-md-request-id"]) ||
+      text(req.headers["x-request-id"]) ||
+      randomRequestId();
+    setResponseHeader(res, "x-md-request-id", requestId);
     try {
       const stopIdRaw = text(req.query.stop_id);
       const stationIdCamelRaw = text(req.query.stationId);
@@ -111,6 +146,7 @@ export function createStationboardRouteHandler({
       );
 
       logger?.log?.("[API] /api/stationboard params", {
+        requestId,
         stopId: stopIdRaw,
         stationId: stationIdRaw,
         stationName,
@@ -122,6 +158,11 @@ export function createStationboardRouteHandler({
       });
 
       if (!effectiveStopId) {
+        setResponseHeader(
+          res,
+          "x-md-backend-total-ms",
+          String(roundMs(performance.now() - routeStartedMs))
+        );
         return res.status(400).json({
           error: "missing_stop_id",
           expected: ["stop_id", "stationId"],
@@ -139,6 +180,11 @@ export function createStationboardRouteHandler({
         );
 
         if (conflict.hasConflict) {
+          setResponseHeader(
+            res,
+            "x-md-backend-total-ms",
+            String(roundMs(performance.now() - routeStartedMs))
+          );
           return res.status(400).json({
             error: "conflicting_stop_id",
             detail: "stop_id and stationId/station_id resolve to different canonical roots",
@@ -167,14 +213,26 @@ export function createStationboardRouteHandler({
         stationName,
         lang,
         acceptLanguage: req.headers["accept-language"],
+        requestId,
         limit,
         windowMinutes,
         includeAlerts: includeAlertsParsed == null ? undefined : includeAlertsParsed,
         debug,
       });
+      setResponseHeader(
+        res,
+        "x-md-backend-total-ms",
+        String(roundMs(performance.now() - routeStartedMs))
+      );
       return res.json(result);
     } catch (err) {
-      logger?.error?.("[API] /api/stationboard failed:", err);
+      const backendTotalMs = roundMs(performance.now() - routeStartedMs);
+      setResponseHeader(res, "x-md-backend-total-ms", String(backendTotalMs));
+      logger?.error?.("[API] /api/stationboard failed:", {
+        requestId,
+        backendTotalMs,
+        error: String(err?.message || err),
+      });
       if (err?.code === "unknown_stop" || Number(err?.status) === 400) {
         return res.status(400).json({
           error: "unknown_stop",
@@ -191,4 +249,3 @@ export function createStationboardRouteHandler({
     }
   };
 }
-

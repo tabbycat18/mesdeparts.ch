@@ -20,16 +20,6 @@ const RATE_LIMIT_WINDOW_SEC = 60;
 const GLOBAL_LIMIT_WINDOW_SEC = 86400;
 const STATIONBOARD_CACHE_TTL_SEC = 15;
 
-const STATIONBOARD_CACHE_PARAMS = [
-  "stop_id",
-  "stationId",
-  "limit",
-  "window_minutes",
-  "lang",
-  "include_alerts",
-  "includeAlerts",
-];
-
 const ttlFor = (url) => {
   const path = url.pathname || "";
   const search = url.searchParams || new URLSearchParams(url.search || "");
@@ -127,23 +117,37 @@ const resolveApiUpstream = (url, env) => {
 
 const normalizeStationboardCacheKey = (requestUrl) => {
   const normalizedUrl = new URL(requestUrl.toString());
-  const stationId = normalizedUrl.searchParams.get("stationId");
-  const stationIdSnake = normalizedUrl.searchParams.get("station_id");
-  const effectiveStationId = stationId || stationIdSnake || "";
-
   normalizedUrl.search = "";
   const normalizedParams = new URLSearchParams();
 
-  for (const key of STATIONBOARD_CACHE_PARAMS) {
-    if (key === "stationId") {
-      if (effectiveStationId) {
-        normalizedParams.set("stationId", effectiveStationId);
-      }
-      continue;
-    }
-    const val = requestUrl.searchParams.get(key);
-    if (val !== null) {
-      normalizedParams.set(key, val);
+  const stopId =
+    requestUrl.searchParams.get("stop_id") ||
+    requestUrl.searchParams.get("stationId") ||
+    requestUrl.searchParams.get("station_id") ||
+    "";
+  if (stopId) normalizedParams.set("stop_id", stopId);
+
+  const limit = requestUrl.searchParams.get("limit");
+  if (limit !== null) normalizedParams.set("limit", limit);
+
+  const windowMinutes = requestUrl.searchParams.get("window_minutes");
+  if (windowMinutes !== null) normalizedParams.set("window_minutes", windowMinutes);
+
+  const lang = requestUrl.searchParams.get("lang");
+  if (lang !== null) normalizedParams.set("lang", lang);
+
+  const includeAlertsRaw =
+    requestUrl.searchParams.get("include_alerts") ?? requestUrl.searchParams.get("includeAlerts");
+  if (includeAlertsRaw == null) {
+    normalizedParams.set("include_alerts", "1");
+  } else {
+    const normalizedAlerts = String(includeAlertsRaw).trim().toLowerCase();
+    if (["0", "false", "no", "off"].includes(normalizedAlerts)) {
+      normalizedParams.set("include_alerts", "0");
+    } else if (["1", "true", "yes", "on"].includes(normalizedAlerts)) {
+      normalizedParams.set("include_alerts", "1");
+    } else {
+      normalizedParams.set("include_alerts", String(includeAlertsRaw));
     }
   }
 
@@ -158,6 +162,37 @@ const cacheDebugLog = (env, message, details = null) => {
     return;
   }
   console.log(`[worker-cache] ${message}`);
+};
+
+const roundMs = (value) => {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return 0;
+  return Number(num.toFixed(1));
+};
+
+const resolveRequestId = (request) => {
+  const existing =
+    request.headers.get("x-md-request-id") || request.headers.get("x-request-id") || "";
+  if (existing) return existing.trim();
+  if (typeof crypto?.randomUUID === "function") return `sb-${crypto.randomUUID()}`;
+  return `sb-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+};
+
+const upstreamHeaders = (request, requestId) => {
+  const out = {
+    accept: "application/json",
+    "x-md-request-id": requestId,
+  };
+  const acceptLanguage = request.headers.get("accept-language");
+  if (acceptLanguage) out["accept-language"] = acceptLanguage;
+  return out;
+};
+
+const logStationboardTiming = (env, details) => {
+  const enabled =
+    String(env?.WORKER_TIMING_LOG || "") === "1" || String(env?.WORKER_CACHE_DEBUG || "") === "1";
+  if (!enabled) return;
+  console.log("[worker-stationboard-timing]", details);
 };
 
 const limitBucketKey = (prefix, id, windowSec) => {
@@ -188,6 +223,8 @@ export default {
       return new Response("Method not allowed", { status: 405 });
     }
 
+    const workerStartedMs = performance.now();
+    const requestId = resolveRequestId(request);
     const url = new URL(request.url);
     const ttl = ttlFor(url);
     // Preserve the /v1 prefix for default proxy paths.
@@ -231,20 +268,39 @@ export default {
     if (isStationboardPath(url.pathname)) {
       const stationboardTarget = resolveStationboardUpstream(url, env);
       const bypass = shouldBypassStationboardCache(url);
+      const stationboardHeaders = (cacheStatus, cacheKey, originMs) => ({
+        "x-md-cache": cacheStatus,
+        "x-md-rate-remaining": perIp.remaining ?? "",
+        "x-md-request-id": requestId,
+        "x-md-cache-key": cacheKey || "",
+        "x-md-origin-ms": String(roundMs(originMs)),
+        "x-md-worker-total-ms": String(roundMs(performance.now() - workerStartedMs)),
+      });
       if (bypass) {
+        const cacheKey = normalizeStationboardCacheKey(url);
         cacheDebugLog(env, "stationboard bypass", {
           reason: "debug=1",
           path: url.pathname,
           mode: stationboardTarget.mode,
+          requestId,
+          key: cacheKey.url,
         });
+        const originStartedMs = performance.now();
         const direct = await fetch(stationboardTarget.upstream.toString(), {
           method: "GET",
-          headers: { accept: "application/json" },
+          headers: upstreamHeaders(request, requestId),
         });
-        return addCors(direct, {
-          "x-md-cache": "BYPASS",
-          "x-md-rate-remaining": perIp.remaining ?? "",
+        const originMs = performance.now() - originStartedMs;
+        logStationboardTiming(env, {
+          requestId,
+          path: url.pathname,
+          mode: stationboardTarget.mode,
+          cache: "BYPASS",
+          cacheKey: cacheKey.url,
+          originMs: roundMs(originMs),
+          totalMs: roundMs(performance.now() - workerStartedMs),
         });
+        return addCors(direct, stationboardHeaders("BYPASS", cacheKey.url, originMs));
       }
 
       const cacheKey = normalizeStationboardCacheKey(url);
@@ -253,32 +309,51 @@ export default {
         cacheDebugLog(env, "stationboard hit", {
           key: cacheKey.url,
           mode: stationboardTarget.mode,
+          requestId,
         });
-        return addCors(cached, {
-          "x-md-cache": "HIT",
-          "x-md-rate-remaining": perIp.remaining ?? "",
+        logStationboardTiming(env, {
+          requestId,
+          path: url.pathname,
+          mode: stationboardTarget.mode,
+          cache: "HIT",
+          cacheKey: cacheKey.url,
+          originMs: 0,
+          totalMs: roundMs(performance.now() - workerStartedMs),
         });
+        return addCors(cached, stationboardHeaders("HIT", cacheKey.url, 0));
       }
 
       cacheDebugLog(env, "stationboard miss", {
         key: cacheKey.url,
         mode: stationboardTarget.mode,
+        requestId,
       });
+      const originStartedMs = performance.now();
       const res = await fetch(stationboardTarget.upstream.toString(), {
         method: "GET",
-        headers: { accept: "application/json" },
+        headers: upstreamHeaders(request, requestId),
       });
+      const originMs = performance.now() - originStartedMs;
 
       const contentType = String(res.headers.get("content-type") || "").toLowerCase();
       const cacheable = res.ok && contentType.includes("application/json");
       if (!cacheable) {
         cacheDebugLog(env, "stationboard bypass", {
           reason: !res.ok ? `status_${res.status}` : "non_json_response",
+          requestId,
+          key: cacheKey.url,
         });
-        return addCors(res, {
-          "x-md-cache": "BYPASS",
-          "x-md-rate-remaining": perIp.remaining ?? "",
+        logStationboardTiming(env, {
+          requestId,
+          path: url.pathname,
+          mode: stationboardTarget.mode,
+          cache: "BYPASS",
+          cacheKey: cacheKey.url,
+          status: res.status,
+          originMs: roundMs(originMs),
+          totalMs: roundMs(performance.now() - workerStartedMs),
         });
+        return addCors(res, stationboardHeaders("BYPASS", cacheKey.url, originMs));
       }
 
       const proxyRes = new Response(res.body, res);
@@ -288,11 +363,20 @@ export default {
         `public, max-age=${STATIONBOARD_CACHE_TTL_SEC}`
       );
       proxyRes.headers.set("Access-Control-Allow-Origin", "*");
-      proxyRes.headers.set("x-md-cache", "MISS");
-      if (perIp.remaining !== null) {
-        proxyRes.headers.set("x-md-rate-remaining", String(perIp.remaining));
+      const responseHeaders = stationboardHeaders("MISS", cacheKey.url, originMs);
+      for (const [key, value] of Object.entries(responseHeaders)) {
+        if (value !== "") proxyRes.headers.set(key, String(value));
       }
 
+      logStationboardTiming(env, {
+        requestId,
+        path: url.pathname,
+        mode: stationboardTarget.mode,
+        cache: "MISS",
+        cacheKey: cacheKey.url,
+        originMs: roundMs(originMs),
+        totalMs: roundMs(performance.now() - workerStartedMs),
+      });
       ctx.waitUntil(cache.put(cacheKey, proxyRes.clone()));
       return proxyRes;
     }
@@ -313,11 +397,13 @@ export default {
 
       const res = await fetch(apiUpstream.toString(), {
         method: "GET",
-        headers: { accept: "application/json" },
+        headers: upstreamHeaders(request, requestId),
       });
       return addCors(res, {
         "x-md-cache": "BYPASS",
         "x-md-rate-remaining": perIp.remaining ?? "",
+        "x-md-request-id": requestId,
+        "x-md-worker-total-ms": String(roundMs(performance.now() - workerStartedMs)),
       });
     }
 
@@ -327,18 +413,24 @@ export default {
       return addCors(cached, {
         "x-md-cache": "HIT",
         "x-md-rate-remaining": perIp.remaining ?? "",
+        "x-md-request-id": requestId,
+        "x-md-worker-total-ms": String(roundMs(performance.now() - workerStartedMs)),
       });
     }
 
     const res = await fetch(upstream.toString(), {
       method: "GET",
-      headers: { accept: "application/json" },
+      headers: upstreamHeaders(request, requestId),
       cf: { cacheEverything: true, cacheTtl: ttl },
     });
 
     // Do not cache error responses; just pass them through
     if (!res.ok) {
-      return addCors(res, { "x-md-cache": "BYPASS" });
+      return addCors(res, {
+        "x-md-cache": "BYPASS",
+        "x-md-request-id": requestId,
+        "x-md-worker-total-ms": String(roundMs(performance.now() - workerStartedMs)),
+      });
     }
 
     const proxyRes = new Response(res.body, res);
@@ -349,6 +441,11 @@ export default {
     if (perIp.remaining !== null) {
       proxyRes.headers.set("x-md-rate-remaining", String(perIp.remaining));
     }
+    proxyRes.headers.set("x-md-request-id", requestId);
+    proxyRes.headers.set(
+      "x-md-worker-total-ms",
+      String(roundMs(performance.now() - workerStartedMs))
+    );
 
     ctx.waitUntil(cache.put(cacheKey, proxyRes.clone()));
     return proxyRes;
