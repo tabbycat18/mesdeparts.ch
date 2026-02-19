@@ -1479,7 +1479,16 @@ function renderServedLinesChips() {
   const active = selection === "ALL" ? new Set() : new Set(selection);
 
   label.textContent = t("servedByLines");
-  wrap.hidden = lines.length === 0 || !!appState.lastBoardIsTrain;
+  const shouldHide = lines.length === 0 || !!appState.lastBoardIsTrain;
+  wrap.hidden = shouldHide;
+
+  // Hide for train stations: use inline style to ensure it overrides any CSS
+  if (shouldHide) {
+    wrap.style.display = "none";
+  } else {
+    wrap.style.display = "";
+  }
+
   container.innerHTML = "";
   if (wrap.hidden) return;
 

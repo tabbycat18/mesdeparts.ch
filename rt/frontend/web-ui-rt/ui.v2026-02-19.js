@@ -2211,12 +2211,6 @@ function renderLineChips(lines) {
   const container = document.getElementById("line-chips-container");
   if (!wrap || !container) return;
 
-  // Hide "Served by lines" for train stations, show only for buses/tram/metro/boat
-  if (appState.lastBoardIsTrain) {
-    wrap.style.display = "none";
-    return;
-  }
-
   const normalizedLines = (lines || [])
     .map((v) => String(v || "").trim())
     .filter(Boolean);
