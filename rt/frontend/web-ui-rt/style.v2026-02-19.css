@@ -2009,6 +2009,11 @@ body {
   overflow-y: auto;
 }
 
+/* Ensure dual-board suggestion lists render above filter popovers */
+.dual-body .station-suggestions {
+  z-index: 1600;
+}
+
 /* legacy fallbacks kept for other contexts */
 .station-input-wrapper {
   display: flex;
@@ -2953,7 +2958,7 @@ body.dual-body {
   display: none;
 }
 
-.dual-body.dual-controls-hidden .dual-header,
+/* FIX: only hide the controls panel; keep global header visible */
 .dual-body.dual-controls-hidden .dual-controls {
   display: none;
 }
@@ -3065,6 +3070,24 @@ body.dual-body {
   justify-content: flex-end;
 }
 
+/* Left/Right picker identity labels */
+.dual-picker-side-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  opacity: 0.55;
+  color: #fff;
+  align-self: center;
+}
+
+/* Ensure picker and input containers don't clip overflow for suggestion dropdowns */
+.dual-picker,
+.dual-picker .station-card,
+.dual-picker .station-input-block {
+  overflow: visible;
+}
+
 .dual-wrap {
   flex: 1 1 auto;
   display: flex;
@@ -3092,6 +3115,11 @@ body.dual-body {
 .dual-wrap iframe,
 iframe.dual-pane {
   border-radius: 0;
+}
+
+/* Subtle separator between panes */
+.dual-pane + .dual-pane {
+  border-left: 1px solid rgba(255, 255, 255, 0.07);
 }
 
 .dual-picker .station-input-wrapper {
@@ -4535,6 +4563,25 @@ iframe.dual-pane {
 :is(html, body).dual-embed .filters-popover,
 :is(html, body).dual-embed .loading-hint {
   display: none !important;
+}
+
+/* HC2 dual-embed: hide controls panel and menu toggle, keep clock + title */
+:is(html, body).dual-embed .hc2__controls,
+:is(html, body).dual-embed .hc2__metaActions {
+  display: none !important;
+}
+
+/* Tighten HC2 meta row gap when embedded (no controls below it) */
+:is(html, body).dual-embed .hc2 {
+  gap: 0;
+}
+
+/* Remove any residual body background inside embedded frames */
+:is(html, body).dual-embed {
+  background: transparent;
+}
+:is(html, body).dual-embed .board {
+  background: transparent;
 }
 
 /* Dual: center the filters popover and make it narrower */

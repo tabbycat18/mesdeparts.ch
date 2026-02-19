@@ -978,3 +978,12 @@
     text-overflow: ellipsis;
   }
 }
+
+/* === Dual embed mode: hide controls panel, keep clock + title only === */
+html.dual-embed .hc2__controls,
+html.dual-embed .hc2__metaActions {
+  display: none !important;
+}
+html.dual-embed .hc2 {
+  gap: 0;
+}

@@ -67,6 +67,7 @@
           <div class="dual-picker" data-side="left">
             <section class="station-card station-card-inline">
               <div class="station-card-topline">
+                <span class="dual-picker-side-label" id="side-label-left">Gauche</span>
                 <div class="station-card-topline-right"></div>
               </div>
 
@@ -206,6 +207,7 @@
           <div class="dual-picker" data-side="right">
             <section class="station-card station-card-inline">
               <div class="station-card-topline">
+                <span class="dual-picker-side-label" id="side-label-right">Droite</span>
                 <div class="station-card-topline-right"></div>
               </div>
 
@@ -489,6 +491,10 @@
         setText(resetBtn, "dualReset");
         setText(showControlsBtn, "dualShowControls");
         if (showControlsBtn) showControlsBtn.setAttribute("aria-label", t("dualShowControls"));
+
+        /* Update side labels */
+        setText(document.getElementById("side-label-left"), "dualSideLeft");
+        setText(document.getElementById("side-label-right"), "dualSideRight");
 
         if (languageSelect) {
           languageSelect.setAttribute("aria-label", t("languageLabel"));
