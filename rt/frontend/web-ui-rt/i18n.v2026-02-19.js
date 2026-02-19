@@ -147,7 +147,7 @@ const TRANSLATIONS = {
     en: "Pl",
   },
   columnMinutes: {
-    fr: "min",
+    fr: "Min",
     de: "Min",
     it: "min",
     en: "min",
@@ -489,13 +489,13 @@ const TRANSLATIONS = {
     en: "Enter favorites to remove (name or id), separated by comma/newline.",
   },
   viewOptionTime: {
-    fr: "Par min",
+    fr: "Min",
     de: "Pro Min",
     it: "Per min",
     en: "By min",
   },
   viewOptionLine: {
-    fr: "Par ligne",
+    fr: "Ligne",
     de: "Nach Linie",
     it: "Per linea",
     en: "By line",
@@ -519,7 +519,7 @@ const TRANSLATIONS = {
     en: "Long-distance",
   },
   viewSectionLabel: {
-    fr: "Affichage",
+    fr: "Affichage par",
     de: "Anzeige",
     it: "Visualizzazione",
     en: "Display",
