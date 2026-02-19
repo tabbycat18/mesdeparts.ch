@@ -32,3 +32,10 @@ jobs:
           DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
           OPENTDATA_GTFS_RT_KEY: ${{ secrets.OPENTDATA_GTFS_RT_KEY }}
           OPENTDATA_GTFS_SA_KEY: ${{ secrets.OPENTDATA_GTFS_SA_KEY }}
+
+      - name: Smoke-test optimize_stop_search.sql (workflow_dispatch only)
+        if: github.event_name == 'workflow_dispatch'
+        working-directory: rt/backend
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f sql/optimize_stop_search.sql
+        env:
+          DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}

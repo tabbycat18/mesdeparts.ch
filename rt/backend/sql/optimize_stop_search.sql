@@ -340,7 +340,7 @@ DO UPDATE SET
 
 BEGIN;
 
-RAISE NOTICE '[stop-search] Building stop_search_index_new (non-blocking)...';
+\echo '[stop-search] Building stop_search_index_new (non-blocking)...'
 
 -- Build the new index with same structure
 -- Use _new suffix to avoid conflicts with live index
@@ -408,10 +408,10 @@ LEFT JOIN station_groups sg ON sg.group_id = COALESCE(NULLIF(s.parent_station, '
 LEFT JOIN group_counts gc ON gc.group_id = COALESCE(NULLIF(s.parent_station, ''), s.stop_id)
 WITH DATA;
 
-RAISE NOTICE '[stop-search] Built stop_search_index_new';
+\echo '[stop-search] Built stop_search_index_new'
 
 -- Create indexes on the new materialized view
-RAISE NOTICE '[stop-search] Creating indexes on stop_search_index_new...';
+\echo '[stop-search] Creating indexes on stop_search_index_new...'
 
 CREATE UNIQUE INDEX idx_stop_search_index_new_stop_id
   ON public.stop_search_index_new (stop_id);
@@ -425,7 +425,7 @@ CREATE INDEX idx_stop_search_index_new_is_parent
 CREATE INDEX idx_stop_search_index_new_name_norm_prefix
   ON public.stop_search_index_new (name_norm text_pattern_ops);
 
-RAISE NOTICE '[stop-search] Created standard indexes on stop_search_index_new';
+\echo '[stop-search] Created standard indexes on stop_search_index_new'
 
 -- Conditional trigram indexes (pg_trgm may not be available)
 DO $$
@@ -447,7 +447,7 @@ $$;
 -- ───────────────────────────────────────────────────────────────────────────────────
 -- Keep lock duration minimal (just the renames)
 
-RAISE NOTICE '[stop-search] Swapping stop_search_index...';
+\echo '[stop-search] Swapping stop_search_index...'
 
 -- If old index exists, rename it to _old
 DROP MATERIALIZED VIEW IF EXISTS public.stop_search_index_old CASCADE;
@@ -457,7 +457,7 @@ ALTER MATERIALIZED VIEW IF EXISTS public.stop_search_index RENAME TO stop_search
 -- Promote _new to live name
 ALTER MATERIALIZED VIEW public.stop_search_index_new RENAME TO stop_search_index;
 
-RAISE NOTICE '[stop-search] Swapped stop_search_index (old→old, new→live)';
+\echo '[stop-search] Swapped stop_search_index (old->old, new->live)'
 
 -- Rename indexes back to their canonical names (without _new suffix)
 -- This makes the index names match what the application expects
@@ -466,7 +466,7 @@ ALTER INDEX idx_stop_search_index_new_group_id RENAME TO idx_stop_search_index_g
 ALTER INDEX idx_stop_search_index_new_is_parent RENAME TO idx_stop_search_index_is_parent;
 ALTER INDEX idx_stop_search_index_new_name_norm_prefix RENAME TO idx_stop_search_index_name_norm_prefix;
 
-RAISE NOTICE '[stop-search] Renamed indexes to canonical names';
+\echo '[stop-search] Renamed indexes to canonical names'
 
 -- Rename trigram indexes if they exist
 DO $$
@@ -486,7 +486,7 @@ $$;
 -- ───────────────────────────────────────────────────────────────────────────────────
 
 DROP MATERIALIZED VIEW IF EXISTS public.stop_search_index_old CASCADE;
-RAISE NOTICE '[stop-search] Dropped old stop_search_index and its indexes';
+\echo '[stop-search] Dropped old stop_search_index and its indexes'
 
 -- Create index on gtfs_stops for reference (idempotent)
 CREATE INDEX IF NOT EXISTS idx_gtfs_stops_stop_name_lower_prefix
@@ -501,8 +501,8 @@ ANALYZE public.stop_aliases;
 ANALYZE public.stop_alias_seed_specs;
 ANALYZE public.stop_search_index;
 
-RAISE NOTICE '[stop-search] Analyzed tables for query planner';
+\echo '[stop-search] Analyzed tables for query planner'
 
 COMMIT;
 
-RAISE NOTICE '[stop-search] ✓ Zero-downtime stop search rebuild complete';
+\echo '[stop-search] Zero-downtime stop search rebuild complete'

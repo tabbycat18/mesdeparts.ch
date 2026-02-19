@@ -252,48 +252,33 @@ async function importIntoStage(cleanDir, env) {
     env: { ...process.env, DATABASE_URL: env.DATABASE_URL },
   });
   await runSqlFile(path.join(SQL_DIR, "validate_stage.sql"), env);
-  await runSqlFile(path.join(SQL_DIR, "swap_stage_to_live.sql"), env);
+  await runSqlFile(path.join(SQL_DIR, "swap_stage_to_live_cutover.sql"), env);
 }
 
 async function runStopSearchSetup(env) {
-  const report = {
-    status: "success",
-    degraded: false,
-    steps: [],
-    errors: [],
-  };
+  // optimize_stop_search.sql is fatal: any SQL error must surface and fail the workflow.
+  await runSqlFile(path.join(SQL_DIR, "optimize_stop_search.sql"), env);
+  console.log("[refresh][search-setup] optimize_stop_search.sql: ok");
 
-  try {
-    await runSqlFile(path.join(SQL_DIR, "optimize_stop_search.sql"), env);
-    report.steps.push({ step: "optimize_stop_search.sql", status: "ok" });
-  } catch (err) {
-    report.steps.push({ step: "optimize_stop_search.sql", status: "failed" });
-    report.errors.push({
-      step: "optimize_stop_search.sql",
-      error: String(err?.message || err),
-    });
-  }
-
+  // syncStopSearchAliases is non-fatal
   try {
     await runCommand("node", [path.resolve(__dirname, "syncStopSearchAliases.js")], {
       env: { ...process.env, DATABASE_URL: env.DATABASE_URL },
     });
-    report.steps.push({ step: "syncStopSearchAliases.js", status: "ok" });
+    console.log("[refresh][search-setup] syncStopSearchAliases.js: ok");
   } catch (err) {
-    report.steps.push({ step: "syncStopSearchAliases.js", status: "failed" });
-    report.errors.push({
-      step: "syncStopSearchAliases.js",
-      error: String(err?.message || err),
-    });
+    console.warn(`[refresh][search-setup] syncStopSearchAliases.js failed (non-fatal): ${err?.message || err}`);
   }
+}
 
-  report.degraded = report.errors.length > 0;
-  if (report.degraded) {
-    report.status = "success_with_degraded_search";
+async function cleanupOldAfterSwap(env) {
+  try {
+    await runSqlFile(path.join(SQL_DIR, "cleanup_old_after_swap.sql"), env);
+    return { status: "ok", step: "cleanup_old_after_swap.sql" };
+  } catch (err) {
+    console.warn(`[refresh] cleanup_old_after_swap.sql failed (non-fatal): ${err?.message || err}`);
+    return { status: "failed", step: "cleanup_old_after_swap.sql", error: String(err?.message || err) };
   }
-
-  console.log(`[refresh][search-setup] ${JSON.stringify(report)}`);
-  return report;
 }
 
 // ── Static version helpers ────────────────────────────────────────────────────
@@ -501,6 +486,8 @@ async function run() {
       console.log("[refresh] importing cleaned GTFS into stage/live tables");
       await importIntoStage(cleanDir, { DATABASE_URL });
       await runStopSearchSetup({ DATABASE_URL });
+      const cleanupResult = await cleanupOldAfterSwap({ DATABASE_URL });
+      console.log(`[refresh] cleanup result: ${JSON.stringify(cleanupResult)}`);
 
       // ── Step 6: Fetch RT / SA meta — ONLY now, only for logging ────────────
       let tripMeta = null;
