@@ -2646,12 +2646,6 @@ function busBadgeClass(dep) {
 
   const classes = ["line-badge"];
 
-  // Rail replacement buses (EV...)
-  if (id.startsWith("EV")) {
-    classes.push("line-ev");
-    return classes.join(" ");
-  }
-
   // Night buses (N1, N2, ...)
   if (id.startsWith("N")) {
     classes.push("line-night");

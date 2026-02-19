@@ -1318,8 +1318,8 @@ body {
   letter-spacing: 0.04em;
 }
 
-/* Rail replacement buses (EV) */
-.line-ev {
+/* TPG rail replacement buses (EV) */
+.line-tpg-EV {
   background: #e84f10;
   color: #000000;
 }
