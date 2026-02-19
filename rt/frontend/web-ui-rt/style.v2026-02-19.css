@@ -76,7 +76,7 @@ body {
 
 .header-badges {
   position: absolute;
-  top: calc(8px + env(safe-area-inset-top, 0px));
+  top: calc(18px + env(safe-area-inset-top, 0px));
   right: calc(8px + env(safe-area-inset-right, 0px));
   display: flex;
   flex-direction: column;
@@ -106,7 +106,7 @@ body {
   font-size: 0.58rem;
   font-weight: 600;
   letter-spacing: 0.05em;
-  color: rgba(245, 247, 255, 0.62);
+  color: white;
   background: rgba(0, 0, 0, 0.18);
   border: 1px solid rgba(255, 255, 255, 0.18);
   padding: 2px 5px;
@@ -121,7 +121,7 @@ body {
 }
 
 .info-tag:hover {
-  color: rgba(245, 247, 255, 0.88);
+  color: white;
   background: rgba(0, 0, 0, 0.28);
   border-color: rgba(255, 255, 255, 0.28);
 }
@@ -549,6 +549,10 @@ body {
 }
 
 @media (max-width: 640px) {
+  .board-header {
+    padding-top: 8px;
+  }
+
   .service-banner {
     padding: 7px 8px;
     gap: 8px;
