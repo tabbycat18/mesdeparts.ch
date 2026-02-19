@@ -236,9 +236,10 @@
   outline: 0;
   background: transparent;
   color: #fff;
-  font-size: 16px;
+  /* 15px on desktop/tablet — no zoom risk there; overridden to 16px on mobile below */
+  font-size: 15px;
   font-weight: 600;
-  line-height: 1.28;
+  line-height: 1.2;
   padding-left: 34px;
   padding-right: calc(var(--hc2-search-actions-width) + 12px);
   margin: 0;
@@ -261,7 +262,14 @@
   white-space: nowrap;
 }
 
+/* Portal: rendered on document.body to escape .hc2__controls stacking context
+   (overflow:hidden + transform + opacity trap children's z-index).
+   Coordinates are set by repositionSuggestionsPortal() in JS. */
 .hc2__suggestions {
+  position: fixed;
+  /* z-index sits above the tray but below favorites/filters backdrop (1600) */
+  z-index: 1500;
+  pointer-events: auto;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -271,6 +279,7 @@
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.18);
   background: rgba(0, 18, 82, 0.95);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.48);
 }
 
 .hc2__suggestions.is-visible {
@@ -542,16 +551,19 @@
 
 .hc2__servedChip {
   border: 0;
-  background: transparent;
-  padding: 0;
-  color: inherit;
-  font: inherit;
   white-space: nowrap;
   cursor: pointer;
 }
 
-.hc2__servedChip.line-badge {
-  border: 0;
+/* Plain (non-badge) chips still get the button resets.
+   When .line-badge is also present these must NOT fire — the badge's own
+   background / padding / color / font would lose on a same-specificity tie
+   because this file loads after style.v2025-02-19.css. */
+.hc2__servedChip:not(.line-badge) {
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  font: inherit;
 }
 
 .hc2__servedChip.line-badge.is-active-filter {
@@ -879,6 +891,18 @@
 }
 
 @media (max-width: 480px) {
+  /* iPhone Safari: computed font-size must stay >= 16px to prevent auto-zoom on focus.
+     Tighter line-height + reduced box height reduce visual bulk without lowering the floor. */
+  .hc2__search {
+    min-height: 44px;
+  }
+
+  .hc2__searchInput {
+    font-size: 16px;
+    line-height: 1.1;
+    height: 44px;
+  }
+
   #unofficial-tag.unofficial-tag {
     font-size: 0.78rem;
     line-height: 1.14;

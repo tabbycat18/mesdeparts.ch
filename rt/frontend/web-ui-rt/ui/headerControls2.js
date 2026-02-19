@@ -274,8 +274,6 @@ function createTemplate() {
           </div>
         </div>
 
-        <ul id="station-suggestions" class="hc2__suggestions"></ul>
-
         <div class="hc2__row hc2__displayRow">
           <div id="view-section-label" class="hc2__rowLabel hc2__displayLabel">${t("viewSectionLabel")}</div>
           <div class="hc2__displayControls">
@@ -459,7 +457,8 @@ function cacheRefs() {
     stationInput: q("station-input"),
     stationClear: q("station-input-clear"),
     stationGeo: q("station-search-btn"),
-    stationSuggestions: q("station-suggestions"),
+    // Portal: suggestions is on document.body, not inside mountEl
+    stationSuggestions: dq("station-suggestions"),
 
     favoritesToggle: q("favorites-only-toggle"),
     favoritesSheet: dq("favorites-popover"),
@@ -496,6 +495,17 @@ function cacheRefs() {
 function mountMarkup() {
   state.mountEl.innerHTML = createTemplate();
   ensureGlobalSheetsMounted();
+
+  // Portal: attach suggestions list directly to body so it escapes the
+  // overflow:hidden + transform stacking context on .hc2__controls.
+  let portal = document.getElementById("station-suggestions");
+  if (!portal) {
+    portal = document.createElement("ul");
+    portal.id = "station-suggestions";
+    portal.className = "hc2__suggestions";
+    document.body.appendChild(portal);
+  }
+
   cacheRefs();
 }
 
@@ -803,9 +813,24 @@ function clearSearch() {
   }
 }
 
+// Reposition the portal dropdown under the search input using fixed coordinates.
+// Called on show and on window resize so it tracks the input even if the tray
+// height or page layout changes.
+function repositionSuggestionsPortal() {
+  const input = state.refs.stationInput;
+  const list = state.refs.stationSuggestions;
+  if (!input || !list) return;
+
+  const rect = input.getBoundingClientRect();
+  list.style.left = `${rect.left}px`;
+  list.style.top = `${rect.bottom + 6}px`;
+  list.style.width = `${rect.width}px`;
+}
+
 function setSuggestionsVisible(visible) {
   const list = state.refs.stationSuggestions;
   if (!list) return;
+  if (visible) repositionSuggestionsPortal();
   list.classList.toggle("is-visible", !!visible);
 }
 
@@ -1687,6 +1712,10 @@ function bindEvents() {
       state.segmentResizeRaf = null;
       renderViewSegment();
       syncOpenControlsHeight();
+      // Keep portal dropdown aligned with input if currently visible
+      if (state.refs.stationSuggestions?.classList.contains("is-visible")) {
+        repositionSuggestionsPortal();
+      }
     });
   };
   if (state.windowResizeHandler) {
@@ -1730,6 +1759,20 @@ export function initHeaderControls2({
 
   state.currentStop = getStopFromCallback();
   mountMarkup();
+
+  // Dev-only: verify computed font-size after styles settle.
+  // Must print >= 16px on iPhone Safari to confirm zoom prevention.
+  // Enable with: window.DEBUG_UI = true  (in browser console)
+  if (typeof window !== "undefined" && window.DEBUG_UI) {
+    const input = state.refs?.stationInput;
+    if (input) {
+      requestAnimationFrame(() => {
+        const fs = getComputedStyle(input).fontSize;
+        console.log("[HC2][searchInput] computed font-size:", fs, "— must be ≥ 16px on iPhone Safari to prevent zoom");
+      });
+    }
+  }
+
   renderLanguageSelect();
   restoreCollapsedState();
   syncFilterStateFromAppState();
