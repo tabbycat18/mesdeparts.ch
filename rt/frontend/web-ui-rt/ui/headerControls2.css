@@ -642,14 +642,14 @@
 }
 
 .hc2__servedInfoIcon {
-  width: 40px;
-  height: 40px;
+  width: 28px;
+  height: 28px;
   display: block;
 }
 
 .hc2__servedInfoBtn svg {
-  width: 40px !important;
-  height: 40px !important;
+  width: 28px !important;
+  height: 28px !important;
 }
 
 .hc2__backdrop {
