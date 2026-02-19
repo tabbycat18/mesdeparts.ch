@@ -368,25 +368,32 @@ async function run() {
     `[refresh] HEAD ${STATIC_PERMALINK}: etag=${etag ?? "(none)"}, last-modified=${lastModified ?? "(none)"}`
   );
 
-  const client = new Client({ connectionString: DATABASE_URL });
-  await client.connect();
+  // ── Step 2a: Connect for initial DB checks only ─────────────────────────────
+  // Do NOT keep this connection open during file operations (download/unzip/clean).
+  console.log("[pg] connecting for initial checks…");
+  const checkClient = new Client({ connectionString: DATABASE_URL });
+  checkClient.on("error", (err) => {
+    console.error("[pg] unexpected error event on checkClient:", err?.message || err);
+  });
+  await checkClient.connect();
+  console.log("[pg] connected");
 
   try {
-    await ensureAlignmentAuditTables(client);
+    await ensureAlignmentAuditTables(checkClient);
 
-    const dbEmpty = await isGtfsLiveEmpty(client);
+    const dbEmpty = await isGtfsLiveEmpty(checkClient);
     if (dbEmpty) {
       console.log("[refresh] Live GTFS tables are empty/missing — forcing full import regardless of version markers.");
     }
 
-    const stored = await getMetaKvMulti(client, [
+    const stored = await getMetaKvMulti(checkClient, [
       "gtfs_static_etag",
       "gtfs_static_last_modified",
       "gtfs_static_sha256",
       "gtfs_current_feed_version",
     ]);
 
-    // ── Step 2: ETag / Last-Modified comparison ─────────────────────────────
+    // ── Step 2b: ETag / Last-Modified comparison ────────────────────────────
     // Normalize stored ETag to match the same format as the live header value.
     const storedEtag = normalizeEtag(stored["gtfs_static_etag"]);
     const storedLastMod = stored["gtfs_static_last_modified"] ?? null;
@@ -396,7 +403,7 @@ async function run() {
 
     if (!dbEmpty && (etagMatch || lastModMatch)) {
       console.log("[refresh] Static GTFS unchanged (ETag/Last-Modified match). No update needed.");
-      await setMetaKv(client, "gtfs_static_checked_at", new Date().toISOString());
+      await setMetaKv(checkClient, "gtfs_static_checked_at", new Date().toISOString());
       await runStopSearchSetup({ DATABASE_URL });
       return;
     }
@@ -409,8 +416,16 @@ async function run() {
 
     await fsp.mkdir(unzipDir, { recursive: true });
 
+    // Close the check connection BEFORE doing long-running file ops.
+    console.log("[pg] closing connection before file operations…");
+    await checkClient.end();
+    console.log("[pg] closed");
+
     console.log(`[refresh] downloading static GTFS zip to ${zipPath}`);
+    const downloadStart = Date.now();
     await downloadStaticZip(zipPath);
+    const downloadTime = Date.now() - downloadStart;
+    console.log(`[refresh] download completed in ${downloadTime}ms`);
 
     // ── Step 4: SHA-256 guard — skip import if content identical ───────────
     const zipSha256 = await computeFileSha256(zipPath);
@@ -421,98 +436,146 @@ async function run() {
 
     if (!dbEmpty && zipSha256 === storedSha256) {
       console.log("[refresh] Zip content unchanged (sha256 match). Refreshing markers only.");
-      if (etag) await setMetaKv(client, "gtfs_static_etag", etag);
-      if (lastModified) await setMetaKv(client, "gtfs_static_last_modified", lastModified);
-      await setMetaKv(client, "gtfs_static_checked_at", new Date().toISOString());
+      // Reconnect for the metadata-only updates
+      console.log("[pg] reconnecting for metadata-only update…");
+      const updateClient = new Client({ connectionString: DATABASE_URL });
+      updateClient.on("error", (err) => {
+        console.error("[pg] unexpected error event on updateClient:", err?.message || err);
+      });
+      await updateClient.connect();
+      console.log("[pg] connected");
+      try {
+        if (etag) await setMetaKv(updateClient, "gtfs_static_etag", etag);
+        if (lastModified) await setMetaKv(updateClient, "gtfs_static_last_modified", lastModified);
+        await setMetaKv(updateClient, "gtfs_static_checked_at", new Date().toISOString());
+      } finally {
+        console.log("[pg] closing connection…");
+        await updateClient.end();
+        console.log("[pg] closed");
+      }
       await runStopSearchSetup({ DATABASE_URL });
       return;
     }
 
-    // ── Step 5a: Acquire advisory lock ─────────────────────────────────────
-    // pg_try_advisory_lock is session-scoped and released on client.end().
-    // Using try-variant so concurrent callers skip rather than queue.
-    const lockResult = await client.query(
-      `SELECT pg_try_advisory_lock($1) AS acquired`,
-      [GTFS_IMPORT_LOCK_ID]
-    );
-    if (!lockResult.rows[0].acquired) {
-      console.log("[refresh] Advisory lock not available — another import is already in progress. Skipping.");
-      return;
-    }
-    console.log("[refresh] Advisory lock acquired.");
-
-    // ── Step 5b: Full import ────────────────────────────────────────────────
+    // ── Step 5a: Unzip and clean files (disconnected) ──────────────────────
     console.log("[refresh] unzipping static GTFS zip");
+    const unzipStart = Date.now();
     await unzipToDir(zipPath, unzipDir);
+    const unzipTime = Date.now() - unzipStart;
+    console.log(`[refresh] unzip completed in ${unzipTime}ms`);
 
     console.log("[refresh] cleaning required GTFS files");
+    const cleanStart = Date.now();
     await buildCleanGtfsFiles(unzipDir, cleanDir);
+    const cleanTime = Date.now() - cleanStart;
+    console.log(`[refresh] clean completed in ${cleanTime}ms`);
 
-    console.log("[refresh] importing cleaned GTFS into stage/live tables");
-    await importIntoStage(cleanDir, { DATABASE_URL });
-    await runStopSearchSetup({ DATABASE_URL });
+    // ── Step 5b: Reconnect and acquire advisory lock ────────────────────────
+    // Lock is held ONLY for the duration of DB mutations.
+    console.log("[pg] reconnecting for database operations…");
+    const dbClient = new Client({ connectionString: DATABASE_URL });
+    dbClient.on("error", (err) => {
+      console.error("[pg] unexpected error event on dbClient:", err?.message || err);
+    });
+    await dbClient.connect();
+    console.log("[pg] connected");
 
-    // ── Step 6: Fetch RT / SA meta — ONLY now, only for logging ────────────
-    let tripMeta = null;
-    let alertsMeta = null;
-    if (OPENTDATA_GTFS_RT_KEY) {
-      try {
-        tripMeta = await fetchTripUpdatesMeta(OPENTDATA_GTFS_RT_KEY);
-      } catch (err) {
-        console.warn("[refresh] Could not fetch trip-updates meta (non-fatal):", err?.message || err);
-      }
-    }
-    if (OPENTDATA_GTFS_SA_KEY) {
-      try {
-        alertsMeta = await fetchServiceAlertsMeta(OPENTDATA_GTFS_SA_KEY);
-      } catch (err) {
-        console.warn("[refresh] Could not fetch service-alerts meta (non-fatal):", err?.message || err);
-      }
-    }
-
-    // ── Step 7: Persist version markers ────────────────────────────────────
-    if (etag) await setMetaKv(client, "gtfs_static_etag", etag);
-    if (lastModified) await setMetaKv(client, "gtfs_static_last_modified", lastModified);
-    await setMetaKv(client, "gtfs_static_sha256", zipSha256);
-
-    // Keep gtfs_current_feed_version: use RT version if available, else sha256 prefix.
-    const newVersion = tripMeta?.feedVersion || zipSha256.slice(0, 16);
-    await setMetaKv(client, "gtfs_current_feed_version", newVersion);
-
-    if (tripMeta) {
-      await upsertFeedMeta(client, "trip_updates", tripMeta.feedVersion, tripMeta.headerTimestamp);
-    }
-    if (alertsMeta) {
-      await upsertFeedMeta(
-        client,
-        "service_alerts",
-        tripMeta?.feedVersion ?? newVersion,
-        alertsMeta.headerTimestamp
-      );
-    }
-
-    // ── Step 8: Log static ingest for alignment auditing ───────────────────
     try {
-      const snap = await fetchCurrentStaticSnapshot(client);
-      await insertStaticIngestLog(client, {
-        feedName: "opentransportdata_gtfs_static",
-        feedVersion: newVersion,
-        startDate: snap?.start_date || null,
-        endDate: snap?.end_date || null,
-        stopsCount: snap?.stops_count || null,
-        routesCount: snap?.routes_count || null,
-        tripsCount: snap?.trips_count || null,
-        stopTimesCount: snap?.stop_times_count || null,
-        notes: `refreshGtfsIfNeeded: sha256=${zipSha256.slice(0, 16)}, etag=${etag ?? "none"}`,
-      });
-      console.log(`[refresh] logged static ingest to gtfs_static_ingest_log`);
-    } catch (logErr) {
-      console.warn(`[refresh] non-fatal: failed to log static ingest:`, logErr?.message || logErr);
-    }
+      // pg_try_advisory_lock is session-scoped and released on client.end().
+      // Using try-variant so concurrent callers skip rather than queue.
+      const lockResult = await dbClient.query(
+        `SELECT pg_try_advisory_lock($1) AS acquired`,
+        [GTFS_IMPORT_LOCK_ID]
+      );
+      if (!lockResult.rows[0].acquired) {
+        console.log("[refresh] Advisory lock not available — another import is already in progress. Skipping.");
+        return;
+      }
+      console.log("[refresh] Advisory lock acquired.");
 
-    console.log(`[refresh] completed: version=${newVersion}, sha256=${zipSha256.slice(0, 16)}…`);
+      // ── Sanity check: ensure connection is still alive after lock acquire ────
+      // (cheap defense against race conditions between lock and import)
+      await dbClient.query("SELECT 1");
+
+      // ── Step 5c: Full import ───────────────────────────────────────────────
+      console.log("[refresh] importing cleaned GTFS into stage/live tables");
+      await importIntoStage(cleanDir, { DATABASE_URL });
+      await runStopSearchSetup({ DATABASE_URL });
+
+      // ── Step 6: Fetch RT / SA meta — ONLY now, only for logging ────────────
+      let tripMeta = null;
+      let alertsMeta = null;
+      if (OPENTDATA_GTFS_RT_KEY) {
+        try {
+          tripMeta = await fetchTripUpdatesMeta(OPENTDATA_GTFS_RT_KEY);
+        } catch (err) {
+          console.warn("[refresh] Could not fetch trip-updates meta (non-fatal):", err?.message || err);
+        }
+      }
+      if (OPENTDATA_GTFS_SA_KEY) {
+        try {
+          alertsMeta = await fetchServiceAlertsMeta(OPENTDATA_GTFS_SA_KEY);
+        } catch (err) {
+          console.warn("[refresh] Could not fetch service-alerts meta (non-fatal):", err?.message || err);
+        }
+      }
+
+      // ── Step 7: Persist version markers ────────────────────────────────────
+      if (etag) await setMetaKv(dbClient, "gtfs_static_etag", etag);
+      if (lastModified) await setMetaKv(dbClient, "gtfs_static_last_modified", lastModified);
+      await setMetaKv(dbClient, "gtfs_static_sha256", zipSha256);
+
+      // Keep gtfs_current_feed_version: use RT version if available, else sha256 prefix.
+      const newVersion = tripMeta?.feedVersion || zipSha256.slice(0, 16);
+      await setMetaKv(dbClient, "gtfs_current_feed_version", newVersion);
+
+      if (tripMeta) {
+        await upsertFeedMeta(dbClient, "trip_updates", tripMeta.feedVersion, tripMeta.headerTimestamp);
+      }
+      if (alertsMeta) {
+        await upsertFeedMeta(
+          dbClient,
+          "service_alerts",
+          tripMeta?.feedVersion ?? newVersion,
+          alertsMeta.headerTimestamp
+        );
+      }
+
+      // ── Step 8: Log static ingest for alignment auditing ───────────────────
+      try {
+        const snap = await fetchCurrentStaticSnapshot(dbClient);
+        await insertStaticIngestLog(dbClient, {
+          feedName: "opentransportdata_gtfs_static",
+          feedVersion: newVersion,
+          startDate: snap?.start_date || null,
+          endDate: snap?.end_date || null,
+          stopsCount: snap?.stops_count || null,
+          routesCount: snap?.routes_count || null,
+          tripsCount: snap?.trips_count || null,
+          stopTimesCount: snap?.stop_times_count || null,
+          notes: `refreshGtfsIfNeeded: sha256=${zipSha256.slice(0, 16)}, etag=${etag ?? "none"}`,
+        });
+        console.log(`[refresh] logged static ingest to gtfs_static_ingest_log`);
+      } catch (logErr) {
+        console.warn(`[refresh] non-fatal: failed to log static ingest:`, logErr?.message || logErr);
+      }
+
+      console.log(`[refresh] completed: version=${newVersion}, sha256=${zipSha256.slice(0, 16)}…`);
+    } finally {
+      console.log("[pg] closing connection…");
+      await dbClient.end();
+      console.log("[pg] closed");
+    }
+  } catch (err) {
+    console.error("[refresh] unhandled error:", err?.stack || err?.message || err);
+    throw err;
   } finally {
-    await client.end();
+    // Ensure checkClient is closed if we took the early-exit path (ETag/Last-Modified match)
+    try {
+      await checkClient.end();
+    } catch {
+      // Already closed or closing, ignore
+    }
   }
 }
 
