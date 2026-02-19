@@ -459,30 +459,9 @@ ALTER MATERIALIZED VIEW public.stop_search_index_new RENAME TO stop_search_index
 
 \echo '[stop-search] Swapped stop_search_index (old->old, new->live)'
 
--- Rename indexes back to their canonical names (without _new suffix)
--- This makes the index names match what the application expects
-ALTER INDEX idx_stop_search_index_new_stop_id RENAME TO idx_stop_search_index_stop_id;
-ALTER INDEX idx_stop_search_index_new_group_id RENAME TO idx_stop_search_index_group_id;
-ALTER INDEX idx_stop_search_index_new_is_parent RENAME TO idx_stop_search_index_is_parent;
-ALTER INDEX idx_stop_search_index_new_name_norm_prefix RENAME TO idx_stop_search_index_name_norm_prefix;
-
-\echo '[stop-search] Renamed indexes to canonical names'
-
--- Rename trigram indexes if they exist
-DO $$
-BEGIN
-  IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_trgm') THEN
-    EXECUTE 'ALTER INDEX idx_stop_search_index_new_search_text_trgm RENAME TO idx_stop_search_index_search_text_trgm';
-    EXECUTE 'ALTER INDEX idx_stop_search_index_new_name_norm_trgm RENAME TO idx_stop_search_index_name_norm_trgm';
-    EXECUTE 'ALTER INDEX idx_stop_search_index_new_name_core_trgm RENAME TO idx_stop_search_index_name_core_trgm';
-    EXECUTE 'ALTER INDEX idx_stop_search_index_new_parent_name_norm_trgm RENAME TO idx_stop_search_index_parent_name_norm_trgm';
-    RAISE NOTICE '[stop-search] Renamed trigram indexes';
-  END IF;
-END
-$$;
-
 -- ───────────────────────────────────────────────────────────────────────────────────
--- CLEANUP: Drop old indexes and view (same transaction for atomicity)
+-- CLEANUP: Drop old view (indexes dropped by CASCADE)
+-- Indexes retain _new suffix — no renames needed
 -- ───────────────────────────────────────────────────────────────────────────────────
 
 DROP MATERIALIZED VIEW IF EXISTS public.stop_search_index_old CASCADE;
