@@ -608,8 +608,8 @@ body {
 }
 
 .col-time {
-  text-align: left;
-  justify-content: flex-start;
+  text-align: center;
+  justify-content: center;
 }
 
 .col-platform,
