@@ -193,8 +193,10 @@ SQL and shell pieces:
 Runtime query source:
 - `rt/backend/src/sql/stationboard.sql`
 
-Legacy importer still present:
-- `rt/backend/scripts/import-gtfs.sh`
+⚠️ **Legacy/dangerous importer** (do not use for production):
+- `rt/backend/scripts/legacy/DANGEROUS-direct-live-import.sh`
+  - Direct truncation and import into live tables (no validation, no rollback).
+  - Kept only for emergency manual recovery. Use `refreshGtfsIfNeeded.js` (staged import) for normal updates.
 
 ### GTFS-RT TripUpdates
 
@@ -261,7 +263,7 @@ npm run schema:drift
 ```
 
 Package scripts available (from `rt/backend/package.json`):
-- `npm run import:gtfs`
+- `npm run import:gtfs:legacy` ⚠️ (dangerous direct-live import, use only for emergency recovery)
 - `npm run seed:aliases`
 - `npm run sb:filter`
 
