@@ -131,7 +131,7 @@ const TRANSLATIONS = {
   columnDeparture: {
     fr: "Départ",
     de: "Abfahrt",
-    it: "Part.",
+    it: "Da",
     en: "Departs",
   },
   columnPlatformTrain: {
@@ -347,13 +347,13 @@ const TRANSLATIONS = {
   filterHideDeparture: {
     fr: "Masquer la colonne Départ (bus)",
     de: "Abfahrts-Spalte ausblenden (Bus)",
-    it: "Nascondi la colonna Part. (bus)",
+    it: "Nascondi la colonna Da (bus)",
     en: "Hide Departure column (bus)",
   },
   filterHideDepartureShort: {
     fr: "Départ–",
     de: "Abfahrt–",
-    it: "Part.–",
+    it: "Da–",
     en: "Depart–",
   },
   filterLines: {
@@ -467,7 +467,7 @@ const TRANSLATIONS = {
   journeyPlannedDeparture: {
     fr: "Départ prévu",
     de: "Geplante Abfahrt",
-    it: "Part. prevista",
+    it: "Da prevista",
     en: "Planned departure",
   },
   journeyStopsError: {
@@ -671,7 +671,7 @@ const TRANSLATIONS = {
   infoRealtimeDeparture: {
     fr: "Départ : horaire officiel (planifié).",
     de: "Abfahrt: offizieller Fahrplan (geplant).",
-    it: "Part.: orario ufficiale (pianificato).",
+    it: "Da: orario ufficiale (pianificato).",
     en: "Departure: official timetable (planned).",
   },
   infoRealtimeCountdown: {
