@@ -94,6 +94,33 @@ body {
   z-index: 5;
 }
 
+.info-tag {
+  position: absolute;
+  top: calc(24px + env(safe-area-inset-top, 0px));
+  right: calc(8px + env(safe-area-inset-right, 0px));
+  font-size: 0.58rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: rgba(245, 247, 255, 0.62);
+  background: rgba(0, 0, 0, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  padding: 2px 5px;
+  border-radius: 999px;
+  cursor: pointer;
+  max-width: 45vw;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  z-index: 5;
+  transition: all 0.2s ease;
+}
+
+.info-tag:hover {
+  color: rgba(245, 247, 255, 0.88);
+  background: rgba(0, 0, 0, 0.28);
+  border-color: rgba(255, 255, 255, 0.28);
+}
+
 .mobile-fullscreen-wrapper {
   width: 100%;
   max-width: none;
@@ -2773,6 +2800,13 @@ body.dual-body {
   text-transform: uppercase;
 }
 
+.dual-badges {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
+}
+
 .dual-version-float {
   position: fixed;
   top: 10px;
@@ -2792,6 +2826,57 @@ body.dual-body {
 }
 
 .dual-body:not(.dual-controls-hidden) .dual-version-float {
+  opacity: 0;
+}
+
+.dual-info {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.67rem;
+  color: rgba(245, 247, 255, 0.82);
+  background: rgba(1, 21, 127, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  padding: 3px 8px;
+  border-radius: 999px;
+  letter-spacing: 0.07em;
+  font-weight: 700;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.dual-info:hover {
+  color: rgba(245, 247, 255, 0.95);
+  background: rgba(1, 21, 127, 0.75);
+  border-color: rgba(255, 255, 255, 0.32);
+}
+
+.dual-info-float {
+  position: fixed;
+  top: 44px;
+  right: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 7px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.65);
+  color: rgba(245, 247, 255, 0.88);
+  font-weight: 600;
+  font-size: 0.7rem;
+  letter-spacing: 0.01em;
+  z-index: 70;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-transform: uppercase;
+}
+
+.dual-info-float:hover {
+  background: rgba(0, 0, 0, 0.75);
+  color: rgba(245, 247, 255, 0.95);
+}
+
+.dual-body:not(.dual-controls-hidden) .dual-info-float {
   opacity: 0;
 }
 

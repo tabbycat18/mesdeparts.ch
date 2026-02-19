@@ -33,7 +33,10 @@
         <div class="dual-brand">
           <div class="dual-title-row">
             <div class="dual-title">Dual board</div>
-            <div class="dual-version">v1.7.1</div>
+            <div class="dual-badges">
+              <div class="dual-version">v1.7.1</div>
+              <button id="info-badge-dual" class="dual-info" type="button" aria-label="Info" title="Info">INFO</button>
+            </div>
           </div>
           <div id="dual-status" class="dual-status" aria-live="polite"></div>
         </div>
@@ -363,6 +366,7 @@
     </button>
 
     <div class="dual-version-float" aria-label="Version">v1.7.1</div>
+    <button id="info-badge-float" class="dual-info-float" type="button" aria-label="Info" title="Info">INFO</button>
 
     <script type="module">
       import { fetchStationSuggestions, fetchStationsNearby } from "./logic.v2026-02-19.js";

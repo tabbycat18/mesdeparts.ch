@@ -342,19 +342,6 @@ function createTemplate() {
           <span id="hc2-served-lines-label" class="hc2__servedLabel">${t("servedByLines")}</span>
           <div id="hc2-served-lines-container" class="hc2__servedChips"></div>
         </div>
-        <button
-          id="info-btn"
-          class="hc2__iconBtn hc2__servedInfoBtn"
-          data-action="info"
-          type="button"
-          aria-label="Info"
-          title="Info"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
-            <circle cx="12" cy="7.25" r="1.25" fill="currentColor"/>
-            <rect x="11" y="12.5" width="2" height="8" fill="currentColor"/>
-          </svg>
-        </button>
       </div>
     </header>
   `;
@@ -473,7 +460,7 @@ function cacheRefs() {
     menuToggle: q("header-controls2-menu-toggle"),
     menuLabel: q("header-controls2-menu-label"),
     panel: q("header-controls2-panel"),
-    infoBtn: q("info-btn"),
+    infoBadge: dq("info-badge"),
 
     stationInput: q("station-input"),
     stationClear: q("station-input-clear"),
@@ -1766,7 +1753,7 @@ function bindEvents() {
     toggleControls();
   });
 
-  r.infoBtn?.addEventListener("click", () => {
+  r.infoBadge?.addEventListener("click", () => {
     if (typeof state.callbacks.onOpenInfo === "function") {
       state.callbacks.onOpenInfo();
     }

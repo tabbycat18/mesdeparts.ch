@@ -143,7 +143,7 @@ const TRANSLATIONS = {
   columnPlatformBus: {
     fr: "Quai",
     de: "Kante",
-    it: "Banchina",
+    it: "Corsia",
     en: "Pl",
   },
   columnMinutes: {
@@ -329,7 +329,7 @@ const TRANSLATIONS = {
   filterPlatforms: {
     fr: "Quai",
     de: "Gleis",
-    it: "Banchina",
+    it: "Corsia",
     en: "Platform",
   },
   filterPlatformsShort: {
@@ -437,7 +437,7 @@ const TRANSLATIONS = {
   filterNoPlatforms: {
     fr: "Aucun quai disponible",
     de: "Keine verfügbaren Bahnsteige",
-    it: "Nessuna banchina disponibile",
+    it: "Nessuna Corsia disponibile",
     en: "No platform available",
   },
   filterNoLines: {
@@ -629,7 +629,7 @@ const TRANSLATIONS = {
   infoLi3: {
     fr: "Filtres : bouton “Filtres” → pastilles Quai/Lignes. Le compteur indique les filtres actifs ; “Réinitialiser” efface tout.",
     de: "Filter: Schaltfläche „Filter“ → Chips für Kante/Linien. Der Zähler zeigt aktive Filter; „Zurücksetzen“ löscht alles.",
-    it: "Filtri: pulsante “Filtri” → chip Banchina/Linee. Il contatore mostra i filtri attivi; “Reimposta” li cancella.",
+    it: "Filtri: pulsante “Filtri” → chip Corsia/Linee. Il contatore mostra i filtri attivi; “Reimposta” li cancella.",
     en: "Filters: “Filters” button → Platform/Lines chips. The counter shows active filters; “Reset” clears them.",
   },
   infoLi4: {

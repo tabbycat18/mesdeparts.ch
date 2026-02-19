@@ -366,8 +366,14 @@ function buildInfoOverlay() {
 }
 
 export function setupInfoButton() {
-  const btn = document.getElementById("info-btn");
-  if (!btn) return;
+  // Find all info badges (normal board, dual board inline, dual board floating)
+  const infoBadges = [
+    document.getElementById("info-badge"),
+    document.getElementById("info-badge-dual"),
+    document.getElementById("info-badge-float"),
+  ].filter(Boolean); // Remove nulls
+
+  if (!infoBadges.length) return;
 
   let overlay = document.getElementById("info-overlay");
 
@@ -378,10 +384,15 @@ export function setupInfoButton() {
     return overlay;
   }
 
-  btn.addEventListener("click", () => {
+  function showInfoPanel() {
     const overlayEl = ensureOverlay();
     const station = appState.STATION || "Station";
     overlayEl.__infoControls.updateTitle(station);
     overlayEl.__infoControls.show();
+  }
+
+  // Attach click listener to all badges
+  infoBadges.forEach((badge) => {
+    badge.addEventListener("click", showInfoPanel);
   });
 }
