@@ -39,6 +39,7 @@ const OTD_SUPPLEMENT_BLOCK_ON_COLD = process.env.OTD_EV_SUPPLEMENT_BLOCK_ON_COLD
 let alertsCacheValue = null;
 let alertsCacheTs = 0;
 let alertsInflight = null;
+let alertsCooldownUntil = 0; // epoch ms; prevents retry storms after 429s
 const otdSupplementCache = new Map();
 
 function resolveServiceAlertsApiKey() {
@@ -64,29 +65,49 @@ async function refreshAlertsCache() {
 
 async function getServiceAlertsCached() {
   const now = Date.now();
+
+  // Serve cached if fresh.
   const fresh = alertsCacheValue && now - alertsCacheTs <= ALERTS_CACHE_MS;
   if (fresh) return alertsCacheValue;
 
+  // If we recently got rate-limited, do not refetch yet.
+  if (alertsCooldownUntil && now < alertsCooldownUntil) {
+    return alertsCacheValue; // may be null; caller must tolerate
+  }
+
+  // If a refresh is already running, do not start another.
   if (alertsInflight) {
-    if (alertsCacheValue) return alertsCacheValue;
-    return alertsInflight;
+    return alertsCacheValue || alertsInflight.catch(() => null);
   }
 
   alertsInflight = refreshAlertsCache()
     .catch((err) => {
-      if (alertsCacheValue) return alertsCacheValue;
-      throw err;
+      const msg = String(err?.message || err);
+
+      // If 429, set a cooldown (default 5 min) to avoid hammering the API.
+      if (msg.includes("http_429")) {
+        const cooldownMs = Math.max(
+          5_000,
+          Number(process.env.SERVICE_ALERTS_COOLDOWN_MS || "300000")
+        );
+        alertsCooldownUntil = Date.now() + cooldownMs;
+        console.warn(`[alerts] rate-limited (429); cooling down ${cooldownMs}ms`);
+      } else {
+        console.warn(`[alerts] fetch failed; continuing without alerts: ${msg}`);
+      }
+
+      // Never crash stationboard because alerts failed.
+      return alertsCacheValue; // may be null
     })
     .finally(() => {
       alertsInflight = null;
     });
 
-  if (alertsCacheValue) {
-    // Stale-while-revalidate: do not block stationboard on refresh.
-    return alertsCacheValue;
-  }
+  // Stale-while-revalidate: if we have something, return it immediately.
+  if (alertsCacheValue) return alertsCacheValue;
 
-  return alertsInflight;
+  // Otherwise wait for first load, but still never throw.
+  return alertsInflight.catch(() => null);
 }
 
 function localizeServiceAlerts(alerts, langPrefs) {
@@ -667,7 +688,7 @@ export async function getStationboard({
 
   try {
     const alertsWaitStartedMs = performance.now();
-    const alerts = localizeServiceAlerts(await alertsPromise, langPrefs);
+    const alerts = localizeServiceAlerts((await alertsPromise) || { entities: [] }, langPrefs);
     timing.alertsWaitMs = roundMs(performance.now() - alertsWaitStartedMs);
     const alertsMergeStartedMs = performance.now();
     const syntheticDepartures = [];
