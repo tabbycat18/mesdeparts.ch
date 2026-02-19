@@ -1,6 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://mesdeparts.ch/schemas/stationboard.json",
+  "$comment": "Schema for the stationboard API response. Validated in CI by backend_schema_check.yml.",
   "title": "MesDeparts Stationboard Response",
   "type": "object",
   "required": ["departures"],
