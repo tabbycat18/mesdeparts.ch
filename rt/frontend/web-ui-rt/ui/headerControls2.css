@@ -627,21 +627,23 @@
 
 /* Info button in served-by-lines row: visible styling */
 .hc2__servedInfoBtn {
-  background: rgba(255, 255, 255, 0.12) !important;
-  border: 1px solid rgba(255, 255, 255, 0.24);
+  background: transparent !important;
+  border: none;
   flex: 0 0 auto;
-  width: 44px;
-  height: 44px;
-  min-width: 44px;
-  min-height: 44px;
-  display: flex;
+  width: auto;
+  height: auto;
+  min-width: 0;
+  min-height: 0;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
+  padding: 0;
+  margin: 0;
 }
 
 .hc2__servedInfoIcon {
-  width: 20px;
-  height: 20px;
+  width: 28px;
+  height: 28px;
   display: block;
 }
 
