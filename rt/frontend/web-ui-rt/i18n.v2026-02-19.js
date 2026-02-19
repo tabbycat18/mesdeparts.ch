@@ -131,7 +131,7 @@ const TRANSLATIONS = {
   columnDeparture: {
     fr: "Départ",
     de: "Abfahrt",
-    it: "Partenza",
+    it: "Part.",
     en: "Departs",
   },
   columnPlatformTrain: {
@@ -347,13 +347,13 @@ const TRANSLATIONS = {
   filterHideDeparture: {
     fr: "Masquer la colonne Départ (bus)",
     de: "Abfahrts-Spalte ausblenden (Bus)",
-    it: "Nascondi la colonna Partenza (bus)",
+    it: "Nascondi la colonna Part. (bus)",
     en: "Hide Departure column (bus)",
   },
   filterHideDepartureShort: {
     fr: "Départ–",
     de: "Abfahrt–",
-    it: "Partenza–",
+    it: "Part.–",
     en: "Depart–",
   },
   filterLines: {
@@ -467,7 +467,7 @@ const TRANSLATIONS = {
   journeyPlannedDeparture: {
     fr: "Départ prévu",
     de: "Geplante Abfahrt",
-    it: "Partenza prevista",
+    it: "Part. prevista",
     en: "Planned departure",
   },
   journeyStopsError: {
@@ -593,7 +593,7 @@ const TRANSLATIONS = {
   infoHelpItemRead: {
     fr: "Lire l’écran : min = temps réel\nDépart = horaire officiel.",
     de: "Anzeige lesen: min = Echtzeit\nAbfahrt = offizieller Fahrplan.",
-    it: "Leggere: min = tempo reale\nPartenza = orario ufficiale.",
+    it: "Leggere: min = tempo reale\nPart. = orario ufficiale.",
     en: "Read the screen: min = realtime\nDeparture = scheduled time.",
   },
   infoHelpItemData: {
@@ -641,7 +641,7 @@ const TRANSLATIONS = {
   infoLi5: {
     fr: "Retards : bus/tram dès +2 min, trains dès +1 min. “Départ” est toujours l’horaire officiel ; “min” est un compte à rebours temps réel qui peut inclure de petits décalages non signalés comme retards officiels.",
     de: "Verspätungen: Bus/Tram ab +2 Min, Züge ab +1 Min. „Abfahrt“ zeigt immer den Fahrplan; „min“ ist der Echtzeit-Countdown und kann kleine Abweichungen enthalten, die nicht als offizielle Verspätung gelten.",
-    it: "Ritardi: bus/tram da +2 min, treni da +1 min. “Partenza” è sempre l’orario ufficiale; “min” è il conto alla rovescia in tempo reale che può includere piccoli scostamenti non segnalati come ritardi ufficiali.",
+    it: "Ritardi: bus/tram da +2 min, treni da +1 min. “Part.” è sempre l’orario ufficiale; “min” è il conto alla rovescia in tempo reale che può includere piccoli scostamenti non segnalati come ritardi ufficiali.",
     en: "Delays: bus/tram from +2 min, trains from +1 min. “Departure” is always the official timetable; “min” is a realtime countdown that may include small shifts not flagged as official delays.",
   },
   disclaimerTitle: {
@@ -665,13 +665,13 @@ const TRANSLATIONS = {
   infoRealtimeMinVsDepartureTitle: {
     fr: "“min” vs “Départ”",
     de: "„min“ vs. „Abfahrt“",
-    it: "“min” vs “Partenza”",
+    it: "“min” vs “Part.”",
     en: "“min” vs “Departure”",
   },
   infoRealtimeDeparture: {
     fr: "Départ : horaire officiel (planifié).",
     de: "Abfahrt: offizieller Fahrplan (geplant).",
-    it: "Partenza: orario ufficiale (pianificato).",
+    it: "Part.: orario ufficiale (pianificato).",
     en: "Departure: official timetable (planned).",
   },
   infoRealtimeCountdown: {
