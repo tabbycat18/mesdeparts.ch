@@ -351,8 +351,8 @@ function createTemplate() {
           title="Info"
         >
           <svg viewBox="0 0 24 24" class="hc2__servedInfoIcon" aria-hidden="true" focusable="false">
-            <circle cx="12" cy="7.25" r="1.25" fill="currentColor"/>
-            <rect x="11" y="10" width="2" height="8" fill="currentColor"/>
+            <circle cx="12" cy="7" r="1.8" fill="currentColor"/>
+            <rect x="11" y="11" width="2" height="8" fill="currentColor"/>
           </svg>
         </button>
       </div>
