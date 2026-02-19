@@ -105,6 +105,9 @@ const state = {
   suggestionCache: {},
   // Debounce token for deduplication (ensures only latest debounce runs)
   _searchDebounceToken: 0,
+  // Board loading state tracking
+  isSuggestionFetching: false,
+  isBoardLoading: false,
 };
 
 // Search resiliency constants
@@ -344,9 +347,9 @@ function createTemplate() {
           <label for="language-select" class="hc2__rowLabel">${t("languageLabel")}</label>
           <select id="language-select" class="hc2__select" aria-label="${t("languageLabel")}"></select>
         </div>
-
-        <div id="loading-hint" class="loading-hint" role="status" aria-live="polite"></div>
       </div>
+
+      <div id="loading-hint" class="loading-hint" role="status" aria-live="polite"></div>
 
       <div id="hc2-served-lines" class="hc2__served" hidden>
         <span id="hc2-served-lines-label" class="hc2__servedLabel">${t("servedByLines")}</span>
@@ -823,6 +826,13 @@ function setSearchText(value) {
 }
 
 function clearSearch() {
+  // Abort any in-flight suggestion fetch (no longer needed)
+  if (state.suggestionsAbortController) {
+    state.suggestionsAbortController.abort();
+    state.suggestionsAbortController = null;
+  }
+  state.isSuggestionFetching = false;
+  syncHint();
   setSearchText("");
   clearSuggestions();
   if (state.refs.stationInput && typeof state.refs.stationInput.focus === "function") {
@@ -922,6 +932,22 @@ function selectFavorite(id) {
     state.callbacks.onSelectStop(fav.id, fav.name);
   }
   closeFavorites({ restoreFocus: false });
+}
+
+function syncHint() {
+  if (!state.mountEl) return;
+  const hint = state.mountEl.querySelector("#loading-hint");
+  if (!hint) return;
+  if (state.isSuggestionFetching) {
+    hint.textContent = t("searchLoading");
+    hint.classList.add("is-visible");
+  } else if (state.isBoardLoading) {
+    hint.textContent = t("loadingDepartures");
+    hint.classList.add("is-visible");
+  } else {
+    hint.textContent = "";
+    hint.classList.remove("is-visible");
+  }
 }
 
 function syncFavoritesFromStorage() {
@@ -1070,6 +1096,8 @@ function renderSuggestionsWithHint(items, hint) {
 async function fetchAndRenderSuggestions(query) {
   const trimmed = String(query || "").trim();
   if (trimmed.length < 2) {
+    state.isSuggestionFetching = false;
+    syncHint();
     clearSuggestions();
     return;
   }
@@ -1087,11 +1115,15 @@ async function fetchAndRenderSuggestions(query) {
   const cached = getCachedSuggestions(trimmed);
   if (cached) {
     dbg("cache hit:", trimmed);
+    state.isSuggestionFetching = false;
+    syncHint();
     renderSuggestions(cached);
     return;
   }
 
   // Show loading state
+  state.isSuggestionFetching = true;
+  syncHint();
   renderSuggestionLoading();
 
   try {
@@ -1143,6 +1175,12 @@ async function fetchAndRenderSuggestions(query) {
 
     // Other errors: clear dropdown
     clearSuggestions();
+  } finally {
+    // Only the controller that started this fetch clears the flag (latest-wins)
+    if (state.suggestionsAbortController === controller) {
+      state.isSuggestionFetching = false;
+      syncHint();
+    }
   }
 }
 
@@ -2010,4 +2048,10 @@ export function updateHeaderControls2({ currentStop, language } = {}) {
     state.refs.filtersOpen.disabled = !filtersAvailable;
     state.refs.filtersOpen.classList.toggle("is-disabled", !filtersAvailable);
   }
+}
+
+export function setBoardLoadingHint(isLoading) {
+  if (!state.initialized) return;
+  state.isBoardLoading = !!isLoading;
+  syncHint();
 }

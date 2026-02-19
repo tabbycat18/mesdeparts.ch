@@ -29,7 +29,6 @@ import {
   setupClock,
   updateStationTitle,
   renderDepartures,
-  setBoardLoadingState,
   ensureBoardFitsViewport,
   setupAutoFitWatcher,
   publishEmbedState,
@@ -43,6 +42,7 @@ import { loadFavorites } from "./favourites.v2026-02-19.js";
 import {
   initHeaderControls2,
   updateHeaderControls2,
+  setBoardLoadingHint,
 } from "./ui/headerControls2.js";
 
 // Persist station between reloads
@@ -386,7 +386,7 @@ async function refreshDepartures({ retried, showLoadingHint = true } = {}) {
     tbody.setAttribute("aria-busy", "true");
   }
   if (showLoadingHint) {
-    setBoardLoadingState(true);
+    setBoardLoadingHint(true);
   }
 
   try {
@@ -576,7 +576,7 @@ async function refreshDepartures({ retried, showLoadingHint = true } = {}) {
       tbody.removeAttribute("aria-busy");
     }
     if (showLoadingHint) {
-      setBoardLoadingState(false);
+      setBoardLoadingHint(false);
     }
     publishEmbedState();
   }
