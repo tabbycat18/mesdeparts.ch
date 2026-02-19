@@ -90,7 +90,7 @@
 }
 
 #header-controls2-menu-toggle {
-  transform: translateY(30px);
+  transform: translateY(30px) rotate(90deg) scale(1.4);
 }
 
 .hc2__iconBtn,
