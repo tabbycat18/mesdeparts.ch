@@ -89,6 +89,10 @@
   padding-right: env(safe-area-inset-right, 0px);
 }
 
+#header-controls2-menu-toggle {
+  transform: translateY(5px);
+}
+
 .hc2__iconBtn,
 .hc2__actionBtn {
   width: 44px;
