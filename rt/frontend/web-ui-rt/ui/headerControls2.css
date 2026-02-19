@@ -1030,6 +1030,11 @@
   }
 }
 
+/* === Sheet footer buttons === */
+.hc2__sheetFooter .hc2__primary {
+  width: auto;
+}
+
 /* === Dual embed mode: hide controls panel, keep clock + title only === */
 html.dual-embed .hc2__controls,
 html.dual-embed .hc2__metaActions {
