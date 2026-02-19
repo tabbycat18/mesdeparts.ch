@@ -1318,7 +1318,11 @@ body {
   letter-spacing: 0.04em;
 }
 
-
+/* Rail replacement buses (EV) */
+.line-ev {
+  background: #e84f10;
+  color: #000000;
+}
 
 /* ------------------------------------------------------------------ */
 /* ⚠️ LEGACY FALLBACK
