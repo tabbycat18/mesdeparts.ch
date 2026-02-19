@@ -3,13 +3,14 @@ import assert from "node:assert/strict";
 import {
   buildDeparturesGrouped,
   classifyMode,
+  computeDeltaMinutes,
   fetchStationSuggestions,
   fetchStationboardRaw,
   detectNetworkFromStation,
   fetchJourneyDetails,
   parseApiDate,
 } from "../logic.v2025-02-19.js";
-import { appState, VIEW_MODE_LINE } from "../state.v2025-02-19.js";
+import { appState, VIEW_MODE_LINE, VIEW_MODE_TIME } from "../state.v2025-02-19.js";
 
 // classifyMode should categorize common transport codes
 assert.equal(classifyMode("IC"), "train");
@@ -21,6 +22,17 @@ assert.equal(classifyMode("T"), "bus"); // tram grouped with bus
 const parsed = parseApiDate("2025-11-25T21:35:00+0100");
 assert.ok(parsed instanceof Date);
 assert.equal(parsed.toISOString(), "2025-11-25T20:35:00.000Z");
+
+// shared delta helper should return signed minutes
+assert.equal(
+  computeDeltaMinutes("2026-02-19T12:00:00+0100", "2026-02-19T12:03:00+0100"),
+  3,
+);
+assert.equal(
+  computeDeltaMinutes("2026-02-19T12:00:00+0100", "2026-02-19T11:58:00+0100"),
+  -2,
+);
+assert.equal(computeDeltaMinutes("2026-02-19T12:00:00+0100", null), null);
 
 // detectNetworkFromStation should pick up city-specific networks
 assert.equal(detectNetworkFromStation("Lausanne, gare"), "tl");
@@ -108,6 +120,140 @@ assert.equal(detectNetworkFromStation("Zurich HB"), "vbz");
     assert.equal(String(detail?.section?.journey?.number || ""), "805");
   } finally {
     globalThis.fetch = originalFetch;
+  }
+}
+
+// realtime delta regression harness:
+// Lausanne / Geneva / Zurich must follow one render rule for delay/early/cancelled.
+{
+  const previous = {
+    station: appState.STATION,
+    stationId: appState.stationId,
+    trainFilter: appState.trainServiceFilter,
+    platformFilter: appState.platformFilter,
+    lineFilter: appState.lineFilter,
+    favoritesOnly: appState.favoritesOnly,
+    lastPlatforms: appState.lastPlatforms,
+  };
+
+  const samples = [
+    { id: "Parent8501120", station: "Lausanne, Motte", category: "B", operator: "TL" },
+    { id: "Parent8587057", station: "Genève, Rive", category: "T", operator: "TPG" },
+    { id: "Parent8503000", station: "Zürich, Bellevue", category: "T", operator: "VBZ" },
+  ];
+
+  const nowBase = Date.now() + 8 * 60 * 1000;
+  const deltas = [0, 1, 2, -1, -2, 3, null, 5, -3, 0];
+
+  const mkIso = (ms) => new Date(ms).toISOString();
+
+  function buildEntry({ idx, category, operator, delta, cancelled = false }) {
+    const scheduledMs = nowBase + idx * 3 * 60 * 1000;
+    const realtimeMs =
+      delta == null ? null : scheduledMs + Number(delta) * 60 * 1000;
+    return {
+      category,
+      number: String((idx % 4) + 1),
+      name: String((idx % 4) + 1),
+      operator,
+      to: `Destination ${idx + 1}`,
+      source: "scheduled",
+      tags: [],
+      stop: {
+        departure: mkIso(scheduledMs),
+        platform: `${(idx % 3) + 1}`,
+        delay: delta,
+        prognosis: {
+          departure: realtimeMs == null ? null : mkIso(realtimeMs),
+          delay: delta,
+          status: cancelled ? "CANCELLED" : "OK",
+          cancelled,
+        },
+        cancelled,
+      },
+      cancelled,
+    };
+  }
+
+  try {
+    for (const sample of samples) {
+      appState.STATION = sample.station;
+      appState.stationId = sample.id;
+      appState.trainServiceFilter = "train_all";
+      appState.platformFilter = null;
+      appState.lineFilter = null;
+      appState.favoritesOnly = false;
+      appState.lastPlatforms = {};
+
+      const stationboard = deltas.map((delta, idx) =>
+        buildEntry({
+          idx,
+          category: sample.category,
+          operator: sample.operator,
+          delta,
+          cancelled: idx === 8,
+        }),
+      );
+
+      const rows = buildDeparturesGrouped({ stationboard }, VIEW_MODE_TIME)
+        .filter((row) => row.mode === "bus")
+        .slice(0, 10);
+
+      console.log(
+        "[rt-delta-harness]",
+        JSON.stringify(
+          {
+            stationId: sample.id,
+            station: sample.station,
+            sample: rows.map((r) => ({
+              line: r.line,
+              delayMin: r.delayMin ?? null,
+              earlyMin: r.earlyMin ?? null,
+              status: r.status ?? null,
+              remark: r.remark ?? "",
+            })),
+          },
+          null,
+          2,
+        ),
+      );
+
+      for (const row of rows) {
+        if (row.status === "cancelled") {
+          assert.equal(String(row.remark || "").length > 0, true);
+          continue;
+        }
+        if (typeof row.delayMin === "number" && row.delayMin > 1) {
+          assert.equal(row.status, "delay");
+          assert.equal(String(row.remark || "").toLowerCase().includes("retard"), true);
+          continue;
+        }
+        if (typeof row.delayMin === "number" && row.delayMin < -1) {
+          assert.equal(row.status, "early");
+          assert.equal(String(row.remark || "").toLowerCase().includes("avance"), true);
+          continue;
+        }
+        if (typeof row.delayMin === "number" && Math.abs(row.delayMin) <= 1) {
+          assert.equal(row.status, null);
+          assert.equal(String(row.remark || ""), "");
+          continue;
+        }
+        assert.equal(row.status, null);
+      }
+
+      const hasNegative = rows.some((row) => typeof row.delayMin === "number" && row.delayMin < 0);
+      if (hasNegative) {
+        assert.equal(rows.some((row) => row.status === "early"), true);
+      }
+    }
+  } finally {
+    appState.STATION = previous.station;
+    appState.stationId = previous.stationId;
+    appState.trainServiceFilter = previous.trainFilter;
+    appState.platformFilter = previous.platformFilter;
+    appState.lineFilter = previous.lineFilter;
+    appState.favoritesOnly = previous.favoritesOnly;
+    appState.lastPlatforms = previous.lastPlatforms;
   }
 }
 

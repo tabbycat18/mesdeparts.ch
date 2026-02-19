@@ -76,8 +76,8 @@ body {
 
 .version-tag {
   position: absolute;
-  top: 6px;
-  right: 8px;
+  top: calc(6px + env(safe-area-inset-top, 0px));
+  right: calc(8px + env(safe-area-inset-right, 0px));
   font-size: 0.58rem;
   font-weight: 600;
   letter-spacing: 0.05em;
@@ -91,6 +91,7 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  z-index: 5;
 }
 
 .mobile-fullscreen-wrapper {
@@ -5531,5 +5532,18 @@ body.dual-embed .board-header {
   .hc2-language-row {
     flex-direction: column;
     align-items: flex-start;
+  }
+}
+
+/* iOS Safari zoom-on-focus prevention:
+   keep stop-search inputs at >=16px on phone-sized viewports. */
+@media (max-width: 767px) {
+  #station-input,
+  #station-input-left,
+  #station-input-right,
+  .station-input-wrapper input,
+  .searchInput__field {
+    font-size: 16px !important;
+    line-height: 1.28;
   }
 }

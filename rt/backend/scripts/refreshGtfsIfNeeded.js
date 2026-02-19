@@ -13,6 +13,11 @@ import { Client } from "pg";
 
 import { fetchTripUpdatesMeta } from "./getRtFeedVersion.js";
 import { fetchServiceAlertsMeta } from "./fetchAlertsFeedMeta.js";
+import {
+  ensureAlignmentAuditTables,
+  insertStaticIngestLog,
+  fetchCurrentStaticSnapshot,
+} from "../src/audit/alignmentLogs.js";
 
 const STATIC_PERMALINK = "https://data.opentransportdata.swiss/fr/dataset/timetable-2026-gtfs2020/permalink";
 const REQUIRED_FILES = [
@@ -305,6 +310,8 @@ async function run() {
   await client.connect();
 
   try {
+    await ensureAlignmentAuditTables(client);
+
     const dbVersion = await getDbFeedVersion(client);
 
     if (dbVersion === rtVersion) {
@@ -338,6 +345,25 @@ async function run() {
     await setDbFeedVersion(client, rtVersion);
     await upsertFeedMeta(client, "service_alerts", rtVersion, alertsMeta.headerTimestamp);
     await upsertFeedMeta(client, "trip_updates", rtVersion, tripMeta.headerTimestamp);
+
+    // Log static ingest metadata for alignment auditing
+    try {
+      const snap = await fetchCurrentStaticSnapshot(client);
+      await insertStaticIngestLog(client, {
+        feedName: "opentransportdata_gtfs_static",
+        feedVersion: rtVersion,
+        startDate: snap?.start_date || null,
+        endDate: snap?.end_date || null,
+        stopsCount: snap?.stops_count || null,
+        routesCount: snap?.routes_count || null,
+        tripsCount: snap?.trips_count || null,
+        stopTimesCount: snap?.stop_times_count || null,
+        notes: `refreshGtfsIfNeeded: prev_version=${dbVersion}`,
+      });
+      console.log(`[refresh] logged static ingest to gtfs_static_ingest_log`);
+    } catch (logErr) {
+      console.warn(`[refresh] non-fatal: failed to log static ingest:`, logErr?.message || logErr);
+    }
 
     console.log(`[refresh] updated gtfs_current_feed_version=${rtVersion}`);
   } finally {

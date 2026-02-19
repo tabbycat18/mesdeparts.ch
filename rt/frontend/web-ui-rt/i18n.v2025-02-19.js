@@ -969,7 +969,6 @@ export function applyStaticTranslations() {
     ["#favorites-only-label", "filterFavoritesLabel"],
     ["#favorites-popover-title", "filterFavoritesTitle"],
     ["#favorites-manage", "filterManageFavorites"],
-    ["#favorites-delete", "favoritesDelete"],
     ["#filters-reset-inline", "filterReset"],
     ["#filters-reset", "filterReset"],
     ["#filters-apply", "filterApply"],

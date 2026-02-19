@@ -1,6 +1,7 @@
 // backend/loaders/loadRealtime.js
 import { pool } from "../db.js";
 import { fetchTripUpdates } from "../src/loaders/fetchTripUpdates.js";
+import { insertRtPollLog, ensureAlignmentAuditTables } from "../src/audit/alignmentLogs.js";
 
 // Set DEBUG_RT=1 if you want logs
 const DEBUG_RT = process.env.DEBUG_RT === "1";
@@ -274,6 +275,7 @@ function getUpdatedEpoch(stu) {
  * Fetch the GTFS-RT trip-updates feed through the M1 wrapper.
  */
 export async function fetchGtfsRealtimeFeed() {
+  const polledAt = new Date();
   const data = await fetchTripUpdates();
 
   if (DEBUG_RT) {
@@ -286,6 +288,13 @@ export async function fetchGtfsRealtimeFeed() {
     console.log("[GTFS-RT] feed keys:", keys);
     console.log("[GTFS-RT] entity count:", entityCount);
   }
+
+  // Fire-and-forget: log RT poll + trip-update snapshot for alignment auditing.
+  void ensureAlignmentAuditTables(pool)
+    .then(() => insertRtPollLog(pool, { polledAt, feedName: "trip_updates", feed: data }))
+    .catch((err) => {
+      if (DEBUG_RT) console.warn("[GTFS-RT] insertRtPollLog failed", err?.message || err);
+    });
 
   return data;
 }

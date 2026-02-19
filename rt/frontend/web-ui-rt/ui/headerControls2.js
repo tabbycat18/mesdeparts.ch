@@ -40,6 +40,27 @@ const SAVE_LABELS = {
   en: { ready: "Save this stop", saved: "Stop already saved" },
 };
 
+const TRAIN_SEGMENT_VARIANTS = {
+  all: {
+    fr: { full: "Tous", mid: "Tous", short: "Tous", tiny: "T" },
+    de: { full: "Alle", mid: "Alle", short: "Alle", tiny: "A" },
+    it: { full: "Tutti", mid: "Tutti", short: "Tutti", tiny: "T" },
+    en: { full: "All", mid: "All", short: "All", tiny: "A" },
+  },
+  regional: {
+    fr: { full: "Régional", mid: "Rég.", short: "Rég.", tiny: "R" },
+    de: { full: "Regional", mid: "Reg.", short: "Reg.", tiny: "R" },
+    it: { full: "Regionale", mid: "Reg.", short: "Reg.", tiny: "R" },
+    en: { full: "Regional", mid: "Reg.", short: "Reg.", tiny: "R" },
+  },
+  longDistance: {
+    fr: { full: "Grande ligne", mid: "Gde ligne", short: "Gde.", tiny: "GL" },
+    de: { full: "Fernverkehr", mid: "Fernverk.", short: "Fern.", tiny: "FV" },
+    it: { full: "Lunga percorrenza", mid: "Lunga perc.", short: "Lunga.", tiny: "LP" },
+    en: { full: "Long distance", mid: "Long dist.", short: "Long.", tiny: "LD" },
+  },
+};
+
 const state = {
   initialized: false,
   mountEl: null,
@@ -66,13 +87,16 @@ const state = {
   suggestions: [],
   suggestionsDebounce: null,
   currentStop: { id: null, name: "" },
-  draftFilters: {
-    platforms: [],
-    lines: [],
-    hideDeparture: false,
+  // Single source of truth for filters in this subsystem.
+  filterState: {
+    selectedPlatforms: "ALL", // "ALL" | Set<string>
+    selectedLines: "ALL", // "ALL" | Set<string>
+    hideDepartureBus: false,
   },
   statusTimer: null,
   controlsAnimationTimer: null,
+  segmentResizeRaf: null,
+  windowResizeHandler: null,
   favoritesOpener: null,
   inertRoot: null,
 };
@@ -143,13 +167,13 @@ function createTemplate() {
             class="hc2__iconBtn"
             data-action="info"
             type="button"
-            aria-label="${t("dualInfoLabel")}"
-            title="${t("dualInfoLabel")}"
+            aria-label="Info"
+            title="Info"
           >
             <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
               <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"></circle>
-              <line x1="12" y1="11" x2="12" y2="17" stroke="currentColor" stroke-width="2" stroke-linecap="round"></line>
-              <circle cx="12" cy="8" r="1.2" fill="currentColor"></circle>
+              <line x1="12" y1="11" x2="12" y2="16.7" stroke="currentColor" stroke-width="2" stroke-linecap="round"></line>
+              <circle cx="12" cy="7.6" r="1.2" fill="currentColor"></circle>
             </svg>
           </button>
           <button
@@ -171,7 +195,7 @@ function createTemplate() {
         </div>
       </div>
 
-      <div id="header-controls2-panel" class="hc2__controls" hidden aria-label="Header Controls 2">
+      <div id="header-controls2-panel" class="hc2__controls is-collapsed" aria-label="Header Controls 2" aria-hidden="true">
         <label for="station-input" class="sr-only">${t("searchStop")}</label>
         <div class="hc2__search">
           <span class="hc2__searchIcon" aria-hidden="true">
@@ -252,39 +276,53 @@ function createTemplate() {
 
         <ul id="station-suggestions" class="hc2__suggestions"></ul>
 
-        <div class="hc2__row">
-          <div id="view-section-label" class="hc2__rowLabel">${t("viewSectionLabel")}</div>
-          <div id="view-segment" class="hc2__segment"></div>
-        </div>
-
-        <div class="hc2__row hc2__rowDual">
-          <a
-            id="dual-board-link"
-            class="hc2__pill"
-            href="dual-board.html"
-            target="_blank"
-            rel="noopener"
-            aria-label="${t("dualBoardOpen")}"
-          >
-            <span aria-hidden="true">
-              <svg viewBox="0 0 24 24" focusable="false">
-                <rect x="5" y="6" width="6" height="12" rx="2" fill="currentColor"></rect>
-                <rect x="13" y="6" width="6" height="12" rx="2" fill="currentColor"></rect>
-              </svg>
-            </span>
-            <span id="dual-board-label">${t("dualBoardLabel")}</span>
-          </a>
-          <button
-            id="filters-open"
-            class="hc2__pill"
-            data-action="filters"
-            type="button"
-            aria-expanded="false"
-            aria-controls="filters-popover"
-          >
-            <span id="filters-open-label">${t("filterButton")}</span>
-          </button>
-          <button id="filters-reset-inline" class="hc2__linkBtn is-hidden" type="button">${t("filterReset")}</button>
+        <div class="hc2__row hc2__displayRow">
+          <div id="view-section-label" class="hc2__rowLabel hc2__displayLabel">${t("viewSectionLabel")}</div>
+          <div class="hc2__displayControls">
+            <div class="hc2__displayLeft">
+              <div id="view-segment" class="hc2__segment"></div>
+            </div>
+            <div class="hc2__displayRight hc2__rowDual">
+              <a
+                id="dual-board-link"
+                class="hc2__pill"
+                href="dual-board.html"
+                target="_blank"
+                rel="noopener"
+                aria-label="${t("dualBoardOpen")}"
+              >
+                <span aria-hidden="true">
+                  <svg viewBox="0 0 24 24" focusable="false">
+                    <rect x="5" y="6" width="6" height="12" rx="2" fill="currentColor"></rect>
+                    <rect x="13" y="6" width="6" height="12" rx="2" fill="currentColor"></rect>
+                  </svg>
+                </span>
+                <span id="dual-board-label">${t("dualBoardLabel")}</span>
+              </a>
+              <button
+                id="filters-open"
+                class="hc2__pill"
+                data-action="filters"
+                type="button"
+                aria-expanded="false"
+                aria-controls="filters-popover"
+              >
+                <span class="hc2__pillIcon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" focusable="false">
+                    <path
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      d="M4 6h16l-6.4 7.1v4.9l-3.2 1.8v-6.7z"
+                    />
+                  </svg>
+                </span>
+                <span id="filters-open-label">${t("filterButton")}</span>
+              </button>
+            </div>
+          </div>
         </div>
 
         <div class="hc2__row hc2__rowLang">
@@ -293,6 +331,11 @@ function createTemplate() {
         </div>
 
         <div id="loading-hint" class="loading-hint" role="status" aria-live="polite"></div>
+      </div>
+
+      <div id="hc2-served-lines" class="hc2__served" hidden>
+        <span id="hc2-served-lines-label" class="hc2__servedLabel">${t("servedByLines")}</span>
+        <div id="hc2-served-lines-container" class="hc2__servedChips"></div>
       </div>
     </header>
   `;
@@ -336,9 +379,6 @@ function createGlobalSheetsTemplate() {
       <footer class="hc2__sheetFooter">
         <button id="favorites-manage" class="hc2__secondary" data-action="manage" type="button">
           ${t("filterManageFavorites")}
-        </button>
-        <button id="favorites-delete" class="hc2__danger" data-action="delete" type="button" disabled>
-          ${t("favoritesDelete")}
         </button>
       </footer>
     </section>
@@ -427,7 +467,6 @@ function cacheRefs() {
     favoritesStatus: dq("favorites-status"),
     favoritesSave: dq("favorites-save-current"),
     favoritesManage: dq("favorites-manage"),
-    favoritesDelete: dq("favorites-delete"),
     favoritesList: dq("favorites-chip-list"),
     favoritesEmpty: dq("favorites-empty"),
 
@@ -445,6 +484,10 @@ function cacheRefs() {
     hideDeparture: dq("filters-hide-departure"),
 
     viewSegment: q("view-segment"),
+    displayLeft: state.mountEl.querySelector(".hc2__displayLeft"),
+    servedLinesWrap: q("hc2-served-lines"),
+    servedLinesLabel: q("hc2-served-lines-label"),
+    servedLinesContainer: q("hc2-served-lines-container"),
     backdrop: dq("favorites-backdrop"),
     languageSelect: q("language-select"),
   };
@@ -549,30 +592,46 @@ function syncCollapseUi() {
   if (!panel || !btn) return;
 
   if (state.controlsAnimationTimer) {
-    clearTimeout(state.controlsAnimationTimer);
+    cancelAnimationFrame(state.controlsAnimationTimer);
     state.controlsAnimationTimer = null;
   }
 
   if (state.controlsOpen) {
-    panel.hidden = false;
-    panel.classList.remove("is-closing");
-    requestAnimationFrame(() => {
-      panel.classList.add("is-open");
+    const target = Math.max(panel.scrollHeight || 0, 1);
+    panel.setAttribute("aria-hidden", "false");
+    panel.classList.remove("is-collapsed");
+    panel.classList.add("is-open");
+    panel.style.height = "0px";
+    // Flush start frame before animating to measured end height.
+    panel.getBoundingClientRect();
+    state.controlsAnimationTimer = requestAnimationFrame(() => {
+      panel.style.height = `${target}px`;
+      state.controlsAnimationTimer = null;
     });
   } else {
+    const current = Math.max(panel.getBoundingClientRect().height || panel.scrollHeight || 0, 1);
+    panel.style.height = `${current}px`;
     panel.classList.remove("is-open");
-    panel.classList.add("is-closing");
-    state.controlsAnimationTimer = setTimeout(() => {
-      panel.hidden = true;
-      panel.classList.remove("is-closing");
+    panel.classList.add("is-collapsed");
+    panel.setAttribute("aria-hidden", "true");
+    // Flush current frame before collapsing to 0.
+    panel.getBoundingClientRect();
+    state.controlsAnimationTimer = requestAnimationFrame(() => {
+      panel.style.height = "0px";
       state.controlsAnimationTimer = null;
-    }, 220);
+    });
   }
 
   btn.setAttribute("aria-expanded", state.controlsOpen ? "true" : "false");
   const txt = t(state.controlsOpen ? "quickControlsHide" : "quickControlsShow");
   btn.setAttribute("aria-label", txt);
   if (label) label.textContent = txt;
+}
+
+function syncOpenControlsHeight() {
+  const panel = state.refs.panel;
+  if (!panel || !state.controlsOpen) return;
+  panel.style.height = `${Math.max(panel.scrollHeight || 0, 1)}px`;
 }
 
 function openControls() {
@@ -712,7 +771,7 @@ function toggleFavorites() {
 function openFilters() {
   const { filtersSheet, filtersOpen, backdrop } = state.refs;
   closeFavorites({ restoreFocus: false });
-  syncDraftFiltersFromState();
+  syncFilterStateFromAppState();
   renderFiltersSheet();
   if (filtersSheet) {
     filtersSheet.hidden = false;
@@ -720,11 +779,6 @@ function openFilters() {
   filtersOpen?.setAttribute("aria-expanded", "true");
   if (backdrop) backdrop.hidden = false;
   state.filtersOpen = true;
-}
-
-function closeFiltersAndApply() {
-  applyDraftFilters();
-  closeFilters();
 }
 
 function closeAllSheets({ restoreFocus = true } = {}) {
@@ -849,11 +903,6 @@ function deleteFavorite(id) {
   persistFavorites();
   renderFavoritesSheet();
   updateSaveButton();
-}
-
-function deleteSelectedFavorite() {
-  if (!state.selectedFavId) return;
-  deleteFavorite(state.selectedFavId);
 }
 
 function renderSuggestions(items) {
@@ -989,16 +1038,61 @@ function callControlsChanged() {
   }
 }
 
+function trainSegmentDensity() {
+  const leftWidth = state.refs.displayLeft?.clientWidth || state.refs.viewSegment?.clientWidth || 0;
+  const viewportWidth = typeof window !== "undefined" ? window.innerWidth || 9999 : 9999;
+
+  if (viewportWidth <= 360 || leftWidth <= 200) return "tiny";
+  if (viewportWidth <= 420 || leftWidth <= 270) return "short";
+  if (leftWidth <= 340) return "mid";
+  return "full";
+}
+
+function trainVariant(variantKey, density) {
+  const lang = langCode();
+  const byVariant = TRAIN_SEGMENT_VARIANTS[variantKey] || TRAIN_SEGMENT_VARIANTS.all;
+  const localized = byVariant[lang] || byVariant.en || byVariant.fr;
+  return localized[density] || localized.full;
+}
+
+function plainRegionalLabel() {
+  return String(t("trainFilterRegional") || "")
+    .replace(/\s*\(S\/R\)\s*/gi, "")
+    .trim();
+}
+
 function renderViewSegment() {
   const mount = state.refs.viewSegment;
   if (!mount) return;
 
   const trainMode = !!appState.lastBoardIsTrain;
+  const density = trainMode ? trainSegmentDensity() : "full";
+  mount.dataset.density = density;
+  mount.classList.toggle("hc2__segment--train", trainMode);
+
+  const regionalAria = t("trainFilterRegional");
+  const regionalTitle = plainRegionalLabel() || regionalAria;
   const options = trainMode
     ? [
-        { key: TRAIN_FILTER_ALL, label: t("trainFilterAll") },
-        { key: TRAIN_FILTER_REGIONAL, label: t("trainFilterRegional") },
-        { key: TRAIN_FILTER_LONG_DISTANCE, label: t("trainFilterLongDistance") },
+        {
+          key: TRAIN_FILTER_ALL,
+          label: trainVariant("all", density),
+          fullLabel: trainVariant("all", "full"),
+          ariaLabel: trainVariant("all", "full"),
+        },
+        {
+          key: TRAIN_FILTER_REGIONAL,
+          label: trainVariant("regional", density),
+          fullLabel: trainVariant("regional", "full"),
+          ariaLabel: regionalAria,
+          title: regionalTitle,
+        },
+        {
+          key: TRAIN_FILTER_LONG_DISTANCE,
+          label: trainVariant("longDistance", density),
+          fullLabel: trainVariant("longDistance", "full"),
+          ariaLabel: trainVariant("longDistance", "full"),
+        },
       ]
     : [
         { key: VIEW_MODE_LINE, label: t("viewOptionLine") },
@@ -1022,7 +1116,17 @@ function renderViewSegment() {
     const isActive = opt.key === active;
     btn.classList.toggle("is-active", isActive);
     btn.setAttribute("aria-pressed", isActive ? "true" : "false");
-    btn.textContent = opt.label;
+    if (trainMode) {
+      btn.setAttribute("aria-label", opt.ariaLabel || opt.fullLabel || opt.label);
+      btn.title = opt.title || opt.fullLabel || opt.ariaLabel || opt.label;
+    } else {
+      btn.removeAttribute("aria-label");
+      btn.removeAttribute("title");
+    }
+    const label = document.createElement("span");
+    label.className = "hc2__segmentBtnLabel";
+    label.textContent = opt.label;
+    btn.appendChild(label);
 
     btn.addEventListener("click", () => {
       if (trainMode) {
@@ -1046,9 +1150,15 @@ function renderViewSegment() {
 }
 
 function filterSummaryParts() {
-  const platformFilters = normalizeArray(appState.platformFilter);
-  const lineFilters = normalizeArray(appState.lineFilter);
-  const hideDeparture = !appState.lastBoardIsTrain && !!appState.hideBusDeparture;
+  const platformFilters =
+    state.filterState.selectedPlatforms === "ALL"
+      ? []
+      : Array.from(state.filterState.selectedPlatforms);
+  const lineFilters =
+    state.filterState.selectedLines === "ALL"
+      ? []
+      : Array.from(state.filterState.selectedLines);
+  const hideDeparture = !appState.lastBoardIsTrain && !!state.filterState.hideDepartureBus;
 
   const parts = [];
   if (platformFilters.length) parts.push(`${t("filterPlatformsShort")} ${platformFilters.join(", ")}`);
@@ -1061,70 +1171,211 @@ function filterSummaryParts() {
 function renderFilterSummary() {
   const label = state.refs.filtersLabel;
   const resetInline = state.refs.filtersResetInline;
+  const filtersBtn = state.refs.filtersOpen;
   if (!label) return;
 
   const parts = filterSummaryParts();
   if (!parts.length) {
     label.textContent = t("filterButton");
+    if (filtersBtn) filtersBtn.title = t("filterButton");
     resetInline?.classList.add("is-hidden");
     return;
   }
 
-  label.textContent = parts.join(" • ");
+  label.textContent = `${t("filterButton")} (${parts.length})`;
+  if (filtersBtn) filtersBtn.title = parts.join(" • ");
   resetInline?.classList.remove("is-hidden");
 }
 
-function syncDraftFiltersFromState() {
+function sortedLineOptions() {
+  return (appState.lineOptions || [])
+    .map((v) => String(v || "").trim())
+    .filter(Boolean)
+    .sort((a, b) => {
+      const na = parseInt(String(a).replace(/\D/g, ""), 10) || 0;
+      const nb = parseInt(String(b).replace(/\D/g, ""), 10) || 0;
+      if (na !== nb) return na - nb;
+      return String(a).localeCompare(String(b), "fr-CH");
+    });
+}
+
+function servedLineBadgeClass(lineId) {
+  const raw = String(lineId || "").trim();
+  if (!raw) return "line-badge line-generic";
+
+  const id = raw.toUpperCase();
+  const idForClass = id.replace(/\+/g, "PLUS");
+  const networkMap = appState.lineNetworks || {};
+  const network =
+    networkMap[raw] ||
+    networkMap[id] ||
+    networkMap[raw.toLowerCase()] ||
+    appState.lastBoardNetwork ||
+    appState.currentNetwork ||
+    "";
+  const net = String(network || "").toLowerCase();
+
+  if (net === "postauto") {
+    return "line-badge line-postbus";
+  }
+
+  const classes = ["line-badge"];
+  if (id.startsWith("N")) classes.push("line-night");
+  if (net) classes.push(`line-${net}-${idForClass}`);
+  else classes.push(`line-generic-${idForClass}`);
+  return classes.join(" ");
+}
+
+function selectionFromAppState(value, allowed) {
+  const normalized = normalizeToAllowed(value, allowed);
+  if (!normalized.length) return "ALL";
+  return new Set(normalized);
+}
+
+function selectionToAppFilter(selection) {
+  if (selection === "ALL") return null;
+  const values = Array.from(selection || []).filter(Boolean);
+  return values.length ? values : null;
+}
+
+function normalizeSelection(selection, allowed) {
+  if (selection === "ALL") return "ALL";
+  const next = new Set(Array.from(selection || []).filter((v) => allowed.includes(v)));
+  return next.size ? next : "ALL";
+}
+
+function toggleSelection(type, value) {
+  const current = state.filterState[type];
+  const next = current === "ALL" ? new Set() : new Set(current);
+  if (next.has(value)) next.delete(value);
+  else next.add(value);
+  state.filterState[type] = next.size ? next : "ALL";
+}
+
+function syncFilterStateFromAppState() {
   const platformAllowed = (appState.platformOptions || []).map(String);
   const lineAllowed = (appState.lineOptions || []).map(String);
 
-  state.draftFilters.platforms = normalizeToAllowed(appState.platformFilter, platformAllowed);
-  state.draftFilters.lines = normalizeToAllowed(appState.lineFilter, lineAllowed);
-  state.draftFilters.hideDeparture = !!appState.hideBusDeparture;
+  state.filterState.selectedPlatforms = selectionFromAppState(appState.platformFilter, platformAllowed);
+  state.filterState.selectedLines = selectionFromAppState(appState.lineFilter, lineAllowed);
+  state.filterState.hideDepartureBus = !!appState.hideBusDeparture;
 }
 
-function toggleDraft(type, value) {
-  const list = state.draftFilters[type];
-  const idx = list.indexOf(value);
-  if (idx >= 0) list.splice(idx, 1);
-  else list.push(value);
+function applyFilterState({ notify = true } = {}) {
+  appState.platformFilter = selectionToAppFilter(state.filterState.selectedPlatforms);
+  appState.lineFilter = selectionToAppFilter(state.filterState.selectedLines);
+  appState.hideBusDeparture = !!state.filterState.hideDepartureBus;
+  renderFilterSummary();
+  renderServedLinesChips();
+  if (notify) callControlsChanged();
 }
 
-function createChip({ text, active, onClick }) {
+function setServedLineSelection(lineId) {
+  const clean = String(lineId || "").trim();
+  const allowed = sortedLineOptions();
+  if (!clean || !allowed.includes(clean)) return;
+
+  const current = state.filterState.selectedLines;
+  const singleSelected =
+    current !== "ALL" &&
+    current.size === 1 &&
+    current.has(clean);
+
+  state.filterState.selectedLines = singleSelected ? "ALL" : new Set([clean]);
+  applyFilterState();
+  renderFiltersSheet();
+}
+
+function renderServedLinesChips() {
+  const wrap = state.refs.servedLinesWrap;
+  const label = state.refs.servedLinesLabel;
+  const container = state.refs.servedLinesContainer;
+  if (!wrap || !label || !container) return;
+
+  const lines = sortedLineOptions();
+  const selection = state.filterState.selectedLines;
+  const active = selection === "ALL" ? new Set() : new Set(selection);
+
+  label.textContent = t("servedByLines");
+  wrap.hidden = lines.length === 0 || !!appState.lastBoardIsTrain;
+  container.innerHTML = "";
+  if (wrap.hidden) return;
+
+  const makeChip = ({ text, activeState, onClick, title, className = "" }) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = `hc2__servedChip ${className}`.trim();
+    btn.classList.toggle("is-active", !!activeState);
+    btn.setAttribute("aria-pressed", activeState ? "true" : "false");
+    if (title) btn.title = title;
+    btn.textContent = text;
+    btn.addEventListener("click", onClick);
+    return btn;
+  };
+
+  lines.forEach((lineId) => {
+    const isActive = active.has(lineId);
+    container.appendChild(
+      makeChip({
+        text: lineId,
+        activeState: isActive,
+        title: `${t("filterLines")}: ${lineId}`,
+        className: `${servedLineBadgeClass(lineId)} is-clickable ${isActive ? "is-active-filter" : ""}`,
+        onClick: () => setServedLineSelection(lineId),
+      }),
+    );
+  });
+}
+
+function createChip({ text, active, onClick, className = "hc2__chip", activeClassName = "is-active", title = "" }) {
   const chip = document.createElement("button");
   chip.type = "button";
-  chip.className = "hc2__chip";
-  chip.classList.toggle("is-active", !!active);
+  chip.className = className;
+  if (activeClassName) chip.classList.toggle(activeClassName, !!active);
   chip.setAttribute("aria-pressed", active ? "true" : "false");
+  if (title) chip.title = title;
   chip.textContent = text;
   chip.addEventListener("click", onClick);
   return chip;
 }
 
-function renderDraftList(container, values, selected, type) {
+function renderSelectionList(container, values, selection, type) {
   if (!container) return;
   container.innerHTML = "";
 
   if (!values.length) return;
 
+  const selectedValues = selection === "ALL" ? [] : Array.from(selection);
+  const isAll = selection === "ALL" || selectedValues.length === 0;
+
   container.appendChild(
     createChip({
       text: t("filterAll"),
-      active: selected.length === 0,
+      active: isAll,
+      className: "hc2__chip hc2__chip--all",
+      activeClassName: "is-active",
       onClick: () => {
-        state.draftFilters[type] = [];
+        state.filterState[type] = "ALL";
+        applyFilterState();
         renderFiltersSheet();
       },
     }),
   );
 
   values.forEach((value) => {
+    const isLineSection = type === "selectedLines";
     container.appendChild(
       createChip({
         text: value,
-        active: selected.includes(value),
+        active: selectedValues.includes(value),
+        className: isLineSection
+          ? `hc2__lineChip ${servedLineBadgeClass(value)} is-clickable`
+          : "hc2__chip",
+        activeClassName: isLineSection ? "is-active-filter" : "is-active",
+        title: isLineSection ? `${t("filterLines")}: ${value}` : "",
         onClick: () => {
-          toggleDraft(type, value);
+          toggleSelection(type, value);
+          applyFilterState();
           renderFiltersSheet();
         },
       }),
@@ -1134,21 +1385,23 @@ function renderDraftList(container, values, selected, type) {
 
 function renderFiltersSheet() {
   const platforms = (appState.platformOptions || []).map(String).filter(Boolean).sort((a, b) => a.localeCompare(b));
-  const lines = (appState.lineOptions || [])
-    .map(String)
-    .filter(Boolean)
-    .sort((a, b) => {
-      const numA = parseInt(String(a).replace(/\D/g, ""), 10) || 0;
-      const numB = parseInt(String(b).replace(/\D/g, ""), 10) || 0;
-      if (numA !== numB) return numA - numB;
-      return String(a).localeCompare(String(b));
-    });
+  const lines = sortedLineOptions();
 
-  state.draftFilters.platforms = normalizeToAllowed(state.draftFilters.platforms, platforms);
-  state.draftFilters.lines = normalizeToAllowed(state.draftFilters.lines, lines);
+  state.filterState.selectedPlatforms = normalizeSelection(state.filterState.selectedPlatforms, platforms);
+  state.filterState.selectedLines = normalizeSelection(state.filterState.selectedLines, lines);
 
-  renderDraftList(state.refs.platformsList, platforms, state.draftFilters.platforms, "platforms");
-  renderDraftList(state.refs.linesList, lines, state.draftFilters.lines, "lines");
+  renderSelectionList(
+    state.refs.platformsList,
+    platforms,
+    state.filterState.selectedPlatforms,
+    "selectedPlatforms",
+  );
+  renderSelectionList(
+    state.refs.linesList,
+    lines,
+    state.filterState.selectedLines,
+    "selectedLines",
+  );
 
   if (state.refs.platformsEmpty) {
     state.refs.platformsEmpty.classList.toggle("is-hidden", platforms.length > 0);
@@ -1158,24 +1411,16 @@ function renderFiltersSheet() {
   }
 
   if (state.refs.hideDeparture) {
-    state.refs.hideDeparture.checked = !!state.draftFilters.hideDeparture;
+    state.refs.hideDeparture.checked = !!state.filterState.hideDepartureBus;
     state.refs.hideDeparture.disabled = !!appState.lastBoardIsTrain;
   }
 }
 
-function applyDraftFilters() {
-  appState.platformFilter = state.draftFilters.platforms.length ? state.draftFilters.platforms.slice() : null;
-  appState.lineFilter = state.draftFilters.lines.length ? state.draftFilters.lines.slice() : null;
-  appState.hideBusDeparture = !!state.draftFilters.hideDeparture;
-
-  renderFilterSummary();
-  callControlsChanged();
-}
-
 function resetAllFilters() {
-  state.draftFilters.platforms = [];
-  state.draftFilters.lines = [];
-  state.draftFilters.hideDeparture = false;
+  state.filterState.selectedPlatforms = "ALL";
+  state.filterState.selectedLines = "ALL";
+  state.filterState.hideDepartureBus = false;
+  applyFilterState();
   renderFiltersSheet();
 }
 
@@ -1195,7 +1440,6 @@ function updateSaveButton() {
 function renderFavoritesSheet() {
   const host = state.refs.favoritesList;
   const empty = state.refs.favoritesEmpty;
-  const deleteBtn = state.refs.favoritesDelete;
   if (!host || !empty) return;
 
   syncFavoritesFromStorage();
@@ -1204,7 +1448,6 @@ function renderFavoritesSheet() {
 
   if (!favorites.length) {
     empty.classList.remove("is-hidden");
-    if (deleteBtn) deleteBtn.disabled = true;
     return;
   }
 
@@ -1239,9 +1482,6 @@ function renderFavoritesSheet() {
     host.appendChild(row);
   });
 
-  if (deleteBtn) {
-    deleteBtn.disabled = !state.selectedFavId;
-  }
 }
 
 function saveCurrentStop() {
@@ -1367,30 +1607,23 @@ function bindEvents() {
   r.favoritesManage?.addEventListener("click", () => {
     setStatus(t("favoritesManageHint"));
   });
-  r.favoritesDelete?.addEventListener("click", () => {
-    deleteSelectedFavorite();
-  });
 
   r.filtersReset?.addEventListener("click", () => {
     resetAllFilters();
   });
 
   r.filtersApply?.addEventListener("click", () => {
-    closeFiltersAndApply();
+    closeFilters();
   });
 
   r.filtersResetInline?.addEventListener("click", () => {
-    appState.platformFilter = null;
-    appState.lineFilter = null;
-    appState.hideBusDeparture = false;
-    syncDraftFiltersFromState();
-    renderFilterSummary();
-    updateHeaderControls2();
-    callControlsChanged();
+    resetAllFilters();
   });
 
   r.hideDeparture?.addEventListener("change", () => {
-    state.draftFilters.hideDeparture = !!r.hideDeparture.checked;
+    state.filterState.hideDepartureBus = !!r.hideDeparture.checked;
+    applyFilterState();
+    renderFiltersSheet();
   });
 
   r.languageSelect?.addEventListener("change", () => {
@@ -1444,6 +1677,23 @@ function bindEvents() {
     clearSuggestions();
     closeAllSheets();
   });
+
+  const onWindowResize = () => {
+    if (state.segmentResizeRaf) {
+      cancelAnimationFrame(state.segmentResizeRaf);
+      state.segmentResizeRaf = null;
+    }
+    state.segmentResizeRaf = requestAnimationFrame(() => {
+      state.segmentResizeRaf = null;
+      renderViewSegment();
+      syncOpenControlsHeight();
+    });
+  };
+  if (state.windowResizeHandler) {
+    window.removeEventListener("resize", state.windowResizeHandler);
+  }
+  state.windowResizeHandler = onWindowResize;
+  window.addEventListener("resize", onWindowResize, { passive: true });
 }
 
 function resolveMountEl(mountEl) {
@@ -1482,7 +1732,7 @@ export function initHeaderControls2({
   mountMarkup();
   renderLanguageSelect();
   restoreCollapsedState();
-  syncDraftFiltersFromState();
+  syncFilterStateFromAppState();
   bindEvents();
 
   state.initialized = true;
@@ -1490,6 +1740,7 @@ export function initHeaderControls2({
   appState._renderViewControls = () => {
     renderViewSegment();
     renderFilterSummary();
+    renderServedLinesChips();
   };
   appState._ensureViewSelectOptions = () => {
     renderViewSegment();
@@ -1526,13 +1777,16 @@ export function updateHeaderControls2({ currentStop, language } = {}) {
     state.refs.stationInput.value = state.currentStop.name || "";
   }
   syncClearButton();
+  syncFilterStateFromAppState();
 
   renderLanguageSelect();
   renderViewSegment();
-  renderFilterSummary();
   renderFiltersSheet();
+  renderFilterSummary();
+  renderServedLinesChips();
   renderFavoritesSheet();
   updateSaveButton();
+  syncOpenControlsHeight();
 
   const filtersAvailable =
     (Array.isArray(appState.platformOptions) && appState.platformOptions.length > 0) ||
