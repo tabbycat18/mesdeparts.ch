@@ -1,6 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+################################################################################
+# ⚠️  DANGEROUS: Legacy direct-live GTFS importer
+################################################################################
+# This script directly truncates and imports into LIVE production tables.
+# It has NO safeguards:
+#   - No stage tables or validation before commit
+#   - No rollback if data validation fails mid-import
+#   - Will cause immediate API downtime if data is malformed
+#
+# DO NOT USE FOR PRODUCTION UPDATES.
+# Use refreshGtfsIfNeeded.js (staged import) instead.
+# This script is kept only for EMERGENCY manual recovery scenarios.
+################################################################################
+
 if [[ -z "${DATABASE_URL:-}" ]]; then
   echo "DATABASE_URL is not set. Export it before running this script." >&2
   exit 1

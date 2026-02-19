@@ -13,7 +13,7 @@ const FILES = [
   "sql/validate_stage.sql",
   "sql/swap_stage_to_live.sql",
   "sql/optimize_stationboard.sql",
-  "scripts/import-gtfs.sh",
+  "scripts/legacy/DANGEROUS-direct-live-import.sh",
   "scripts/importGtfsToStage.sh",
   "src/resolve/resolveStop.js",
   "src/logic/buildStationboard.js",
