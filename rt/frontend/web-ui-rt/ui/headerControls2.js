@@ -193,9 +193,9 @@ function createTemplate() {
           >
             <span id="header-controls2-menu-label" class="sr-only">${t("quickControlsShow")}</span>
             <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-              <circle cx="6" cy="12" r="1.8" fill="currentColor"></circle>
+              <circle cx="4" cy="12" r="1.8" fill="currentColor"></circle>
               <circle cx="12" cy="12" r="1.8" fill="currentColor"></circle>
-              <circle cx="18" cy="12" r="1.8" fill="currentColor"></circle>
+              <circle cx="20" cy="12" r="1.8" fill="currentColor"></circle>
             </svg>
           </button>
         </div>
