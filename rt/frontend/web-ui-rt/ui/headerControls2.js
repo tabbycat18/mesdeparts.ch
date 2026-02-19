@@ -338,8 +338,10 @@ function createTemplate() {
       <div id="loading-hint" class="loading-hint" role="status" aria-live="polite"></div>
 
       <div id="hc2-served-lines" class="hc2__served" hidden>
-        <span id="hc2-served-lines-label" class="hc2__servedLabel">${t("servedByLines")}</span>
-        <div id="hc2-served-lines-container" class="hc2__servedChips"></div>
+        <div class="hc2__servedLeft">
+          <span id="hc2-served-lines-label" class="hc2__servedLabel">${t("servedByLines")}</span>
+          <div id="hc2-served-lines-container" class="hc2__servedChips"></div>
+        </div>
         <button
           id="info-btn"
           class="hc2__iconBtn hc2__servedInfoBtn"
@@ -348,12 +350,7 @@ function createTemplate() {
           aria-label="Info"
           title="Info"
         >
-          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-            <circle cx="12" cy="12" r="9" fill="currentColor" opacity="0.15"></circle>
-            <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"></circle>
-            <line x1="12" y1="11" x2="12" y2="16.7" stroke="currentColor" stroke-width="2" stroke-linecap="round"></line>
-            <circle cx="12" cy="7.6" r="1.2" fill="currentColor"></circle>
-          </svg>
+          <img src="../../assets/info.svg" alt="" aria-hidden="true" class="hc2__servedInfoIcon" />
         </button>
       </div>
     </header>

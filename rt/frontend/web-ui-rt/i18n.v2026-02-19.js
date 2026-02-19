@@ -132,7 +132,7 @@ const TRANSLATIONS = {
     fr: "Départ",
     de: "Abfahrt",
     it: "Partenza",
-    en: "Departure",
+    en: "Departs",
   },
   columnPlatformTrain: {
     fr: "Voie",

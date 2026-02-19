@@ -574,20 +574,29 @@
 .hc2__served {
   display: flex;
   align-items: center;
+  gap: 12px;
+  flex-wrap: nowrap;
+  margin-top: 0px;
+}
+
+.hc2__servedLeft {
+  display: flex;
+  align-items: center;
   gap: 8px;
   flex-wrap: wrap;
-  margin-top: 0px;
-  justify-content: space-between;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .hc2__servedLabel {
   font-size: 0.9rem;
   font-weight: 650;
   color: rgba(245, 248, 255, 0.92);
+  flex-shrink: 0;
 }
 
 .hc2__servedChips {
-  display: inline-flex;
+  display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
@@ -620,8 +629,21 @@
 .hc2__servedInfoBtn {
   background: rgba(255, 255, 255, 0.12) !important;
   border: 1px solid rgba(255, 255, 255, 0.24);
-  flex-shrink: 0;
-  margin-left: auto;
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hc2__servedInfoIcon {
+  width: 20px;
+  height: 20px;
+  display: block;
+  filter: brightness(1.1);
 }
 
 .hc2__backdrop {
