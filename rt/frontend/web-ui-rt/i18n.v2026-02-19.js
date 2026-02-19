@@ -490,15 +490,15 @@ const TRANSLATIONS = {
   },
   viewOptionTime: {
     fr: "Min",
-    de: "Pro Min",
-    it: "Per min",
-    en: "By min",
+    de: "Min",
+    it: "Min",
+    en: "Min",
   },
   viewOptionLine: {
     fr: "Ligne",
-    de: "Nach Linie",
-    it: "Per linea",
-    en: "By line",
+    de: "Linie",
+    it: "Linea",
+    en: "Line",
   },
   trainFilterAll: {
     fr: "Tous",
@@ -519,7 +519,7 @@ const TRANSLATIONS = {
     en: "Long-distance",
   },
   viewSectionLabel: {
-    fr: "Affichage par",
+    fr: "Affichage",
     de: "Anzeige",
     it: "Visualizzazione",
     en: "Display",
