@@ -144,7 +144,7 @@ const TRANSLATIONS = {
     fr: "Quai",
     de: "Kante",
     it: "Banchina",
-    en: "Pl.",
+    en: "Pl",
   },
   columnMinutes: {
     fr: "min",
@@ -336,7 +336,7 @@ const TRANSLATIONS = {
     fr: "Quai",
     de: "Gl.",
     it: "Bin.",
-    en: "Pl.",
+    en: "Pl",
   },
   filterDisplay: {
     fr: "Affichage",

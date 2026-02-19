@@ -81,11 +81,11 @@
   justify-self: end;
   align-self: start;
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 10px;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 4px;
   flex-shrink: 0;
-  padding-top: calc(env(safe-area-inset-top, 0px) + 34px);
+  padding-top: calc(env(safe-area-inset-top, 0px) + 8px);
   padding-right: env(safe-area-inset-right, 0px);
 }
 
@@ -576,7 +576,8 @@
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
-  margin-top: 2px;
+  margin-top: 0px;
+  justify-content: space-between;
 }
 
 .hc2__servedLabel {
@@ -613,6 +614,14 @@
   box-shadow:
     0 0 0 2px rgba(254, 228, 1, 0.95),
     0 0 0 4px rgba(1, 21, 127, 0.6);
+}
+
+/* Info button in served-by-lines row: visible styling */
+.hc2__servedInfoBtn {
+  background: rgba(255, 255, 255, 0.12) !important;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  flex-shrink: 0;
+  margin-left: auto;
 }
 
 .hc2__backdrop {
@@ -889,8 +898,8 @@
   }
 
   .hc2__metaActions {
-    gap: 10px;
-    padding-top: calc(env(safe-area-inset-top, 0px) + 32px);
+    gap: 4px;
+    padding-top: calc(env(safe-area-inset-top, 0px) + 8px);
   }
 
   .hc2__search {
