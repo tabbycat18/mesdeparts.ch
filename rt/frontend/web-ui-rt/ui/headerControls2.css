@@ -647,6 +647,11 @@
   display: block;
 }
 
+.hc2__servedInfoBtn svg {
+  width: 40px !important;
+  height: 40px !important;
+}
+
 .hc2__backdrop {
   position: fixed;
   inset: 0;
