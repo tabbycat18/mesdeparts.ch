@@ -18,6 +18,8 @@ if [[ ! -d "$CLEAN_DIR" ]]; then
 fi
 
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<PSQL
+CREATE SCHEMA IF NOT EXISTS gtfs_import;
+
 TRUNCATE TABLE
   public.gtfs_stop_times_stage,
   public.gtfs_calendar_dates_stage,
@@ -27,8 +29,8 @@ TRUNCATE TABLE
   public.gtfs_stops_stage,
   public.gtfs_agency_stage;
 
-DROP TABLE IF EXISTS _import_agency;
-CREATE TEMP TABLE _import_agency (
+DROP TABLE IF EXISTS gtfs_import._import_agency;
+CREATE UNLOGGED TABLE gtfs_import._import_agency (
   agency_id TEXT,
   agency_name TEXT,
   agency_url TEXT,
@@ -36,18 +38,18 @@ CREATE TEMP TABLE _import_agency (
   agency_lang TEXT,
   agency_phone TEXT
 );
-\\copy _import_agency FROM '${CLEAN_DIR}/agency.txt' WITH (FORMAT csv, HEADER true)
+\\copy gtfs_import._import_agency FROM '${CLEAN_DIR}/agency.txt' WITH (FORMAT csv, HEADER true)
 INSERT INTO public.gtfs_agency_stage (agency_id, agency_name, agency_url, agency_timezone)
 SELECT
   NULLIF(agency_id, ''),
   NULLIF(agency_name, ''),
   NULLIF(agency_url, ''),
   NULLIF(agency_timezone, '')
-FROM _import_agency
+FROM gtfs_import._import_agency
 ON CONFLICT (agency_id) DO NOTHING;
 
-DROP TABLE IF EXISTS _import_stops;
-CREATE TEMP TABLE _import_stops (
+DROP TABLE IF EXISTS gtfs_import._import_stops;
+CREATE UNLOGGED TABLE gtfs_import._import_stops (
   stop_id TEXT,
   stop_name TEXT,
   stop_lat TEXT,
@@ -57,7 +59,7 @@ CREATE TEMP TABLE _import_stops (
   platform_code TEXT,
   original_stop_id TEXT
 );
-\\copy _import_stops FROM '${CLEAN_DIR}/stops.txt' WITH (FORMAT csv, HEADER true)
+\\copy gtfs_import._import_stops FROM '${CLEAN_DIR}/stops.txt' WITH (FORMAT csv, HEADER true)
 DO \$\$
 DECLARE
   cols TEXT;
@@ -109,15 +111,15 @@ BEGIN
     );
 
   EXECUTE format(
-    'INSERT INTO public.gtfs_stops_stage (%s) SELECT %s FROM _import_stops ON CONFLICT (stop_id) DO NOTHING',
+    'INSERT INTO public.gtfs_stops_stage (%s) SELECT %s FROM gtfs_import._import_stops ON CONFLICT (stop_id) DO NOTHING',
     cols,
     exprs
   );
 END
 \$\$;
 
-DROP TABLE IF EXISTS _import_routes;
-CREATE TEMP TABLE _import_routes (
+DROP TABLE IF EXISTS gtfs_import._import_routes;
+CREATE UNLOGGED TABLE gtfs_import._import_routes (
   route_id TEXT,
   agency_id TEXT,
   route_short_name TEXT,
@@ -125,7 +127,7 @@ CREATE TEMP TABLE _import_routes (
   route_desc TEXT,
   route_type TEXT
 );
-\\copy _import_routes FROM '${CLEAN_DIR}/routes.txt' WITH (FORMAT csv, HEADER true)
+\\copy gtfs_import._import_routes FROM '${CLEAN_DIR}/routes.txt' WITH (FORMAT csv, HEADER true)
 DO \$\$
 DECLARE
   cols TEXT;
@@ -171,15 +173,15 @@ BEGIN
     );
 
   EXECUTE format(
-    'INSERT INTO public.gtfs_routes_stage (%s) SELECT %s FROM _import_routes ON CONFLICT (route_id) DO NOTHING',
+    'INSERT INTO public.gtfs_routes_stage (%s) SELECT %s FROM gtfs_import._import_routes ON CONFLICT (route_id) DO NOTHING',
     cols,
     exprs
   );
 END
 \$\$;
 
-DROP TABLE IF EXISTS _import_trips;
-CREATE TEMP TABLE _import_trips (
+DROP TABLE IF EXISTS gtfs_import._import_trips;
+CREATE UNLOGGED TABLE gtfs_import._import_trips (
   route_id TEXT,
   service_id TEXT,
   trip_id TEXT,
@@ -190,7 +192,8 @@ CREATE TEMP TABLE _import_trips (
   original_trip_id TEXT,
   hints TEXT
 );
-\\copy _import_trips FROM '${CLEAN_DIR}/trips.txt' WITH (FORMAT csv, HEADER true)
+\\copy gtfs_import._import_trips FROM '${CLEAN_DIR}/trips.txt' WITH (FORMAT csv, HEADER true)
+SELECT COUNT(*) FROM gtfs_import._import_trips AS _import_trips_count;
 INSERT INTO public.gtfs_trips_stage (route_id, service_id, trip_id, trip_headsign, direction_id)
 SELECT
   NULLIF(route_id, ''),
@@ -198,11 +201,11 @@ SELECT
   NULLIF(trip_id, ''),
   NULLIF(trip_headsign, ''),
   NULLIF(direction_id, '')::INTEGER
-FROM _import_trips
+FROM gtfs_import._import_trips
 ON CONFLICT (trip_id) DO NOTHING;
 
-DROP TABLE IF EXISTS _import_calendar;
-CREATE TEMP TABLE _import_calendar (
+DROP TABLE IF EXISTS gtfs_import._import_calendar;
+CREATE UNLOGGED TABLE gtfs_import._import_calendar (
   service_id TEXT,
   monday TEXT,
   tuesday TEXT,
@@ -214,7 +217,7 @@ CREATE TEMP TABLE _import_calendar (
   start_date TEXT,
   end_date TEXT
 );
-\\copy _import_calendar FROM '${CLEAN_DIR}/calendar.txt' WITH (FORMAT csv, HEADER true)
+\\copy gtfs_import._import_calendar FROM '${CLEAN_DIR}/calendar.txt' WITH (FORMAT csv, HEADER true)
 INSERT INTO public.gtfs_calendar_stage (service_id, monday, tuesday, wednesday, thursday, friday, saturday, sunday, start_date, end_date)
 SELECT
   NULLIF(service_id, ''),
@@ -227,25 +230,25 @@ SELECT
   NULLIF(sunday, '')::SMALLINT,
   NULLIF(start_date, ''),
   NULLIF(end_date, '')
-FROM _import_calendar
+FROM gtfs_import._import_calendar
 ON CONFLICT (service_id) DO NOTHING;
 
-DROP TABLE IF EXISTS _import_calendar_dates;
-CREATE TEMP TABLE _import_calendar_dates (
+DROP TABLE IF EXISTS gtfs_import._import_calendar_dates;
+CREATE UNLOGGED TABLE gtfs_import._import_calendar_dates (
   service_id TEXT,
   date TEXT,
   exception_type TEXT
 );
-\\copy _import_calendar_dates FROM '${CLEAN_DIR}/calendar_dates.txt' WITH (FORMAT csv, HEADER true)
+\\copy gtfs_import._import_calendar_dates FROM '${CLEAN_DIR}/calendar_dates.txt' WITH (FORMAT csv, HEADER true)
 INSERT INTO public.gtfs_calendar_dates_stage (service_id, date, exception_type)
 SELECT
   NULLIF(service_id, ''),
   NULLIF(date, ''),
   NULLIF(exception_type, '')::SMALLINT
-FROM _import_calendar_dates;
+FROM gtfs_import._import_calendar_dates;
 
-DROP TABLE IF EXISTS _import_stop_times;
-CREATE TEMP TABLE _import_stop_times (
+DROP TABLE IF EXISTS gtfs_import._import_stop_times;
+CREATE UNLOGGED TABLE gtfs_import._import_stop_times (
   trip_id TEXT,
   arrival_time TEXT,
   departure_time TEXT,
@@ -254,7 +257,7 @@ CREATE TEMP TABLE _import_stop_times (
   pickup_type TEXT,
   drop_off_type TEXT
 );
-\\copy _import_stop_times FROM '${CLEAN_DIR}/stop_times.txt' WITH (FORMAT csv, HEADER true)
+\\copy gtfs_import._import_stop_times FROM '${CLEAN_DIR}/stop_times.txt' WITH (FORMAT csv, HEADER true)
 DO \$\$
 DECLARE
   cols TEXT;
@@ -325,7 +328,7 @@ BEGIN
     );
 
   EXECUTE format(
-    'INSERT INTO public.gtfs_stop_times_stage (%s) SELECT %s FROM _import_stop_times',
+    'INSERT INTO public.gtfs_stop_times_stage (%s) SELECT %s FROM gtfs_import._import_stop_times',
     cols,
     exprs
   );
