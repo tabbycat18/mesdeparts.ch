@@ -10,6 +10,7 @@ import {
   TRAIN_FILTER_ALL,
   TRAIN_FILTER_REGIONAL,
   TRAIN_FILTER_LONG_DISTANCE,
+  REMARK_NARROW_BREAKPOINT_PX,
 } from "./state.v2025-02-19.js";
 import {
   fetchStationSuggestions,
@@ -156,6 +157,14 @@ export function setupAutoFitWatcher() {
     },
     { passive: true }
   );
+}
+
+// Determine whether to use the narrow (numeric-only "+X min") remark format.
+// Matches the CSS phone breakpoint at REMARK_NARROW_BREAKPOINT_PX.
+// Avoids flicker: uses viewport width as a stable, synchronous signal.
+function isNarrowRemarkLayout() {
+  if (typeof window === "undefined") return false;
+  return window.innerWidth <= REMARK_NARROW_BREAKPOINT_PX;
 }
 
 // ---------------- FAVORITES (UI) ----------------
@@ -2821,6 +2830,9 @@ export function renderDepartures(rows) {
   const useGroupSeparators =
     !appState.lastBoardIsTrain && appState.viewMode === VIEW_MODE_LINE;
 
+  // Determine wide vs narrow remark format once per render (stable, no per-row flicker).
+  const narrowRemark = isNarrowRemarkLayout();
+
   for (const dep of rows || []) {
     const tr = document.createElement("tr");
     tr.dataset.journeyId = dep.journeyId || "";
@@ -2848,7 +2860,8 @@ export function renderDepartures(rows) {
           platform: dep?.platform || "",
           platformChanged: !!dep?.platformChanged,
           status: dep?.status || "",
-          remark: dep?.remark || "",
+          remarkWide: dep?.remarkWide || dep?.remark || "",
+          remarkNarrow: dep?.remarkNarrow || "",
         });
       }
     }
@@ -2987,10 +3000,12 @@ export function renderDepartures(rows) {
       tdMin.dataset.isArriving = "0";
     }
 
-    // Remark
+    // Remark — pick narrow (+X min) or wide (Retard env. X min) based on layout
     const tdRemark = document.createElement("td");
     tdRemark.className = "col-remark-cell";
-    const remarkText = dep.remark || "";
+    const remarkText = narrowRemark
+      ? (dep.remarkNarrow || dep.remark || "")
+      : (dep.remarkWide || dep.remark || "");
     if (dep.status === "cancelled" && remarkText) {
       const badge = document.createElement("span");
       badge.className = "remark-pill remark-pill--cancelled";

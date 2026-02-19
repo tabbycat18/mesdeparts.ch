@@ -211,6 +211,8 @@ assert.equal(detectNetworkFromStation("Zurich HB"), "vbz");
               earlyMin: r.earlyMin ?? null,
               status: r.status ?? null,
               remark: r.remark ?? "",
+              remarkWide: r.remarkWide ?? "",
+              remarkNarrow: r.remarkNarrow ?? "",
             })),
           },
           null,
@@ -219,20 +221,24 @@ assert.equal(detectNetworkFromStation("Zurich HB"), "vbz");
       );
 
       for (const row of rows) {
+        // All rows tested here are buses (filtered above); bus rules apply.
         if (row.status === "cancelled") {
           assert.equal(String(row.remark || "").length > 0, true);
           continue;
         }
+        // Bus: delay shown when delayMin > 1; plain "Retard" (no minutes for buses)
         if (typeof row.delayMin === "number" && row.delayMin > 1) {
           assert.equal(row.status, "delay");
           assert.equal(String(row.remark || "").toLowerCase().includes("retard"), true);
           continue;
         }
+        // Bus: early shown when earlyMin > 1 (delayMin < -1)
         if (typeof row.delayMin === "number" && row.delayMin < -1) {
           assert.equal(row.status, "early");
           assert.equal(String(row.remark || "").toLowerCase().includes("avance"), true);
           continue;
         }
+        // Tiny drift (|delayMin| <= 1) — suppressed for buses too
         if (typeof row.delayMin === "number" && Math.abs(row.delayMin) <= 1) {
           assert.equal(row.status, null);
           assert.equal(String(row.remark || ""), "");
@@ -241,6 +247,7 @@ assert.equal(detectNetworkFromStation("Zurich HB"), "vbz");
         assert.equal(row.status, null);
       }
 
+      // Buses can show early; if there are negative-delta bus rows, at least one must be "early"
       const hasNegative = rows.some((row) => typeof row.delayMin === "number" && row.delayMin < 0);
       if (hasNegative) {
         assert.equal(rows.some((row) => row.status === "early"), true);

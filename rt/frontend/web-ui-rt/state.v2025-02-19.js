@@ -29,7 +29,10 @@ export const DEPARTED_GRACE_SECONDS = 30;   // keep blinking up to 30s after dep
 
 // Delay label thresholds (minutes)
 export const BUS_DELAY_LABEL_THRESHOLD_MIN = 2;   // buses: show delay text from 2 min
-export const TRAIN_DELAY_LABEL_THRESHOLD_MIN = 1; // trains: show delay text from 1 min
+export const TRAIN_DELAY_LABEL_THRESHOLD_MIN = 2; // trains: show delay from 2 min (noise gate: suppress +1 jitter)
+
+// Remark column width below which we use narrow (numeric-only) format
+export const REMARK_NARROW_BREAKPOINT_PX = 520;
 
 // Debug switches
 export const DEBUG_FORCE_NOW = false;

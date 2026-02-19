@@ -239,32 +239,39 @@ function resolveRealtimeDelta({
 
 function deriveRealtimeRemark({ cancelled, delayMin, earlyMin, mode }) {
   if (cancelled) {
-    return { status: "cancelled", remark: t("remarkCancelled") };
+    const msg = t("remarkCancelled");
+    return { status: "cancelled", remarkWide: msg, remarkNarrow: msg, remark: msg };
   }
 
   // Bus/tram/metro board rule:
   // suppress tiny +/-1 minute realtime drift from remarks.
+  // Format stays plain (no minute count for buses).
   if (mode === "bus") {
     if (delayMin <= 1 && earlyMin <= 1) {
-      return { status: null, remark: "" };
+      return { status: null, remarkWide: "", remarkNarrow: "", remark: "" };
     }
     if (delayMin > 1) {
-      return { status: "delay", remark: t("remarkDelayShort") };
+      const msg = t("remarkDelayShort"); // plain "Retard" — no minutes for buses
+      return { status: "delay", remarkWide: msg, remarkNarrow: msg, remark: msg };
     }
     if (earlyMin > 1) {
-      return { status: "early", remark: t("remarkEarly") };
+      const msg = t("remarkEarly");
+      return { status: "early", remarkWide: msg, remarkNarrow: msg, remark: msg };
     }
-    return { status: null, remark: "" };
+    return { status: null, remarkWide: "", remarkNarrow: "", remark: "" };
   }
 
-  // Train: keep detailed minute information.
-  if (delayMin > 0) {
-    return { status: "delay", remark: `${t("remarkDelayShort")} +${delayMin}` };
+  // Train/rail rules:
+  // 1. Never early — trains are never "en avance"; clamp negative delta to 0.
+  // 2. Noise gate: suppress +1 min jitter; only show when delayMin >= 2.
+  if (delayMin >= 2) {
+    // WIDE: "Retard env. X min" / NARROW: "+X min" (numeric-only, no word prefix)
+    const wide = t("remarkDelayTrainApprox").replace("{min}", String(delayMin));
+    const narrow = `+${delayMin} min`;
+    return { status: "delay", remarkWide: wide, remarkNarrow: narrow, remark: wide };
   }
-  if (earlyMin > 0) {
-    return { status: "early", remark: `${t("remarkEarly")} -${earlyMin}` };
-  }
-  return { status: null, remark: "" };
+  // delayMin < 2 (includes 0, 1, or any negative early value) — suppress for trains
+  return { status: null, remarkWide: "", remarkNarrow: "", remark: "" };
 }
 
 const FETCH_TIMEOUT_MS = 12_000;
@@ -970,9 +977,26 @@ export function buildDeparturesGrouped(data, viewMode = VIEW_MODE_LINE) {
       mode,
     });
     const status = rtView.status;
-    const remark = rtView.remark;
+    const remarkWide = rtView.remarkWide;
+    const remarkNarrow = rtView.remarkNarrow;
+    const remark = rtView.remark; // alias for remarkWide (backward compat)
 
     if (isDeltaDiagnosticsEnabled()) {
+      // Per-row delay debug log — validate scheduled/rt dep, delayMin, mode, suppression
+      const suppressed = !isCancelled && status !== "delay" && (delayMin > 0 || earlyMin > 0);
+      console.log("[MesDeparts][delay-row]", {
+        line: `${rawCategory}${rawNumber}`.trim(),
+        mode,
+        scheduledDep: scheduledDt.toISOString(),
+        rtDep: realtimeDt ? realtimeDt.toISOString() : null,
+        delayMin,
+        earlyMin,
+        suppressed,
+        status,
+        remarkWide,
+        remarkNarrow,
+      });
+
       console.log("[MesDeparts][rt-delta-row]", {
         stationId: appState.stationId || null,
         stationName: appState.STATION || null,
@@ -991,7 +1015,8 @@ export function buildDeparturesGrouped(data, viewMode = VIEW_MODE_LINE) {
         delayMin,
         earlyMin,
         renderStatus: status,
-        renderRemark: remark,
+        renderRemarkWide: remarkWide,
+        renderRemarkNarrow: remarkNarrow,
         delaySource,
         rawFieldsUsed: {
           "stop.departure": stop?.departure ?? null,
@@ -1038,7 +1063,9 @@ export function buildDeparturesGrouped(data, viewMode = VIEW_MODE_LINE) {
       delayMin: deltaMin,
       earlyMin,
       status,
-      remark,
+      remark,       // alias for remarkWide (backward compat)
+      remarkWide,
+      remarkNarrow,
 
       // arrival icon window
       isArriving,

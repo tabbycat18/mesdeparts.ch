@@ -33,7 +33,9 @@ export async function fetchFeedMeta(url, apiKey) {
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to fetch feed ${url}: HTTP ${response.status}`);
+    const err = new Error(`Failed to fetch feed ${url}: HTTP ${response.status}`);
+    err.status = response.status;
+    throw err;
   }
 
   const buffer = Buffer.from(await response.arrayBuffer());
