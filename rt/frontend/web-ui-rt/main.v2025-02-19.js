@@ -27,11 +27,6 @@ import {
 
 import {
   setupClock,
-  setupQuickControlsCollapse,
-  setupViewToggle,
-  setupFilters,
-  renderFilterOptions,
-  setupStationSearch,
   updateStationTitle,
   renderDepartures,
   setBoardLoadingState,
@@ -43,7 +38,12 @@ import {
 } from "./ui.v2025-02-19.js";
 
 import { setupInfoButton } from "./infoBTN.v2025-02-19.js";
-import { initI18n, applyStaticTranslations, setLanguage, LANGUAGE_OPTIONS } from "./i18n.v2025-02-19.js";
+import { initI18n, applyStaticTranslations } from "./i18n.v2025-02-19.js";
+import { loadFavorites } from "./favourites.v2025-02-19.js";
+import {
+  initHeaderControls2,
+  updateHeaderControls2,
+} from "./ui/headerControls2.js";
 
 // Persist station between reloads
 const STORAGE_KEY = "mesdeparts.station";
@@ -356,7 +356,13 @@ function applyStation(name, id, { syncUrl = false } = {}) {
   emptyBoardRetryStation = null;
 
   clearBoardForStationChange();
-  renderFilterOptions();
+  updateHeaderControls2({
+    currentStop: {
+      id: appState.stationId || null,
+      name: appState.STATION || "",
+    },
+    language: appState.language || "fr",
+  });
   persistStationSelection(stationName, appState.stationId);
   if (syncUrl) {
     updateUrlWithStation(stationName, appState.stationId);
@@ -429,7 +435,7 @@ async function refreshDepartures({ retried, showLoadingHint = true } = {}) {
         const retryRows = buildDeparturesGrouped(retryData, appState.viewMode);
         if (retryRows && retryRows.length) {
           lastStationboardData = retryData;
-          renderFilterOptions();
+          updateHeaderControls2();
           renderServiceBanners(retryData?.banners || []);
           renderDepartures(retryRows);
           return;
@@ -458,7 +464,7 @@ async function refreshDepartures({ retried, showLoadingHint = true } = {}) {
           if (isStaleRequest()) return;
           const freshRows = buildDeparturesGrouped(freshData, appState.viewMode);
           lastStationboardData = freshData;
-          renderFilterOptions();
+          updateHeaderControls2();
           renderServiceBanners(freshData?.banners || []);
           renderDepartures(freshRows);
           updateDebugPanel(freshRows);
@@ -485,7 +491,7 @@ async function refreshDepartures({ retried, showLoadingHint = true } = {}) {
         const directRows = buildDeparturesGrouped(directData, appState.viewMode);
         lastStationboardData = directData;
         staleBoardEmptySince = directRows && directRows.length ? null : staleBoardEmptySince;
-        renderFilterOptions();
+        updateHeaderControls2();
         renderServiceBanners(directData?.banners || []);
         renderDepartures(directRows);
         updateDebugPanel(directRows);
@@ -512,7 +518,7 @@ async function refreshDepartures({ retried, showLoadingHint = true } = {}) {
         if (Array.isArray(directData?.stationboard) && directData.stationboard.length > 0) {
           lastNonEmptyStationboardAt = Date.now();
         }
-        renderFilterOptions();
+        updateHeaderControls2();
         renderServiceBanners(directData?.banners || []);
         renderDepartures(directRows);
         updateDebugPanel(directRows);
@@ -531,7 +537,7 @@ async function refreshDepartures({ retried, showLoadingHint = true } = {}) {
     }
 
     // Update filter dropdown options from the latest board
-    renderFilterOptions();
+    updateHeaderControls2();
 
     renderServiceBanners(data?.banners || []);
     renderDepartures(rows);
@@ -584,7 +590,7 @@ function refreshDeparturesFromCache({ allowFetch = true, skipFilters = false, sk
 
   try {
     const rows = buildDeparturesGrouped(lastStationboardData, appState.viewMode);
-    if (!skipFilters) renderFilterOptions();
+    if (!skipFilters) updateHeaderControls2();
     renderServiceBanners(lastStationboardData?.banners || []);
     renderDepartures(rows);
     if (!skipDebug) updateDebugPanel(rows);
@@ -604,6 +610,47 @@ function refreshDeparturesFromCache({ allowFetch = true, skipFilters = false, sk
   markEmbedIfNeeded();
   const lang = initI18n();
   appState.language = lang;
+
+  initHeaderControls2({
+    mountEl: document.getElementById("header-controls2-mount"),
+    getCurrentStop: () => ({
+      id: appState.stationId || null,
+      name: appState.STATION || "",
+    }),
+    onSelectStop: (stopOrId, maybeName) => {
+      if (typeof stopOrId === "string" && typeof maybeName === "string" && maybeName.trim()) {
+        const id = stopOrId.trim() || null;
+        const name = maybeName.trim();
+        applyStation(name, id, { syncUrl: true });
+        refreshDepartures();
+        return;
+      }
+
+      if (typeof stopOrId === "string") {
+        const id = stopOrId.trim();
+        if (!id) return;
+        const fav = loadFavorites().find((item) => item && item.id === id);
+        if (!fav || !fav.name) return;
+        applyStation(String(fav.name), id, { syncUrl: true });
+        refreshDepartures();
+        return;
+      }
+
+      const name = String(stopOrId?.name || "").trim();
+      if (!name) return;
+      const id = typeof stopOrId?.id === "string" && stopOrId.id.trim() ? stopOrId.id.trim() : null;
+      applyStation(name, id, { syncUrl: true });
+      refreshDepartures();
+    },
+    onControlsChange: () => {
+      refreshDeparturesFromCache();
+    },
+    onLanguageChange: () => {
+      ensureBoardFitsViewport();
+      refreshDepartures();
+    },
+  });
+
   applyStaticTranslations();
   ensureBoardFitsViewport();
 
@@ -623,24 +670,7 @@ function refreshDeparturesFromCache({ allowFetch = true, skipFilters = false, sk
 
   setupClock();
   defer(setupInfoButton);
-  setupLanguageSwitcher(() => {
-    refreshDepartures();
-  });
-  setupQuickControlsCollapse();
   defer(setupAutoFitWatcher);
-
-  setupViewToggle(() => {
-    refreshDeparturesFromCache();
-  });
-
-  setupFilters(() => {
-    refreshDeparturesFromCache();
-  });
-
-  setupStationSearch((name, id) => {
-    applyStation(name, id, { syncUrl: true });
-    refreshDepartures();
-  });
 
   loadClockIframe();
 
@@ -665,36 +695,3 @@ function refreshDeparturesFromCache({ allowFetch = true, skipFilters = false, sk
     logPerf("boot", { totalMs: bootEnd - bootStart });
   }
 })();
-function setupLanguageSwitcher(onChange) {
-  const sel = document.getElementById("language-select");
-  const label = document.querySelector("label[for='language-select']");
-  if (!sel) return;
-
-  sel.innerHTML = "";
-  for (const opt of LANGUAGE_OPTIONS) {
-    const o = document.createElement("option");
-    o.value = opt.code;
-    o.textContent = opt.label;
-    sel.appendChild(o);
-  }
-
-  sel.value = appState.language || "fr";
-
-  sel.addEventListener("change", () => {
-    const lang = sel.value;
-    const applied = setLanguage(lang);
-    appState.language = applied;
-    applyStaticTranslations();
-    renderFilterOptions();
-    ensureBoardFitsViewport();
-    if (typeof appState._ensureViewSelectOptions === "function") {
-      appState._ensureViewSelectOptions();
-    }
-    if (typeof onChange === "function") onChange();
-  });
-
-  if (label) {
-    // Keep label in sync with current language
-    applyStaticTranslations();
-  }
-}

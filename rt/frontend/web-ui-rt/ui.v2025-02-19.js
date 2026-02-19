@@ -162,35 +162,11 @@ export function setupAutoFitWatcher() {
 
 const FAV_CLEAR_VALUE = "__clear__";
 
-function getFavToggleEl() {
-  return document.getElementById("station-fav-toggle");
-}
-
 function getFavSelectEl() {
   return document.getElementById("favorites-select");
 }
 
-function setFavToggleVisual(isOn) {
-  const btn = getFavToggleEl();
-  if (!btn) return;
-
-  const icon = btn.querySelector(".fav-toggle__icon");
-  if (icon) {
-    icon.textContent = isOn ? "★" : "☆";
-  } else {
-    btn.textContent = isOn ? "★" : "☆";
-  }
-  btn.setAttribute("aria-pressed", isOn ? "true" : "false");
-}
-
-function refreshFavToggleFromState() {
-  const id = appState.stationId;
-  if (!id) {
-    setFavToggleVisual(false);
-    return;
-  }
-  setFavToggleVisual(isFavorite(id));
-}
+function refreshFavToggleFromState() {}
 
 function renderFavoritesSelect(selectedId) {
   const sel = getFavSelectEl();
@@ -245,6 +221,8 @@ function setStationSelection(name, id, onStationPicked) {
   updateStationTitle();
   refreshFavToggleFromState();
   renderFavoritesSelect(appState.stationId);
+  updateSaveCurrentBtn();
+  setFavoritesStatus("");
 
   // Callback (backward-compatible): call with (name, id) if consumer supports it
   if (typeof onStationPicked === "function") {
@@ -696,6 +674,9 @@ function renderQuickControlsCollapsedState() {
     toggle.classList.toggle("is-collapsed", quickControlsCollapsed);
     if (label) toggle.setAttribute("aria-label", label.textContent);
   }
+
+  const card = panel ? panel.closest(".station-card") : null;
+  if (card) card.classList.toggle("station-card--collapsed", quickControlsCollapsed);
 }
 
 function setQuickControlsCollapsed(nextState) {
@@ -710,12 +691,26 @@ function setQuickControlsCollapsed(nextState) {
 }
 
 export function setupQuickControlsCollapse() {
+  // Legacy header controls path disabled: replaced by ui/headerControls2.js
+  return;
+
   const { toggle, panel } = getQuickControlsEls();
   if (!toggle || !panel) return;
 
+  let storedCollapsed = null;
   try {
-    quickControlsCollapsed = localStorage.getItem(QUICK_CONTROLS_STORAGE_KEY) === "1";
+    storedCollapsed = localStorage.getItem(QUICK_CONTROLS_STORAGE_KEY);
   } catch {
+    storedCollapsed = null;
+  }
+
+  const viewportWidth = Math.max(window.innerWidth || 0, document.documentElement?.clientWidth || 0);
+  if (viewportWidth <= 520) {
+    // Force compact startup on mobile to keep controls from taking vertical space.
+    quickControlsCollapsed = true;
+  } else if (storedCollapsed === "1" || storedCollapsed === "0") {
+    quickControlsCollapsed = storedCollapsed === "1";
+  } else {
     quickControlsCollapsed = false;
   }
 
@@ -741,6 +736,9 @@ function trainFilterLabel(filter) {
 }
 
 export function setupViewToggle(onChange) {
+  // Legacy header controls path disabled: replaced by ui/headerControls2.js
+  return;
+
   const segment = document.getElementById("view-segment");
   const sel = document.getElementById("view-select");
   const legacyBtn = document.getElementById("filter-toggle");
@@ -880,11 +878,13 @@ const filterUi = {
   lineChips: null,
   favoritesChips: null,
   favoritesEmpty: null,
+  favoritesStatus: null,
   platformEmpty: null,
   lineEmpty: null,
   favoritesSwitch: null,
   manageFavorites: null,
   favPopover: null,
+  favBackdrop: null,
   favQuickToggle: null,
   platformSelect: null,
   lineSelect: null,
@@ -901,13 +901,97 @@ const selectedFavorites = new Set();
 let favoritesManageMode = false;
 
 let filterSheetOpen = false;
-let favoritesPopoverOpen = false;
 let filtersOnChange = null;
+const favoritesState = { isOpen: false, opener: null, currentStop: null };
+const APP_ROOT_SELECTOR = ".board";
 
 function updateFavoritesDeleteState() {
   if (!filterUi.favoritesDelete) return;
   const canDelete = favoritesManageMode && selectedFavorites.size > 0;
   filterUi.favoritesDelete.disabled = !canDelete;
+}
+
+function getCurrentStop() {
+  return {
+    id: appState.stationId,
+    name: appState.STATION,
+  };
+}
+
+function setFavoritesStatus(message) {
+  if (!filterUi.favoritesStatus) {
+    filterUi.favoritesStatus = document.getElementById("favorites-status");
+  }
+  const el = filterUi.favoritesStatus;
+  if (!el) return;
+  const text = message || "";
+  el.textContent = text;
+  el.classList.toggle("is-hidden", !text);
+}
+
+function updateSaveCurrentBtn() {
+  const btn = filterUi.favoritesSaveCurrent;
+  if (!btn) return;
+  const lang = (appState.lang || "fr").toLowerCase();
+  const labels = {
+    fr: "Sauver cet arrêt",
+    en: "Save this stop",
+    de: "Diesen Halt speichern",
+    it: "Salva questa fermata",
+  };
+  const label = labels[lang] || labels.en;
+  const { id, name } = getCurrentStop();
+  const already = id && isFavorite(id);
+  btn.textContent = already ? `${label} ✓` : label;
+  btn.disabled = !id || !name || already;
+}
+
+function saveCurrentStopToFavorites() {
+  favoritesState.currentStop = getCurrentStop();
+  const { id, name } = favoritesState.currentStop;
+  const lang = (appState.lang || "fr").toLowerCase();
+  const messages = {
+    missing: {
+      fr: "Sélectionne un arrêt avant d'ajouter aux favoris.",
+      de: "Bitte wähle eine Haltestelle, bevor du sie zu den Favoriten hinzufügst.",
+      it: "Seleziona una fermata prima di aggiungerla ai preferiti.",
+      en: "Select a stop before adding to favorites.",
+    },
+    exists: {
+      fr: "Déjà dans vos favoris.",
+      de: "Bereits in den Favoriten.",
+      it: "Già nei preferiti.",
+      en: "Already in favorites.",
+    },
+    saved: {
+      fr: "Ajouté aux favoris.",
+      de: "Zu Favoriten hinzugefügt.",
+      it: "Aggiunto ai preferiti.",
+      en: "Saved to favorites.",
+    },
+  };
+  const pick = (key) => messages[key]?.[lang] || messages[key]?.en || "";
+
+  if (!id || !name) {
+    setFavoritesStatus(pick("missing"));
+    updateSaveCurrentBtn();
+    return;
+  }
+
+  if (isFavorite(id)) {
+    setFavoritesStatus(pick("exists"));
+    updateSaveCurrentBtn();
+    return;
+  }
+
+  addFavorite({ id, name });
+  renderFavoritesSelect(appState.stationId);
+  refreshFavToggleFromState();
+  if (typeof appState._renderFavoritesPopover === "function") {
+    appState._renderFavoritesPopover();
+  }
+  updateSaveCurrentBtn();
+  setFavoritesStatus(pick("saved"));
 }
 
 function updateFavoritesManageUi() {
@@ -937,58 +1021,121 @@ function setFavoritesManageMode(on) {
   }
 }
 
-function positionFavoritesPopover() {
-  if (!filterUi.favPopover || !filterUi.favQuickToggle) return;
-  const popover = filterUi.favPopover;
-  const trigger = filterUi.favQuickToggle;
+function setAppInert(on) {
+  const root = document.querySelector(APP_ROOT_SELECTOR);
+  if (!root) return;
+  if (on) root.setAttribute("inert", "");
+  else root.removeAttribute("inert");
+}
 
-  const viewportWidth = Math.max(window.innerWidth || 0, document.documentElement?.clientWidth || 0);
-  const isMobile = viewportWidth <= 520;
+function openFavorites(openerEl) {
+  if (!filterUi.favPopover || favoritesState.isOpen) return;
 
-  if (isMobile) {
-    popover.classList.add("is-floating");
-    popover.style.position = "fixed";
-    popover.style.left = "50%";
-    popover.style.right = "auto";
-    popover.style.top = "auto";
-    popover.style.bottom = "12px";
-    popover.style.transform = "translateX(-50%)";
-    return;
+  favoritesState.currentStop = getCurrentStop();
+  favoritesState.opener =
+    openerEl ||
+    (document.activeElement && typeof document.activeElement.focus === "function"
+      ? document.activeElement
+      : filterUi.favQuickToggle);
+
+  favoritesState.isOpen = true;
+  setFavoritesManageMode(false);
+  setFavoritesStatus("");
+
+  filterUi.favPopover.classList.remove("is-hidden");
+  filterUi.favPopover.hidden = false;
+  filterUi.favPopover.style.left = "";
+  filterUi.favPopover.style.right = "";
+  filterUi.favPopover.style.bottom = "";
+  filterUi.favPopover.style.top = "";
+  filterUi.favPopover.style.position = "fixed";
+  filterUi.favPopover.style.transform = "";
+  updateFavoritesToggleUi();
+
+  if (filterUi.favBackdrop) {
+    filterUi.favBackdrop.classList.remove("is-hidden");
+    filterUi.favBackdrop.classList.add("is-visible");
+    filterUi.favBackdrop.hidden = false;
+  }
+  setAppInert(true);
+
+  const focusTarget =
+    filterUi.favPopover.querySelector("[data-fav-popover-close='true']") ||
+    filterUi.favPopover.querySelector("button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])");
+  if (focusTarget && typeof focusTarget.focus === "function") {
+    focusTarget.focus({ preventScroll: true });
+  }
+}
+
+function closeFavorites() {
+  if (!filterUi.favPopover || !favoritesState.isOpen) return;
+
+  const restoreTarget =
+    (favoritesState.opener && typeof favoritesState.opener.focus === "function" && favoritesState.opener) ||
+    (filterUi.favQuickToggle && typeof filterUi.favQuickToggle.focus === "function" && filterUi.favQuickToggle) ||
+    null;
+  if (restoreTarget) {
+    restoreTarget.focus({ preventScroll: true });
   }
 
-  popover.classList.remove("is-floating");
-  popover.style.position = "";
-  popover.style.left = "";
-  popover.style.right = "";
-  popover.style.top = "";
-  popover.style.bottom = "";
-  popover.style.transform = "";
-}
+  // Re-enable background before hiding the dialog to avoid aria-hidden on a focused node
+  setAppInert(false);
 
-function openFavoritesPopover() {
-  if (!filterUi.favPopover) return;
-  favoritesPopoverOpen = true;
-  filterUi.favPopover.classList.remove("is-hidden");
-  filterUi.favPopover.setAttribute("aria-hidden", "false");
-  setFavoritesManageMode(false);
-  updateFavoritesToggleUi();
-  positionFavoritesPopover();
-}
-
-function closeFavoritesPopover() {
-  if (!filterUi.favPopover) return;
-  favoritesPopoverOpen = false;
+  favoritesState.isOpen = false;
   filterUi.favPopover.classList.add("is-hidden");
-  filterUi.favPopover.setAttribute("aria-hidden", "true");
-  filterUi.favPopover.classList.remove("is-floating");
+  filterUi.favPopover.hidden = true;
   filterUi.favPopover.style.left = "";
   filterUi.favPopover.style.top = "";
   filterUi.favPopover.style.right = "";
   filterUi.favPopover.style.bottom = "";
   filterUi.favPopover.style.position = "";
   filterUi.favPopover.style.transform = "";
+
+  if (filterUi.favBackdrop) {
+    filterUi.favBackdrop.classList.remove("is-visible");
+    filterUi.favBackdrop.classList.add("is-hidden");
+    filterUi.favBackdrop.hidden = true;
+  }
   setFavoritesManageMode(false);
   updateFavoritesToggleUi();
+  favoritesState.opener = null;
+  favoritesState.currentStop = null;
+  setFavoritesStatus("");
+}
+
+function toggleFavorites(openerEl) {
+  if (favoritesState.isOpen) closeFavorites();
+  else openFavorites(openerEl);
+}
+
+function trapFocusInFavoritesPopover(e) {
+  if (!filterUi.favPopover || !favoritesState.isOpen) return;
+  const popover = filterUi.favPopover;
+  if (popover.classList.contains("is-hidden")) return;
+
+  const focusable = Array.from(
+    popover.querySelectorAll(
+      "button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])",
+    ),
+  ).filter((el) => !el.hasAttribute("disabled") && el.getAttribute("aria-hidden") !== "true");
+
+  if (!focusable.length) return;
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  const active = document.activeElement;
+
+  if (e.shiftKey) {
+    if (active === first || !popover.contains(active)) {
+      e.preventDefault();
+      last.focus({ preventScroll: true });
+    }
+    return;
+  }
+
+  if (active === last || !popover.contains(active)) {
+    e.preventDefault();
+    first.focus({ preventScroll: true });
+  }
 }
 
 function applyPendingFilters() {
@@ -1091,7 +1238,7 @@ function updateFavoritesToggleUi() {
   if (filterUi.favQuickToggle) {
     filterUi.favQuickToggle.classList.toggle("is-active", active);
     filterUi.favQuickToggle.setAttribute("aria-pressed", active ? "true" : "false");
-    filterUi.favQuickToggle.setAttribute("aria-expanded", favoritesPopoverOpen ? "true" : "false");
+    filterUi.favQuickToggle.setAttribute("aria-expanded", favoritesState.isOpen ? "true" : "false");
   }
   if (filterUi.favoritesSwitch) {
     filterUi.favoritesSwitch.checked = active;
@@ -1375,6 +1522,9 @@ function updateFiltersVisibility() {
 }
 
 export function setupFilters(onChange) {
+  // Legacy header controls path disabled: replaced by ui/headerControls2.js
+  return;
+
   filtersOnChange = onChange;
   filterUi.openBtn = document.getElementById("filters-open");
   filterUi.label = document.getElementById("filters-open-label");
@@ -1386,19 +1536,30 @@ export function setupFilters(onChange) {
   filterUi.lineChips = document.getElementById("line-chip-list");
   filterUi.favoritesChips = document.getElementById("favorites-chip-list");
   filterUi.favoritesEmpty = document.getElementById("favorites-empty");
+  filterUi.favoritesStatus = document.getElementById("favorites-status");
+  filterUi.favoritesSaveCurrent = document.getElementById("favorites-save-current");
   filterUi.platformEmpty = document.getElementById("platforms-empty");
   filterUi.lineEmpty = document.getElementById("lines-empty");
   filterUi.favoritesSwitch = null;
   filterUi.manageFavorites = document.getElementById("favorites-manage");
   filterUi.favoritesDelete = document.getElementById("favorites-delete");
   filterUi.favPopover = document.getElementById("favorites-popover");
+  filterUi.favBackdrop = document.getElementById("favorites-backdrop");
   filterUi.favQuickToggle = document.getElementById("favorites-only-toggle");
   filterUi.platformSelect = document.getElementById("platform-filter");
   filterUi.lineSelect = document.getElementById("line-filter");
   filterUi.hideDepartureToggle = document.getElementById("filters-hide-departure");
   const selectInteraction = { platform: false, line: false };
   if (filterUi.favPopover) {
-    filterUi.favPopover.setAttribute("aria-hidden", "true");
+    filterUi.favPopover.hidden = true;
+  }
+  if (filterUi.favoritesStatus) {
+    filterUi.favoritesStatus.textContent = "";
+    filterUi.favoritesStatus.classList.add("is-hidden");
+  }
+  if (filterUi.favBackdrop) {
+    filterUi.favBackdrop.hidden = true;
+    filterUi.favBackdrop.classList.add("is-hidden");
   }
   if (filterUi.openBtn) {
     filterUi.openBtn.setAttribute("aria-expanded", "false");
@@ -1415,7 +1576,7 @@ export function setupFilters(onChange) {
   if (filterUi.openBtn) {
     filterUi.openBtn.addEventListener("click", (e) => {
       e.stopPropagation();
-      closeFavoritesPopover();
+      closeFavorites();
       if (filterSheetOpen) closeFiltersSheet(false);
       else openFiltersSheet();
     });
@@ -1451,14 +1612,19 @@ export function setupFilters(onChange) {
   if (filterUi.favQuickToggle) {
     filterUi.favQuickToggle.addEventListener("click", (e) => {
       e.stopPropagation();
-      if (favoritesPopoverOpen) closeFavoritesPopover();
-      else openFavoritesPopover();
+      toggleFavorites(e.currentTarget || filterUi.favQuickToggle);
     });
   }
 
   if (filterUi.manageFavorites) {
     filterUi.manageFavorites.addEventListener("click", () => {
       setFavoritesManageMode(!favoritesManageMode);
+    });
+  }
+
+  if (filterUi.favoritesSaveCurrent) {
+    filterUi.favoritesSaveCurrent.addEventListener("click", () => {
+      saveCurrentStopToFavorites();
     });
   }
 
@@ -1487,19 +1653,24 @@ export function setupFilters(onChange) {
   if (filterUi.favPopover) {
     filterUi.favPopover.addEventListener("click", (e) => {
       if (e.target && e.target.dataset && e.target.dataset.favPopoverClose === "true") {
-        closeFavoritesPopover();
+        closeFavorites();
       }
     });
   }
 
+  if (filterUi.favBackdrop) {
+    filterUi.favBackdrop.addEventListener("click", () => closeFavorites());
+  }
+
+  updateSaveCurrentBtn();
   document.addEventListener("click", (e) => {
     if (
-      favoritesPopoverOpen &&
+      favoritesState.isOpen &&
       filterUi.favPopover &&
       !filterUi.favPopover.contains(e.target) &&
       (!filterUi.favQuickToggle || !filterUi.favQuickToggle.contains(e.target))
     ) {
-      closeFavoritesPopover();
+      closeFavorites();
     }
 
     if (
@@ -1511,14 +1682,6 @@ export function setupFilters(onChange) {
       closeFiltersSheet(false);
     }
   });
-
-  window.addEventListener(
-    "resize",
-    () => {
-      if (favoritesPopoverOpen) positionFavoritesPopover();
-    },
-    { passive: true },
-  );
 
   if (filterUi.platformSelect) {
     const mark = () => { selectInteraction.platform = true; };
@@ -1571,9 +1734,13 @@ export function setupFilters(onChange) {
   }
 
   document.addEventListener("keydown", (e) => {
+    if (e.key === "Tab" && favoritesState.isOpen) {
+      trapFocusInFavoritesPopover(e);
+      return;
+    }
     if (e.key === "Escape") {
       if (filterSheetOpen) closeFiltersSheet(false);
-      if (favoritesPopoverOpen) closeFavoritesPopover();
+      if (favoritesState.isOpen) closeFavorites();
     }
   });
 
@@ -1623,75 +1790,36 @@ export function renderFilterOptions() {
 // ---------------- STATION SEARCH ----------------
 
 export function setupStationSearch(onStationPicked) {
+  // Legacy header controls path disabled: replaced by ui/headerControls2.js
+  return;
+
   const input = document.getElementById("station-input");
   const list = document.getElementById("station-suggestions");
+  const clearBtn = document.getElementById("station-input-clear");
   const btn = document.getElementById("station-search-btn");
   const geoBtn = btn; // single button handles geolocation
-  const favBtn = getFavToggleEl();
+  const favBtn = document.getElementById("favorites-only-toggle");
   const favSel = getFavSelectEl();
   const favoritesChipList = filterUi.favoritesChips;
   const favoritesEmpty = filterUi.favoritesEmpty;
+  const saveCurrentBtn = filterUi.favoritesSaveCurrent;
 
   if (!input || !list) return;
 
   const favoritesInline = document.querySelector(".station-card .favorites-inline");
-  const stationInputWrapper = document.querySelector(".station-input-wrapper");
-  const dualBoardLink = document.getElementById("dual-board-link");
-  const favoritesHome = favoritesInline
-    ? { parent: favoritesInline.parentElement, next: favoritesInline.nextElementSibling }
-    : null;
-  const MOBILE_BREAKPOINT = 520;
-  let resizeTimer = null;
-
-  function placeFavoritesInline(isMobile) {
-    if (!favoritesInline || !stationInputWrapper || !favoritesHome?.parent) return;
-    if (isMobile) {
-      if (favoritesInline.parentElement === stationInputWrapper) return;
-      const anchor =
-        dualBoardLink && dualBoardLink.parentElement === stationInputWrapper
-          ? dualBoardLink
-          : null;
-      if (anchor) {
-        stationInputWrapper.insertBefore(favoritesInline, anchor);
-      } else {
-        stationInputWrapper.appendChild(favoritesInline);
-      }
-      favoritesInline.classList.add("favorites-inline--mobile");
-    } else {
-      if (favoritesInline.parentElement === favoritesHome.parent) {
-        favoritesInline.classList.remove("favorites-inline--mobile");
-        return;
-      }
-      if (favoritesHome.next && favoritesHome.next.parentElement === favoritesHome.parent) {
-        favoritesHome.parent.insertBefore(favoritesInline, favoritesHome.next);
-      } else {
-        favoritesHome.parent.appendChild(favoritesInline);
-      }
-      favoritesInline.classList.remove("favorites-inline--mobile");
-    }
+  if (favoritesInline) {
+    favoritesInline.classList.remove("favorites-inline--mobile");
   }
-
-  function syncFavoritesPlacement() {
-    const viewportWidth = Math.max(
-      window.innerWidth || 0,
-      document.documentElement?.clientWidth || 0,
-    );
-    placeFavoritesInline(viewportWidth <= MOBILE_BREAKPOINT);
-  }
-
-  syncFavoritesPlacement();
-  window.addEventListener(
-    "resize",
-    () => {
-      clearTimeout(resizeTimer);
-      resizeTimer = setTimeout(syncFavoritesPlacement, 120);
-    },
-    { passive: true },
-  );
 
   let lastQuery = "";
   let active = [];
   let favoritesOnly = !!appState.favoritesOnly;
+
+  function syncClearButton() {
+    if (!clearBtn) return;
+    const hasText = !!(input && String(input.value || "").trim().length > 0);
+    clearBtn.classList.toggle("is-hidden", !hasText);
+  }
 
   function renderFavoriteChipsList() {
     if (!favoritesChipList) return;
@@ -1725,14 +1853,14 @@ export function setupStationSearch(onStationPicked) {
         e.preventDefault();
         if (favoritesManageMode) return;
         setStationSelection(f.name, f.id, onStationPicked);
-        closeFavoritesPopover();
+        closeFavorites();
       });
 
       chip.addEventListener("click", (e) => {
         if (favoritesManageMode) return;
         e.preventDefault();
         setStationSelection(f.name, f.id, onStationPicked);
-        closeFavoritesPopover();
+        closeFavorites();
       });
 
       const select = document.createElement("span");
@@ -1770,6 +1898,7 @@ export function setupStationSearch(onStationPicked) {
     }
 
     updateFavoritesDeleteState();
+    updateSaveCurrentBtn();
   }
 
   function renderFavoriteSuggestions(query) {
@@ -1798,6 +1927,7 @@ export function setupStationSearch(onStationPicked) {
       li.textContent = s.name;
       li.addEventListener("click", () => {
         input.value = s.name;
+        syncClearButton();
         clear();
         setStationSelection(s.name, s.id, onStationPicked);
       });
@@ -1826,6 +1956,7 @@ export function setupStationSearch(onStationPicked) {
     if (favoritesOnly) {
       renderFavoriteSuggestions(input.value.trim());
     }
+    syncClearButton();
   });
   input.addEventListener("mouseup", (e) => {
     if (justAutoSelected) {
@@ -1891,6 +2022,7 @@ export function setupStationSearch(onStationPicked) {
 
       li.addEventListener("click", () => {
         input.value = s.name;
+        syncClearButton();
         clear();
         setStationSelection(s.name, s.id, onStationPicked);
       });
@@ -1921,6 +2053,7 @@ export function setupStationSearch(onStationPicked) {
   let debounceTimer = null;
   input.addEventListener("input", () => {
     const q = input.value.trim();
+    syncClearButton();
     if (debounceTimer) clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => doSuggest(q), 180);
   });
@@ -1935,6 +2068,19 @@ export function setupStationSearch(onStationPicked) {
       clear();
     }
   });
+
+  if (clearBtn) {
+    clearBtn.addEventListener("click", () => {
+      input.value = "";
+      syncClearButton();
+      if (favoritesOnly) {
+        renderFavoriteSuggestions("");
+      } else {
+        clear();
+      }
+      input.focus();
+    });
+  }
 
 function setGeoLoading(on) {
   if (!geoBtn) return;
@@ -1996,9 +2142,11 @@ function setGeoLoading(on) {
   }
 
   // Init favourites UI (dropdown + star)
+  syncClearButton();
   renderFavoritesSelect(appState.stationId);
   refreshFavToggleFromState();
   renderFavoriteChipsList();
+  updateSaveCurrentBtn();
 
   if (favSel) {
     favSel.addEventListener("change", () => {
@@ -2024,33 +2172,6 @@ function setGeoLoading(on) {
 
       // Selecting a favourite should immediately load it
       setStationSelection(f.name, f.id, onStationPicked);
-    });
-  }
-
-  if (favBtn) {
-    favBtn.addEventListener("click", () => {
-      const id = appState.stationId;
-      const name = appState.STATION;
-
-      // We only allow starring when we have a reliable stop id
-      if (!id) {
-        console.warn("[MesDeparts][favorites] Cannot favorite without stationId. Pick a suggestion first.");
-        refreshFavToggleFromState();
-        return;
-      }
-
-      if (isFavorite(id)) {
-        removeFavorite(id);
-      } else {
-        addFavorite({ id, name });
-      }
-
-      renderFavoritesSelect(appState.stationId);
-      refreshFavToggleFromState();
-      renderFavoriteChipsList();
-      if (loadFavorites().length === 0) {
-        applyFavoritesOnlyMode(false);
-      }
     });
   }
 

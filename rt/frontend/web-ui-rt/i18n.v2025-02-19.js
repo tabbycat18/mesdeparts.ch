@@ -327,7 +327,7 @@ const TRANSLATIONS = {
     en: "Ln.",
   },
   filterAll: {
-    fr: "Tous",
+    fr: "Tout",
     de: "Alle",
     it: "Tutti",
     en: "All",
@@ -555,10 +555,10 @@ const TRANSLATIONS = {
     en: "Read the screen: min = realtime\nDeparture = scheduled time.",
   },
   infoHelpItemData: {
-    fr: "Données : transport.opendata.ch (en cas de doute : affichage officiel/sur place).",
-    de: "Daten: transport.opendata.ch (bei Zweifel offizielle Anzeige/vor Ort prüfen).",
-    it: "Dati: transport.opendata.ch (in dubbio: display ufficiale/sul posto).",
-    en: "Data: transport.opendata.ch (if unsure: official display/on site).",
+    fr: "Données : api.mesdeparts.ch (agrégation de sources publiques suisses ; en cas de doute : affichage officiel/sur place).",
+    de: "Daten: api.mesdeparts.ch (Aggregation öffentlicher Schweizer Quellen; bei Zweifel offizielle Anzeige/vor Ort prüfen).",
+    it: "Dati: api.mesdeparts.ch (aggregazione di fonti pubbliche svizzere; in dubbio: display ufficiale/sul posto).",
+    en: "Data: api.mesdeparts.ch (aggregated from Swiss public sources; if unsure: official display/on site).",
   },
   infoIntro: {
     fr: "mesdeparts.ch affiche les prochains départs en Suisse. Les noms avec virgule désignent un arrêt (bus/tram), ceux sans virgule une gare (train). Actualisation automatique toutes les 10-20 s selon le mode (~3 h d’horizon).",
@@ -609,10 +609,10 @@ const TRANSLATIONS = {
     en: "Disclaimer",
   },
   disclaimerBody: {
-    fr: "Les données proviennent de transport.opendata.ch et peuvent être incomplètes ou différer de l’affichage officiel. En cas de doute, veuillez vérifier auprès de l’opérateur ou sur place.",
-    de: "Die Daten stammen von transport.opendata.ch und können unvollständig sein oder vom offiziellen Aushang abweichen. Im Zweifel bitte beim Betreiber oder vor Ort prüfen.",
-    it: "I dati provengono da transport.opendata.ch e possono essere incompleti o differire dalle indicazioni ufficiali. In caso di dubbio verifica presso l’operatore o in loco.",
-    en: "Data comes from transport.opendata.ch and may be incomplete or differ from official displays. If in doubt, check with the operator or on site.",
+    fr: "Les données proviennent de api.mesdeparts.ch (agrégation de sources publiques suisses) et peuvent être incomplètes ou différer de l’affichage officiel. En cas de doute, veuillez vérifier auprès de l’opérateur ou sur place.",
+    de: "Die Daten stammen von api.mesdeparts.ch (Aggregation öffentlicher Schweizer Quellen) und können unvollständig sein oder vom offiziellen Aushang abweichen. Im Zweifel bitte beim Betreiber oder vor Ort prüfen.",
+    it: "I dati provengono da api.mesdeparts.ch (aggregazione di fonti pubbliche svizzere) e possono essere incompleti o differire dalle indicazioni ufficiali. In caso di dubbio verifica presso l’operatore o in loco.",
+    en: "Data comes from api.mesdeparts.ch (aggregation of Swiss public sources) and may be incomplete or differ from official displays. If in doubt, check with the operator or on site.",
   },
   delaysTitle: {
     fr: "Retards et données en temps réel",
@@ -765,10 +765,10 @@ const TRANSLATIONS = {
     en: "Data",
   },
   creditsData: {
-    fr: "Données : transport.opendata.ch",
-    de: "Daten: transport.opendata.ch",
-    it: "Dati: transport.opendata.ch",
-    en: "Data: transport.opendata.ch",
+    fr: "Données : api.mesdeparts.ch",
+    de: "Daten: api.mesdeparts.ch",
+    it: "Dati: api.mesdeparts.ch",
+    en: "Data: api.mesdeparts.ch",
   },
   creditsAuthor: {
     fr: "© 2025 tabbycat18 – mesdeparts.ch — Licence Apache 2.0.",
@@ -807,10 +807,10 @@ const TRANSLATIONS = {
     en: "No affiliation or official approval from SBB/CFF.",
   },
   footerNote: {
-    fr: "Données : transport.opendata.ch — Horloge : sbbUhr (Apache 2.0) — Non officiel, aucune affiliation avec CFF/SBB/FFS ou les exploitants.",
-    de: "Daten: transport.opendata.ch — Uhr: sbbUhr (Apache License 2.0) — Inoffiziell, keine Zugehörigkeit zu SBB/CFF/FFS oder Betreibern.",
-    it: "Dati: transport.opendata.ch — Orologio: sbbUhr (Apache 2.0) — Non ufficiale, nessuna affiliazione con FFS/SBB/CFF o operatori.",
-    en: "Data: transport.opendata.ch — Clock: sbbUhr (Apache 2.0) — Unofficial; no affiliation with SBB/CFF/FFS or operators.",
+    fr: "Données : api.mesdeparts.ch — Horloge : sbbUhr (Apache 2.0) — Non officiel, aucune affiliation avec CFF/SBB/FFS ou les exploitants.",
+    de: "Daten: api.mesdeparts.ch — Uhr: sbbUhr (Apache License 2.0) — Inoffiziell, keine Zugehörigkeit zu SBB/CFF/FFS oder Betreibern.",
+    it: "Dati: api.mesdeparts.ch — Orologio: sbbUhr (Apache 2.0) — Non ufficiale, nessuna affiliazione con FFS/SBB/CFF o operatori.",
+    en: "Data: api.mesdeparts.ch — Clock: sbbUhr (Apache 2.0) — Unofficial; no affiliation with SBB/CFF/FFS or operators.",
   },
   infoCreditsLineColorsTitle: {
     fr: "Couleurs de lignes",

@@ -26,4 +26,5 @@ jobs:
           node-version: "20"
 
       - name: Validate stationboard schema JSON
-        run: node -e "JSON.parse(require('fs').readFileSync('rt/backend/docs/stationboard.schema.json','utf8')); console.log('stationboard.schema.json: ok')"
+        run: |
+          node -e "JSON.parse(require('fs').readFileSync('rt/backend/docs/stationboard.schema.json','utf8')); console.log('stationboard.schema.json: ok')"
