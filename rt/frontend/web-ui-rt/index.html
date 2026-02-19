@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="fr">
   <head>
     <meta charset="UTF-8" />
@@ -7,7 +7,7 @@
     <link rel="icon" type="image/svg+xml" href="bus-icon-1.svg" />
     <link rel="apple-touch-icon" href="bus-icon-1.png" />
     <link rel="manifest" href="manifest.webmanifest" />
-    <link rel="modulepreload" href="main.v2025-02-19.js" />
+    <link rel="modulepreload" href="main.v2026-02-19.js" />
     <link rel="prefetch" href="clock/index.html" as="document" />
     <link rel="prefetch" href="clock/js/sbbUhr-1.3.js" as="script" />
     <meta name="theme-color" content="#01157f" />
@@ -19,13 +19,13 @@
       name="description"
       content="Tableau de départs avec horloge sbbUhr (Apache 2.0), sans affiliation officielle CFF/SBB."
     />
-    <link rel="preload" href="style.v2025-02-19.css" as="style" />
-    <link rel="modulepreload" href="logic.v2025-02-19.js" as="script" />
-    <link rel="modulepreload" href="ui.v2025-02-19.js" />
-    <link rel="modulepreload" href="state.v2025-02-19.js" />
-    <link rel="modulepreload" href="i18n.v2025-02-19.js" />
-    <link rel="modulepreload" href="infoBTN.v2025-02-19.js" />
-    <link rel="modulepreload" href="favourites.v2025-02-19.js" />
+    <link rel="preload" href="style.v2026-02-19.css" as="style" />
+    <link rel="modulepreload" href="logic.v2026-02-19.js" as="script" />
+    <link rel="modulepreload" href="ui.v2026-02-19.js" />
+    <link rel="modulepreload" href="state.v2026-02-19.js" />
+    <link rel="modulepreload" href="i18n.v2026-02-19.js" />
+    <link rel="modulepreload" href="infoBTN.v2026-02-19.js" />
+    <link rel="modulepreload" href="favourites.v2026-02-19.js" />
     <link rel="modulepreload" href="ui/headerControls2.js" />
     <script>
       (function markEmbed() {
@@ -40,14 +40,16 @@
         }
       })();
     </script>
-    <script>window.__MD_API_BASE__ = window.__MD_API_BASE__ || "";</script>
-    <link rel="stylesheet" href="style.v2025-02-19.css" />
+    <script>
+      window.__MD_API_BASE__ = window.__MD_API_BASE__ || "";
+    </script>
+    <link rel="stylesheet" href="style.v2026-02-19.css" />
     <link rel="stylesheet" href="ui/headerControls2.css" />
   </head>
   <body>
     <div class="mobile-fullscreen-wrapper">
       <div class="board">
-        <div class="version-tag" aria-label="Version">v1.7</div>
+        <div class="version-tag" aria-label="Version">v1.7.1</div>
         <header id="header-controls2-mount" class="board-header"></header>
 
         <div id="line-chips" class="line-chips">
@@ -80,15 +82,18 @@
 
         <footer class="board-footer">
           <span id="footer-note">
-            Data: api.mesdeparts.ch — Horloge: sbbUhr (Apache 2.0) — Non officiel, aucune affiliation avec
-            CFF/SBB/FFS ou les exploitants.
+            Data: api.mesdeparts.ch — Horloge: sbbUhr (Apache 2.0) — Non
+            officiel, aucune affiliation avec CFF/SBB/FFS ou les exploitants.
           </span>
         </footer>
       </div>
     </div>
 
-    <!-- IMPORTANT: use main.v2025-02-19.js as an ES module -->
-    <script type="module" src="main.v2025-02-19.js"></script>
+    <!-- IMPORTANT: use main.v2026-02-19.js as an ES module -->
+    <script type="module">
+      import "./ui/headerControls2.js";
+    </script>
+    <script type="module" src="main.v2026-02-19.js"></script>
     <script>
       if ("serviceWorker" in navigator) {
         const path = window.location.pathname || "/";
@@ -109,10 +114,15 @@
         };
 
         if (!isClock && allowed) {
-          if (document.readyState === "complete" || document.readyState === "interactive") {
+          if (
+            document.readyState === "complete" ||
+            document.readyState === "interactive"
+          ) {
             registerSW();
           } else {
-            document.addEventListener("DOMContentLoaded", registerSW, { once: true });
+            document.addEventListener("DOMContentLoaded", registerSW, {
+              once: true,
+            });
           }
         }
       }
