@@ -7,7 +7,7 @@
 .hc2 {
   width: 100%;
   display: grid;
-  gap: 12px;
+  gap: 4px;
   color: #f5f7ff;
   padding-right: env(safe-area-inset-right, 0px);
 }
