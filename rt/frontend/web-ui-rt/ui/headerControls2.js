@@ -6,7 +6,7 @@ import {
   TRAIN_FILTER_REGIONAL,
   TRAIN_FILTER_LONG_DISTANCE,
 } from "../state.v2026-02-19.js";
-import { fetchStationSuggestions, fetchStationsNearby } from "../logic.v2026-02-19.js";
+import { fetchStationSuggestions, fetchStationsNearby, isAbortError } from "../logic.v2026-02-19.js";
 import { loadFavorites, saveFavorites } from "../favourites.v2026-02-19.js";
 import { t, setLanguage, LANGUAGE_OPTIONS, applyStaticTranslations } from "../i18n.v2026-02-19.js";
 
@@ -99,6 +99,23 @@ const state = {
   windowResizeHandler: null,
   favoritesOpener: null,
   inertRoot: null,
+  // Search resiliency: AbortController for in-flight suggestion fetch
+  suggestionsAbortController: null,
+  // Search cache: { [normalizedQuery]: { items, ts } }
+  suggestionCache: {},
+  // Debounce token for deduplication (ensures only latest debounce runs)
+  _searchDebounceToken: 0,
+};
+
+// Search resiliency constants
+const SUGGESTION_CACHE_TTL = 90_000; // 90 seconds
+const SEARCH_TIMEOUT_MS = 6_000; // 6s client-side timeout
+
+// Dev-only guard (same pattern as existing window.DEBUG_UI)
+const dbg = (...a) => {
+  if (typeof window !== "undefined" && window.DEBUG_UI) {
+    console.log("[HC2][search]", ...a);
+  }
 };
 
 function langCode() {
@@ -971,6 +988,85 @@ function renderSuggestions(items) {
   setSuggestionsVisible(true);
 }
 
+function getCachedSuggestions(query) {
+  const key = String(query || "").toLowerCase().trim();
+  const entry = state.suggestionCache[key];
+  if (!entry) return null;
+  if (Date.now() - entry.ts > SUGGESTION_CACHE_TTL) {
+    delete state.suggestionCache[key];
+    return null;
+  }
+  return entry.items;
+}
+
+function setCachedSuggestions(query, items) {
+  const key = String(query || "").toLowerCase().trim();
+  state.suggestionCache[key] = { items, ts: Date.now() };
+}
+
+function renderSuggestionLoading() {
+  const list = state.refs.stationSuggestions;
+  if (!list) return;
+  list.innerHTML = "";
+  const item = document.createElement("li");
+  item.className = "hc2__suggestion hc2__suggestionStatus";
+  item.textContent = t("searchLoading");
+  list.appendChild(item);
+  state.suggestions = [];
+  setSuggestionsVisible(true);
+}
+
+function renderSuggestionError(type, retryFn) {
+  const list = state.refs.stationSuggestions;
+  if (!list) return;
+  list.innerHTML = "";
+  const li = document.createElement("li");
+  li.className = "hc2__suggestion hc2__suggestion--error";
+  li.setAttribute("role", "status");
+
+  const titleEl = document.createElement("div");
+  titleEl.className = "hc2__suggestionErrorTitle";
+  if (type === "server") {
+    titleEl.textContent = t("searchUnavailable");
+  } else if (type === "timeout") {
+    titleEl.textContent = t("searchOffline");
+  } else {
+    titleEl.textContent = t("searchUnavailable");
+  }
+  li.appendChild(titleEl);
+
+  const subEl = document.createElement("div");
+  subEl.className = "hc2__suggestionErrorSub";
+  subEl.textContent = t("searchUnavailableSub");
+  li.appendChild(subEl);
+
+  const retryBtn = document.createElement("button");
+  retryBtn.type = "button";
+  retryBtn.className = "hc2__suggestionRetry";
+  retryBtn.textContent = t("searchRetry");
+  retryBtn.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (typeof retryFn === "function") retryFn();
+  });
+  li.appendChild(retryBtn);
+
+  list.appendChild(li);
+  state.suggestions = [];
+  setSuggestionsVisible(true);
+}
+
+function renderSuggestionsWithHint(items, hint) {
+  renderSuggestions(items);
+  const list = state.refs.stationSuggestions;
+  if (!list || !hint) return;
+  const hintLi = document.createElement("li");
+  hintLi.className = "hc2__suggestion hc2__suggestionHint";
+  hintLi.textContent = hint;
+  hintLi.setAttribute("aria-hidden", "true");
+  list.prepend(hintLi);
+}
+
 async function fetchAndRenderSuggestions(query) {
   const trimmed = String(query || "").trim();
   if (trimmed.length < 2) {
@@ -978,13 +1074,74 @@ async function fetchAndRenderSuggestions(query) {
     return;
   }
 
-  const requested = trimmed;
+  // Abort previous in-flight request
+  if (state.suggestionsAbortController) {
+    state.suggestionsAbortController.abort();
+    dbg("aborted previous fetch");
+  }
+  const controller = new AbortController();
+  state.suggestionsAbortController = controller;
+  const { signal } = controller;
+
+  // Serve from cache immediately if hit
+  const cached = getCachedSuggestions(trimmed);
+  if (cached) {
+    dbg("cache hit:", trimmed);
+    renderSuggestions(cached);
+    return;
+  }
+
+  // Show loading state
+  renderSuggestionLoading();
+
   try {
-    const items = await fetchStationSuggestions(trimmed);
+    // Fetch with 6s timeout (passed via fetchStationSuggestions)
+    const items = await fetchStationSuggestions(trimmed, { signal });
+
+    // Stale check: verify input still matches
     const current = String(state.refs.stationInput?.value || "").trim();
-    if (current !== requested) return;
-    renderSuggestions(items || []);
-  } catch {
+    if (current !== trimmed) return;
+
+    // Store in cache
+    setCachedSuggestions(trimmed, items || []);
+
+    if (!items || !items.length) {
+      renderSuggestionStatus(t("searchEmpty"));
+    } else {
+      renderSuggestions(items);
+    }
+  } catch (err) {
+    // User aborted (new query typed) → silently ignore
+    if (signal.aborted) {
+      dbg("fetch silently ignored (aborted)");
+      return;
+    }
+
+    // Client-side timeout
+    if (err instanceof DOMException && err.name === "AbortError" && err.message === "Timeout") {
+      dbg("timeout hit");
+      const fallback = getCachedSuggestions(trimmed);
+      if (fallback) {
+        renderSuggestionsWithHint(fallback, t("searchHintOffline"));
+      } else {
+        renderSuggestionError("timeout", () => fetchAndRenderSuggestions(trimmed));
+      }
+      return;
+    }
+
+    // Server error (502/503/504)
+    if (err && typeof err.status === "number" && err.status >= 500) {
+      dbg("5xx received:", err.status);
+      const fallback = getCachedSuggestions(trimmed);
+      if (fallback) {
+        renderSuggestionsWithHint(fallback, t("searchHintOffline"));
+      } else {
+        renderSuggestionError("server", () => fetchAndRenderSuggestions(trimmed));
+      }
+      return;
+    }
+
+    // Other errors: clear dropdown
     clearSuggestions();
   }
 }
@@ -1571,7 +1728,11 @@ function bindEvents() {
     setSearchText(r.stationInput.value || "");
     if (state.suggestionsDebounce) clearTimeout(state.suggestionsDebounce);
     const query = state.searchText.trim();
-    state.suggestionsDebounce = setTimeout(() => fetchAndRenderSuggestions(query), 180);
+    const token = ++state._searchDebounceToken;
+    state.suggestionsDebounce = setTimeout(() => {
+      if (token !== state._searchDebounceToken) return; // stale debounce
+      fetchAndRenderSuggestions(query);
+    }, 180);
   });
 
   r.stationInput?.addEventListener("focus", () => {

@@ -267,8 +267,8 @@
    Coordinates are set by repositionSuggestionsPortal() in JS. */
 .hc2__suggestions {
   position: fixed;
-  /* z-index sits above the tray but below favorites/filters backdrop (1600) */
-  z-index: 1500;
+  /* z-index sits above backdrop (1600) and sheet (1601) */
+  z-index: 1700;
   pointer-events: auto;
   margin: 0;
   padding: 0;
@@ -324,6 +324,49 @@
 .hc2__suggestionStatus {
   padding: 10px 12px;
   opacity: 0.92;
+}
+
+.hc2__suggestionHint {
+  padding: 6px 12px;
+  font-size: 0.76rem;
+  color: rgba(255, 255, 255, 0.54);
+  font-style: italic;
+  pointer-events: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.hc2__suggestion--error {
+  padding: 10px 12px;
+  display: grid;
+  gap: 2px;
+}
+
+.hc2__suggestionErrorTitle {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: rgba(255, 220, 100, 0.92);
+}
+
+.hc2__suggestionErrorSub {
+  font-size: 0.78rem;
+  color: rgba(255, 255, 255, 0.62);
+}
+
+.hc2__suggestionRetry {
+  margin-top: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #f5f8ff;
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 5px 10px;
+  cursor: pointer;
+  width: fit-content;
+}
+
+.hc2__suggestionRetry:hover {
+  background: rgba(255, 255, 255, 0.18);
 }
 
 .hc2__row {

@@ -68,6 +68,48 @@ const TRANSLATIONS = {
     it: "Ricerca nelle vicinanze non riuscita.",
     en: "Nearby search failed.",
   },
+  searchEmpty: {
+    fr: "Aucun arrêt trouvé",
+    de: "Keine Haltestelle gefunden",
+    it: "Nessuna fermata trovata",
+    en: "No stop found",
+  },
+  searchLoading: {
+    fr: "Recherche…",
+    de: "Suchen…",
+    it: "Ricerca…",
+    en: "Searching…",
+  },
+  searchUnavailable: {
+    fr: "Serveur indisponible",
+    de: "Server nicht verfügbar",
+    it: "Server non disponibile",
+    en: "Server unavailable",
+  },
+  searchUnavailableSub: {
+    fr: "Réessaie dans quelques secondes",
+    de: "Versuche es in ein paar Sekunden erneut",
+    it: "Riprova tra qualche secondo",
+    en: "Try again in a few seconds",
+  },
+  searchOffline: {
+    fr: "Connexion instable",
+    de: "Verbindung instabil",
+    it: "Connessione instabile",
+    en: "Unstable connection",
+  },
+  searchRetry: {
+    fr: "Réessayer",
+    de: "Erneut versuchen",
+    it: "Riprova",
+    en: "Retry",
+  },
+  searchHintOffline: {
+    fr: "hors ligne",
+    de: "offline",
+    it: "offline",
+    en: "offline",
+  },
   servedByLines: {
     fr: "Desservi par les lignes :",
     de: "Bedient von den Linien:",

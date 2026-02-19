@@ -311,7 +311,7 @@ async function fetchJson(url, { signal, timeoutMs = FETCH_TIMEOUT_MS, cache = "d
   }
 }
 
-function isAbortError(err) {
+export function isAbortError(err) {
   if (!err) return false;
   if (err.name === "AbortError") return true;
   const msg = String(err?.message || "").toLowerCase();
@@ -447,9 +447,9 @@ export async function resolveStationId() {
   return appState.stationId;
 }
 
-export async function fetchStationSuggestions(query) {
+export async function fetchStationSuggestions(query, { signal } = {}) {
   const url = apiUrl(`/api/stops/search?q=${encodeURIComponent(query)}&limit=7`);
-  const data = await fetchJson(url);
+  const data = await fetchJson(url, { signal, timeoutMs: 6_000 });
 
   const list = Array.isArray(data?.stops) ? data.stops : [];
   return list
