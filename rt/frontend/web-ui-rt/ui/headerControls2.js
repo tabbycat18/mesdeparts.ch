@@ -350,7 +350,7 @@ function createTemplate() {
           aria-label="Info"
           title="Info"
         >
-          <img src="../../assets/info.svg" alt="" aria-hidden="true" class="hc2__servedInfoIcon" />
+          <img src="/assets/info.svg" alt="" aria-hidden="true" class="hc2__servedInfoIcon" />
         </button>
       </div>
     </header>
