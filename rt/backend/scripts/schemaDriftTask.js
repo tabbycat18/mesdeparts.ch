@@ -14,7 +14,6 @@ const FILES = [
   "sql/swap_stage_to_live_cutover.sql",
   "sql/cleanup_old_after_swap.sql",
   "sql/optimize_stationboard.sql",
-  "scripts/legacy/DANGEROUS-direct-live-import.sh",
   "scripts/importGtfsToStage.sh",
   "src/resolve/resolveStop.js",
   "src/logic/buildStationboard.js",

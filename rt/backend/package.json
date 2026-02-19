@@ -6,7 +6,6 @@
   "scripts": {
     "start": "TZ=Europe/Zurich node server.js",
     "dev": "TZ=Europe/Zurich NODE_ENV=development node server.js",
-    "import:gtfs:legacy": "bash scripts/legacy/DANGEROUS-direct-live-import.sh",
     "seed:aliases": "node scripts/seedStopAliases.js",
     "search:sync-aliases": "node scripts/syncStopSearchAliases.js",
     "search:verify": "node scripts/verifyStopSearchCases.js",
