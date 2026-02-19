@@ -351,10 +351,10 @@ const TRANSLATIONS = {
     en: "Hide Departure column (bus)",
   },
   filterHideDepartureShort: {
-    fr: "Départ–",
-    de: "Abfahrt–",
-    it: "Da–",
-    en: "Depart–",
+    fr: "Masquer colonne Départ",
+    de: "Abfahrtsspalte ausblenden",
+    it: "Nascondi colonna Da",
+    en: "Hide Departure column",
   },
   filterLines: {
     fr: "Lignes",
@@ -1004,8 +1004,6 @@ export function applyStaticTranslations() {
     ["#filters-open-label", "filterButton"],
     ["#filters-sheet-title", "filterButton"],
     ["#filters-display-title", "filterDisplay"],
-    ["label[for='filters-hide-departure']", "filterHideDeparture"],
-    ["#filters-hide-departure", "filterHideDeparture"],
     ["#filters-platforms-title", "filterPlatforms"],
     ["#filters-lines-title", "filterLines"],
     ["#favorites-only-label", "filterFavoritesLabel"],

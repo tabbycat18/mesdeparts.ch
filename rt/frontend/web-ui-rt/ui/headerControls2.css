@@ -706,9 +706,18 @@
 
 .hc2__primary {
   width: 100%;
-  background: #fee401;
-  color: #05144b;
+  background: #3562af;
+  color: #ffffff;
   margin-bottom: 10px;
+  transition: background-color 0.18s ease, opacity 0.18s ease;
+}
+
+.hc2__primary:hover {
+  background-color: #4a73c1;
+}
+
+.hc2__primary:active {
+  background-color: #2a4a94;
 }
 
 .hc2__primary:disabled {
@@ -854,6 +863,33 @@
   justify-content: space-between;
   gap: 12px;
   font-size: 0.88rem;
+  padding: 8px 4px;
+  cursor: pointer;
+}
+
+.hc2__switch--clickable {
+  border-radius: 8px;
+  transition: background-color 0.18s ease;
+}
+
+.hc2__switch--clickable:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+.hc2__switch--clickable:focus-within {
+  outline: 2px solid rgba(254, 228, 1, 0.95);
+  outline-offset: -2px;
+  border-radius: 8px;
+}
+
+.hc2__switchLabel {
+  flex: 1;
+  cursor: pointer;
+}
+
+.hc2__switchInput {
+  cursor: pointer;
+  accent-color: #fea801;
 }
 
 @media (min-width: 720px) {

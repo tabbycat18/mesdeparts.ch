@@ -342,6 +342,9 @@ function createTemplate() {
           <span id="hc2-served-lines-label" class="hc2__servedLabel">${t("servedByLines")}</span>
           <div id="hc2-served-lines-container" class="hc2__servedChips"></div>
         </div>
+        <button id="hc2-served-lines-clear" class="hc2__servedClearBtn" type="button" title="Clear line selection" hidden>
+          ${t("filterReset")}
+        </button>
       </div>
     </header>
   `;
@@ -426,9 +429,9 @@ function createGlobalSheetsTemplate() {
 
         <section class="hc2__filterSection" id="filters-section-display">
           <div class="hc2__sectionTitle" id="filters-display-title">${t("filterDisplay")}</div>
-          <label class="hc2__switch" for="filters-hide-departure">
-            <span>${t("filterHideDeparture")}</span>
-            <input type="checkbox" id="filters-hide-departure" />
+          <label class="hc2__switch hc2__switch--clickable" for="filters-hide-departure">
+            <span class="hc2__switchLabel">${t("filterHideDepartureShort")}</span>
+            <input type="checkbox" id="filters-hide-departure" class="hc2__switchInput" />
           </label>
         </section>
       </div>
@@ -495,6 +498,7 @@ function cacheRefs() {
     servedLinesWrap: q("hc2-served-lines"),
     servedLinesLabel: q("hc2-served-lines-label"),
     servedLinesContainer: q("hc2-served-lines-container"),
+    servedLinesClearBtn: dq("hc2-served-lines-clear"),
     backdrop: dq("favorites-backdrop"),
     languageSelect: q("language-select"),
   };
@@ -1483,13 +1487,8 @@ function setServedLineSelection(lineId) {
   const allowed = sortedLineOptions();
   if (!clean || !allowed.includes(clean)) return;
 
-  const current = state.filterState.selectedLines;
-  const singleSelected =
-    current !== "ALL" &&
-    current.size === 1 &&
-    current.has(clean);
-
-  state.filterState.selectedLines = singleSelected ? "ALL" : new Set([clean]);
+  // Toggle selection: add if not present, remove if present
+  toggleSelection("selectedLines", clean);
   applyFilterState();
   renderFiltersSheet();
 }
@@ -1498,6 +1497,7 @@ function renderServedLinesChips() {
   const wrap = state.refs.servedLinesWrap;
   const label = state.refs.servedLinesLabel;
   const container = state.refs.servedLinesContainer;
+  const clearBtn = state.refs.servedLinesClearBtn;
   if (!wrap || !label || !container) return;
 
   const lines = sortedLineOptions();
@@ -1505,14 +1505,20 @@ function renderServedLinesChips() {
   const active = selection === "ALL" ? new Set() : new Set(selection);
 
   label.textContent = t("servedByLines");
-  const shouldHide = lines.length === 0 || !!appState.lastBoardIsTrain;
+  const isDualBoard = document.documentElement.classList.contains("dual-embed") || document.body.classList.contains("dual-embed");
+  const shouldHide = lines.length === 0 || !!appState.lastBoardIsTrain || isDualBoard;
   wrap.hidden = shouldHide;
 
-  // Hide for train stations: use inline style to ensure it overrides any CSS
+  // Hide for train stations and dual board: use inline style to ensure it overrides any CSS
   if (shouldHide) {
     wrap.style.display = "none";
   } else {
     wrap.style.display = "";
+  }
+
+  // Show/hide the clear button based on whether any lines are selected
+  if (clearBtn) {
+    clearBtn.hidden = selection === "ALL" || active.size === 0;
   }
 
   container.innerHTML = "";
@@ -1526,7 +1532,10 @@ function renderServedLinesChips() {
     btn.setAttribute("aria-pressed", activeState ? "true" : "false");
     if (title) btn.title = title;
     btn.textContent = text;
-    btn.addEventListener("click", onClick);
+    btn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      onClick(event);
+    });
     return btn;
   };
 
@@ -1552,7 +1561,10 @@ function createChip({ text, active, onClick, className = "hc2__chip", activeClas
   chip.setAttribute("aria-pressed", active ? "true" : "false");
   if (title) chip.title = title;
   chip.textContent = text;
-  chip.addEventListener("click", onClick);
+  chip.addEventListener("click", (event) => {
+    event.stopPropagation();
+    onClick(event);
+  });
   return chip;
 }
 
@@ -1839,6 +1851,12 @@ function bindEvents() {
 
   r.filtersResetInline?.addEventListener("click", () => {
     resetAllFilters();
+  });
+
+  r.servedLinesClearBtn?.addEventListener("click", () => {
+    state.filterState.selectedLines = "ALL";
+    applyFilterState();
+    renderFiltersSheet();
   });
 
   r.hideDeparture?.addEventListener("change", () => {

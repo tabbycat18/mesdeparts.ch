@@ -291,13 +291,15 @@ export async function buildStationboard(locationId, options = {}) {
   });
   const ENABLE_RT = process.env.ENABLE_RT === "1";
 
-  console.log("[buildStationboard] start", {
-    requestId: timings.requestId,
-    locationId,
-    limit,
-    windowMinutes,
-    nowISO: now.toISOString(),
-  });
+  if (debugEnabled) {
+    console.log("[buildStationboard] start", {
+      requestId: timings.requestId,
+      locationId,
+      limit,
+      windowMinutes,
+      nowISO: now.toISOString(),
+    });
+  }
 
   const nowSecondsRaw = secondsSinceZurichMidnight(now);
 
@@ -390,12 +392,14 @@ export async function buildStationboard(locationId, options = {}) {
       ];
     }
 
-    console.log("[buildStationboard] using pre-resolved scope", {
-      requestId: timings.requestId,
-      requestedLocationId: locationId,
-      stationGroupId,
-      childCount: childStops.length,
-    });
+    if (debugEnabled) {
+      console.log("[buildStationboard] using pre-resolved scope", {
+        requestId: timings.requestId,
+        requestedLocationId: locationId,
+        stationGroupId,
+        childCount: childStops.length,
+      });
+    }
   } else {
     const stopRes = await pool.query(
       `
@@ -416,12 +420,14 @@ export async function buildStationboard(locationId, options = {}) {
       [locationId]
     );
 
-    console.log("[buildStationboard] stop lookup result", {
-      requestId: timings.requestId,
-      requestedLocationId: locationId,
-      rowCount: stopRes.rowCount,
-      row: stopRes.rows[0] || null,
-    });
+    if (debugEnabled) {
+      console.log("[buildStationboard] stop lookup result", {
+        requestId: timings.requestId,
+        requestedLocationId: locationId,
+        rowCount: stopRes.rowCount,
+        row: stopRes.rows[0] || null,
+      });
+    }
 
     if (stopRes.rowCount === 0) {
       console.warn("[buildStationboard] no stop found for locationId", {
@@ -444,12 +450,14 @@ export async function buildStationboard(locationId, options = {}) {
         ? locationId
         : null;
 
-    console.log("[buildStationboard] resolved primaryStop", {
-      requestId: timings.requestId,
-      requestedLocationId: locationId,
-      stationGroupIdFromInput,
-      primaryStop,
-    });
+    if (debugEnabled) {
+      console.log("[buildStationboard] resolved primaryStop", {
+        requestId: timings.requestId,
+        requestedLocationId: locationId,
+        stationGroupIdFromInput,
+        primaryStop,
+      });
+    }
 
     stationGroupId = primaryStop.parent_station || primaryStop.stop_id;
     stationName = primaryStop.stop_name || locationId || primaryStop.stop_id;
@@ -480,12 +488,14 @@ export async function buildStationboard(locationId, options = {}) {
   if (childStopIds.length === 0) childStopIds = [stationGroupId];
   const queryStopIds = Array.from(new Set([stationGroupId, ...childStopIds].filter(Boolean)));
 
-  console.log("[buildStationboard] station group", {
-    requestId: timings.requestId,
-    stationGroupId,
-    childStopIds,
-    stationName,
-  });
+  if (debugEnabled) {
+    console.log("[buildStationboard] station group", {
+      requestId: timings.requestId,
+      stationGroupId,
+      childStopIds,
+      stationName,
+    });
+  }
   debugMeta.stops = {
     requested: locationId,
     stationGroupId,
@@ -630,12 +640,8 @@ export async function buildStationboard(locationId, options = {}) {
   console.log("[buildStationboard] rows fetched", {
     requestId: timings.requestId,
     stationGroupId,
-    queryFromSecondsRaw,
-    nowSecondsRaw,
-    maxSecondsRaw,
     rowCount: rows.length,
     sources: rowSources,
-    sample: rows.slice(0, 5),
   });
   safeDebugLog(requestDebugLog, "build.rows_fetched", {
     queryStopIds,
