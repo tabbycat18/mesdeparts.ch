@@ -821,6 +821,35 @@
   box-shadow: 0 3px 8px rgba(0, 0, 0, 0.12);
 }
 
+.hc2__favItemDelete {
+  width: 28px;
+  height: 28px;
+  min-height: 28px;
+  padding: 0;
+  border: 1px solid rgba(248, 69, 95, 0.3);
+  border-radius: 9999px;
+  background: rgba(248, 69, 95, 0.15);
+  color: rgba(255, 255, 255, 0.8);
+  cursor: pointer;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+  box-shadow: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.hc2__favItemDelete:hover {
+  background: rgba(248, 69, 95, 0.28);
+  border-color: rgba(248, 69, 95, 0.5);
+  color: #fff;
+}
+
+.hc2__favItemDelete svg {
+  width: 16px;
+  height: 16px;
+}
+
 .hc2__favoriteRow.is-selected .hc2__favoriteItem {
   background: rgba(3, 105, 161, 0.24);
   color: #ffffff;

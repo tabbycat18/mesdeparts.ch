@@ -626,9 +626,9 @@ export class DualPicker {
 
       const deleteBtn = document.createElement("button");
       deleteBtn.type = "button";
-      deleteBtn.className = "hc2__favoriteDelete";
+      deleteBtn.className = "hc2__favItemDelete";
       deleteBtn.setAttribute("aria-label", `${t("favoritesDelete")} ${fav.name}`);
-      deleteBtn.innerHTML = '<svg viewBox="0 0 24 24" focusable="false" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M12 5v14"/></svg>';
+      deleteBtn.innerHTML = '<svg viewBox="0 0 24 24" focusable="false" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M18 6L6 18M6 6l12 12"/></svg>';
       deleteBtn.addEventListener("click", (e) => {
         e.stopPropagation();
         removeFavorite(fav.id);
