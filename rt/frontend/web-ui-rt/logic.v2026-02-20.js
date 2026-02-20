@@ -977,9 +977,17 @@ export function buildDeparturesGrouped(data, viewMode = VIEW_MODE_LINE) {
       mode,
     });
     const status = rtView.status;
-    const remarkWide = rtView.remarkWide;
-    const remarkNarrow = rtView.remarkNarrow;
-    const remark = rtView.remark; // alias for remarkWide (backward compat)
+    let remarkWide = rtView.remarkWide;
+    let remarkNarrow = rtView.remarkNarrow;
+    let remark = rtView.remark; // alias for remarkWide (backward compat)
+
+    // Append platform change message if applicable (for trains)
+    if (didChange && mode === "train") {
+      const platformChangeMsg = t("platformChange");
+      remarkWide = remarkWide ? `${remarkWide} • ${platformChangeMsg}` : platformChangeMsg;
+      remarkNarrow = remarkNarrow ? `${remarkNarrow} • ${platformChangeMsg}` : platformChangeMsg;
+      remark = remarkWide;
+    }
 
     if (isDeltaDiagnosticsEnabled()) {
       // Per-row delay debug log — validate scheduled/rt dep, delayMin, mode, suppression
