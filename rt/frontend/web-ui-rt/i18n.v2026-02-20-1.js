@@ -858,7 +858,7 @@ const TRANSLATIONS = {
     fr: "Retard env. {min} min",
     de: "ca. {min} Min später",
     it: "Ritardo ca. {min} min",
-    en: "Delayed ~{min} min",
+    en: "Delayed approx. {min} min",
   },
   infoCreditsDataTitle: {
     fr: "Données",
