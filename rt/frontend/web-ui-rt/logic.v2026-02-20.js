@@ -940,8 +940,7 @@ export function buildDeparturesGrouped(data, viewMode = VIEW_MODE_LINE) {
       });
     }
 
-    // Use prognosis platform if available (actual), fall back to stop platform (planned)
-    const platformRaw = prog.platform || entry.prognosis?.platform || stop.platform || "";
+    const platformRaw = stop.platform || "";
     const platformChanged = String(platformRaw).includes("!");
     const platform = String(platformRaw).replace("!", "");
     const previousPlatform =
@@ -949,23 +948,6 @@ export function buildDeparturesGrouped(data, viewMode = VIEW_MODE_LINE) {
         ? lastPlatforms[journeyId]
         : null;
     const didChange = platformChanged || !!previousPlatform;
-
-    // Debug logging for platform changes
-    if ((rawCategory === "R" && rawNumber === "9") || platformChanged) {
-      console.log("[MesDeparts][platform-debug]", {
-        line: `${rawCategory}${rawNumber}`,
-        to: dest,
-        progPlatform: prog.platform || "N/A",
-        entryPrognosisPlatform: entry.prognosis?.platform || "N/A",
-        stopPlatform: stop.platform || "N/A",
-        platformRaw,
-        platform,
-        platformChanged,
-        previousPlatform,
-        didChange,
-        journeyId,
-      });
-    }
 
     if (mode === "bus" && platform) {
       busHasPlatform = true;
