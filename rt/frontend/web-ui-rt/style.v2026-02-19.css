@@ -2959,30 +2959,30 @@ body.dual-body {
   min-height: 44px;
   border-radius: 9999px;
   border: none;
-  background-color: rgba(255, 255, 255, 0.1);
-  color: #f8faff;
+  background-color: #ffffff;
+  color: #0369a1;
   font-weight: 600;
   font-size: 0.81rem;
   letter-spacing: 0.035em;
   padding: 0 16px 0 16px;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='7' viewBox='0 0 10 7'%3E%3Cpath fill='%23f8faff' d='M1 1l4 4 4-4'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='7' viewBox='0 0 10 7'%3E%3Cpath fill='%230369a1' d='M1 1l4 4 4-4'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 14px center;
   background-size: 10px 7px;
   padding-right: 40px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
   transition: background-color 0.2s ease;
   cursor: pointer;
 }
 
 .dual-lang-switcher .language-select:hover {
-  background-color: rgba(255, 255, 255, 0.15);
+  background-color: #f0f9ff;
 }
 
 .dual-lang-switcher .language-select:focus-visible {
-  outline: 3px solid #06b6d4;
+  outline: 3px solid #0369a1;
   outline-offset: 2px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
 .dual-action {
@@ -2991,12 +2991,12 @@ body.dual-body {
   padding: 0 16px;
   border-radius: 9999px;
   border: none;
-  background: rgba(255, 255, 255, 0.1);
-  color: #f8faff;
+  background: #ffffff;
+  color: #0369a1;
   font-size: 0.81rem;
   font-weight: 600;
   letter-spacing: 0.012em;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
   transition:
     background-color 0.2s ease,
     box-shadow 0.2s ease;
@@ -3008,19 +3008,19 @@ body.dual-body {
 }
 
 .dual-action:hover {
-  background: rgba(255, 255, 255, 0.15);
-  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.16);
+  background: #f0f9ff;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
 }
 
 .dual-action:active {
-  background: rgba(255, 255, 255, 0.12);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  background: #e0f2fe;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
 }
 
 .dual-action:focus-visible {
-  outline: 3px solid #06b6d4;
+  outline: 3px solid #0369a1;
   outline-offset: 2px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
 .dual-action:disabled {
@@ -3030,23 +3030,23 @@ body.dual-body {
 }
 
 #fullscreenBtn.dual-action {
-  background: rgba(3, 105, 161, 0.25);
-  color: #ffffff;
-  box-shadow: 0 2px 6px rgba(3, 105, 161, 0.15);
+  background: #ffffff;
+  color: #0369a1;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
 #fullscreenBtn.dual-action:hover {
-  background: rgba(3, 105, 161, 0.35);
-  box-shadow: 0 3px 8px rgba(3, 105, 161, 0.2);
+  background: #f0f9ff;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
 }
 
 #fullscreenBtn.dual-action:active {
-  background: rgba(3, 105, 161, 0.2);
-  box-shadow: 0 1px 3px rgba(3, 105, 161, 0.1);
+  background: #e0f2fe;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
 }
 
 #fullscreenBtn.dual-action:focus-visible {
-  outline: 3px solid #06b6d4;
+  outline: 3px solid #0369a1;
   outline-offset: 2px;
 }
 
