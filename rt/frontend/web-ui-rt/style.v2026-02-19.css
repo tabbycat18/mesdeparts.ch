@@ -3081,6 +3081,11 @@ body.dual-body {
   padding: 16px;
   margin: 0;
   box-shadow: none;
+  overflow: hidden;
+  max-height: 500px;
+  transition: max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+              opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  opacity: 1;
 }
 
 .dual-header-row {
@@ -3092,12 +3097,16 @@ body.dual-body {
 }
 
 .dual-controls.is-collapsed {
-  display: none;
+  max-height: 0;
+  opacity: 0;
+  padding: 0 16px;
 }
 
 /* Hide all controls (picker panels + floating badges) when collapsed */
 .dual-body.dual-controls-hidden .dual-controls {
-  display: none;
+  max-height: 0;
+  opacity: 0;
+  padding: 0 16px;
 }
 
 .dual-body.dual-controls-hidden .dual-info-float {
