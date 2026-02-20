@@ -547,10 +547,10 @@
 .hc2__pill {
   height: 38px;
   min-height: 38px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: none;
   border-radius: 9999px;
-  background: rgba(255, 255, 255, 0.08);
-  color: #f5f8ff;
+  background: #ffffff;
+  color: #0369a1;
   text-decoration: none;
   display: inline-flex;
   align-items: center;
@@ -561,8 +561,8 @@
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
-  transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  transition: background-color 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
 }
 
 .hc2__pillIcon {
@@ -572,15 +572,13 @@
 }
 
 .hc2__pill:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.14);
-  border-color: rgba(255, 255, 255, 0.14);
-  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.12);
+  background: #f0f9ff;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.16);
 }
 
 .hc2__pill:active:not(:disabled) {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.08);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  background: #e0f2fe;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
 
 .hc2__pill.is-disabled,
@@ -749,24 +747,22 @@
 
 .hc2__primary {
   width: 100%;
-  background: #0369a1;
-  color: #ffffff;
-  border-color: rgba(3, 105, 161, 0.3);
+  background: #ffffff;
+  color: #0369a1;
+  border: none;
   margin-bottom: 10px;
-  transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
-  box-shadow: 0 2px 6px rgba(3, 105, 161, 0.2);
+  transition: background-color 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
 }
 
 .hc2__primary:hover {
-  background-color: #0284c7;
-  border-color: rgba(2, 132, 199, 0.4);
-  box-shadow: 0 3px 8px rgba(3, 105, 161, 0.28);
+  background-color: #f0f9ff;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.16);
 }
 
 .hc2__primary:active {
-  background-color: #0359a6;
-  border-color: rgba(3, 105, 161, 0.3);
-  box-shadow: 0 1px 3px rgba(3, 105, 161, 0.12);
+  background-color: #e0f2fe;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
 
 .hc2__primary:disabled {
