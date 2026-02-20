@@ -309,7 +309,7 @@ export class DualPicker {
 
     if (this.els.suggestions) {
       this.els.suggestions.addEventListener("click", (e) => {
-        const li = e.target.closest(".hc2__suggestionItem");
+        const li = e.target.closest(".station-suggestion-item");
         if (!li || !li.dataset.id) return;
         this.setStation(li.dataset.name, li.dataset.id);
         this.clearSuggestions();
@@ -431,7 +431,7 @@ export class DualPicker {
     const frag = document.createDocumentFragment();
     list.forEach((item) => {
       const li = document.createElement("li");
-      li.className = "hc2__suggestionItem";
+      li.className = "station-suggestion-item";
       li.dataset.id = item.id;
       li.dataset.name = item.name;
       li.textContent = item.name;
