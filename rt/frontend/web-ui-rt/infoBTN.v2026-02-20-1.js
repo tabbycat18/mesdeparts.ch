@@ -8,6 +8,8 @@ import { t } from "./i18n.v2026-02-20-1.js";
 
 const INFO_TAB_STORAGE_KEY = "infoOverlayLastTab";
 const TAB_KEYS = ["help", "realtime", "credits"];
+const INFO_BODY_LOCK_CLASS = "info-modal-open";
+const INFO_PREV_PADDING_DATA_KEY = "infoPrevPaddingRight";
 const FOCUSABLE_SELECTOR =
   'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
 
@@ -32,123 +34,117 @@ function createListItem(text) {
   return li;
 }
 
-function createListItemWithBoldLabel(text) {
-  if (typeof text !== "string") return createListItem(text);
+function lockPageScroll() {
+  const body = document.body;
+  if (!body || body.classList.contains(INFO_BODY_LOCK_CLASS)) return;
 
-  const li = document.createElement("li");
-  const idx = text.indexOf(":");
-  if (idx > 0 && idx < text.length - 1) {
-    const label = text.slice(0, idx).trim();
-    const rest = text.slice(idx + 1).trim();
+  const prevPadding = body.style.paddingRight || "";
+  body.dataset[INFO_PREV_PADDING_DATA_KEY] = prevPadding;
 
-    const strong = document.createElement("strong");
-    strong.textContent = label;
-    li.appendChild(strong);
-
-    if (rest) {
-      li.appendChild(document.createTextNode(" : "));
-      const parts = rest.split("\n");
-      parts.forEach((part, i) => {
-        li.appendChild(document.createTextNode(part));
-        if (i < parts.length - 1) li.appendChild(document.createElement("br"));
-      });
-    }
-    return li;
+  let scrollbarCompensation = 0;
+  try {
+    const viewportWidth = window?.innerWidth || 0;
+    const layoutWidth = document?.documentElement?.clientWidth || viewportWidth;
+    scrollbarCompensation = Math.max(0, viewportWidth - layoutWidth);
+  } catch (_) {
+    scrollbarCompensation = 0;
   }
 
-  return createListItem(text);
+  body.classList.add(INFO_BODY_LOCK_CLASS);
+  if (scrollbarCompensation > 0) {
+    body.style.paddingRight = `${scrollbarCompensation}px`;
+  }
 }
 
-function buildHelpPanel() {
-  const panel = createEl("div", "info-tab-panel info-tab-panel--help");
+function unlockPageScroll() {
+  const body = document.body;
+  if (!body) return;
+  body.classList.remove(INFO_BODY_LOCK_CLASS);
+  body.style.paddingRight = body.dataset[INFO_PREV_PADDING_DATA_KEY] || "";
+  delete body.dataset[INFO_PREV_PADDING_DATA_KEY];
+}
 
-  const card = createEl("div", "info-card");
-  const title = createEl("h4", "info-card-title", t("infoTabHelp"));
+function buildInfoCard(section) {
+  const card = createEl("section", "info-card");
+  const title = createEl("h4", "info-card-title", t(section.titleKey));
   card.appendChild(title);
 
-  const list = createEl("ul", "info-list");
-
-  [
-    t("infoHelpItemSearch"),
-    t("infoHelpItemViews"),
-    t("infoHelpItemFilters"),
-    t("infoHelpItemRead"),
-    t("infoHelpItemData"),
-  ].forEach((txt) => list.appendChild(createListItemWithBoldLabel(txt)));
-
+  const list = createEl("ul", "info-lines");
+  section.itemKeys.forEach((key) => list.appendChild(createListItem(t(key))));
   card.appendChild(list);
-  panel.appendChild(card);
-
-  return panel;
+  return card;
 }
 
-function buildRealtimePanel() {
-  const panel = createEl("div", "info-tab-panel info-tab-panel--realtime");
-
-  const sections = [
-    {
-      title: t("infoRealtimeMinVsDepartureTitle"),
-      lines: [
-        t("infoRealtimeDeparture"),
-        t("infoRealtimeCountdown"),
-        t("delaysRuleCountdown"),
-      ],
-    },
-    {
-      title: t("infoRealtimeOfficialTitle"),
-      lines: [t("delaysBody")],
-    },
-    {
-      title: t("infoRealtimeThresholdsTitle"),
-      lines: [
-        t("infoRealtimeThresholdsBus"),
-        t("infoRealtimeThresholdsTrain"),
-        t("infoRealtimeThresholdsNote"),
-      ],
-    },
-    {
-      title: t("infoRealtimeColorsTitle"),
-      lines: [t("infoRealtimeColorsInline")],
-    },
-    {
-      title: t("infoRealtimeCancelTitle"),
-      lines: [t("delaysRuleCancelled")],
-    },
-  ];
-
-  sections.forEach((entry) => {
-    const section = createEl("div", "info-card");
-    const title = createEl("h4", "info-card-title", entry.title);
-    section.appendChild(title);
-
-    if (entry.lines && entry.lines.length) {
-      const ul = createEl("ul", "info-lines");
-      entry.lines.forEach((txt) => ul.appendChild(createListItem(txt)));
-      section.appendChild(ul);
-    }
-
-    panel.appendChild(section);
-  });
-
-  return panel;
+function getTabSections() {
+  return {
+    help: [
+      {
+        titleKey: "infoHelpSectionQuickStartTitle",
+        itemKeys: ["infoHelpQuickStartItem1", "infoHelpQuickStartItem2"],
+      },
+      {
+        titleKey: "infoHelpSectionReadingTitle",
+        itemKeys: ["infoHelpReadingItem1", "infoHelpReadingItem2"],
+      },
+      {
+        titleKey: "infoHelpSectionFiltersTitle",
+        itemKeys: ["infoHelpFiltersItem1", "infoHelpFiltersItem2"],
+      },
+      {
+        titleKey: "infoHelpSectionPersonalizationTitle",
+        itemKeys: ["infoHelpPersonalizationItem1", "infoHelpPersonalizationItem2"],
+      },
+    ],
+    realtime: [
+      {
+        titleKey: "infoRealtimeSectionMinDepartureTitle",
+        itemKeys: ["infoRealtimeMinDepartureItem1", "infoRealtimeMinDepartureItem2"],
+      },
+      {
+        titleKey: "infoRealtimeSectionOfficialTitle",
+        itemKeys: ["infoRealtimeOfficialItem1", "infoRealtimeOfficialItem2"],
+      },
+      {
+        titleKey: "infoRealtimeSectionThresholdsTitle",
+        itemKeys: [
+          "infoRealtimeThresholdItem1",
+          "infoRealtimeThresholdItem2",
+          "infoRealtimeThresholdItem3",
+        ],
+      },
+      {
+        titleKey: "infoRealtimeSectionDisruptionsTitle",
+        itemKeys: ["infoRealtimeDisruptionsItem1", "infoRealtimeDisruptionsItem2"],
+      },
+      {
+        titleKey: "infoRealtimeSectionCheckTitle",
+        itemKeys: ["infoRealtimeCheckItem1", "infoRealtimeCheckItem2"],
+      },
+    ],
+    credits: [
+      {
+        titleKey: "infoCreditsSectionSourcesTitle",
+        itemKeys: ["infoCreditsSourcesItem1", "infoCreditsSourcesItem2"],
+      },
+      {
+        titleKey: "infoCreditsSectionClockTitle",
+        itemKeys: ["infoCreditsClockItem1", "infoCreditsClockItem2"],
+      },
+      {
+        titleKey: "infoCreditsSectionLicenseTitle",
+        itemKeys: ["infoCreditsLicenseItem1", "infoCreditsLicenseItem2"],
+      },
+      {
+        titleKey: "infoCreditsSectionIndependenceTitle",
+        itemKeys: ["infoCreditsIndependenceItem1"],
+      },
+    ],
+  };
 }
 
-function buildCreditsPanel() {
-  const panel = createEl("div", "info-tab-panel info-tab-panel--credits");
-
-  const card = createEl("div", "info-card info-card--credits");
-  const list = createEl("ul", "info-sublist");
-  [
-    t("creditsData"),
-    t("creditsClock"),
-    t("creditsClockNote"),
-    t("infoCreditsAffiliation"),
-    t("lineColorsNotice"),
-    t("creditsAuthor"),
-  ].forEach((txt) => list.appendChild(createListItemWithBoldLabel(txt)));
-
-  card.appendChild(list);
-  panel.appendChild(card);
+function buildTabPanel(tabId, sections) {
+  const panel = createEl("section", `info-tab-panel info-tab-panel--${tabId}`);
+  sections.forEach((section) => panel.appendChild(buildInfoCard(section)));
 
   return panel;
 }
@@ -179,11 +175,14 @@ function buildInfoOverlay() {
   panel.setAttribute("role", "dialog");
   panel.setAttribute("aria-modal", "true");
   panel.setAttribute("aria-labelledby", "info-panel-title");
+  panel.setAttribute("aria-describedby", "info-panel-desc");
 
   const header = createEl("div", "info-panel-header");
   const titleRow = createEl("div", "info-panel-title-row");
+  const desc = createEl("p", "sr-only", t("infoModalDescription"));
+  desc.id = "info-panel-desc";
 
-  const title = createEl("div", "info-panel-title", t("infoTitle"));
+  const title = createEl("h2", "info-panel-title", t("infoTitle"));
   title.id = "info-panel-title";
 
   const close = createEl("button", "info-panel-close", "×");
@@ -197,11 +196,12 @@ function buildInfoOverlay() {
   tabs.setAttribute("role", "tablist");
   tabs.setAttribute("aria-label", t("infoTabsLabel"));
 
+  const tabSections = getTabSections();
   const tabButtons = {};
   const tabPanels = {
-    help: buildHelpPanel(),
-    realtime: buildRealtimePanel(),
-    credits: buildCreditsPanel(),
+    help: buildTabPanel("help", tabSections.help),
+    realtime: buildTabPanel("realtime", tabSections.realtime),
+    credits: buildTabPanel("credits", tabSections.credits),
   };
 
   Object.entries(tabPanels).forEach(([key, panelEl]) => {
@@ -231,6 +231,7 @@ function buildInfoOverlay() {
   });
 
   header.appendChild(titleRow);
+  header.appendChild(desc);
   header.appendChild(tabs);
 
   const body = createEl("div", "info-panel-body");
@@ -257,6 +258,7 @@ function buildInfoOverlay() {
       panelEl.setAttribute("aria-hidden", isActive ? "false" : "true");
       panelEl.toggleAttribute("hidden", !isActive);
     });
+    body.scrollTop = 0;
 
     if (!skipSave) saveTab(nextTab);
     if (focusTab && tabButtons[nextTab]) {
@@ -299,6 +301,7 @@ function buildInfoOverlay() {
   }
 
   function show(initialTab) {
+    lockPageScroll();
     overlay.classList.add("is-visible");
     lastFocusedElement =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -311,6 +314,7 @@ function buildInfoOverlay() {
 
   function hide() {
     overlay.classList.remove("is-visible");
+    unlockPageScroll();
     if (lastFocusedElement) {
       try {
         lastFocusedElement.focus({ preventScroll: true });
@@ -356,6 +360,7 @@ function buildInfoOverlay() {
     show,
     hide,
     setActiveTab,
+    isVisible: () => overlay.classList.contains("is-visible"),
     updateTitle: (stationName) => {
       const name = stationName || "Station";
       title.textContent = `${t("infoTitle")} – ${name}`;

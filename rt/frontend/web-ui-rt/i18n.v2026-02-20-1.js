@@ -597,10 +597,10 @@ const TRANSLATIONS = {
     en: "Language",
   },
   infoTitle: {
-    fr: "Infos",
-    de: "Infos",
-    it: "Info",
-    en: "Info",
+    fr: "Aide et informations",
+    de: "Hilfe und Informationen",
+    it: "Aiuto e informazioni",
+    en: "Help and info",
   },
   infoClose: {
     fr: "Fermer",
@@ -609,10 +609,10 @@ const TRANSLATIONS = {
     en: "Close",
   },
   infoTabsLabel: {
-    fr: "Sections d’informations",
-    de: "Infobereiche",
-    it: "Sezioni informative",
-    en: "Info sections",
+    fr: "Sections d'aide",
+    de: "Hilfebereiche",
+    it: "Sezioni di aiuto",
+    en: "Help sections",
   },
   infoTabHelp: {
     fr: "Aide",
@@ -621,43 +621,283 @@ const TRANSLATIONS = {
     en: "Help",
   },
   infoTabRealtime: {
-    fr: "Temps réel & retards",
-    de: "Echtzeit & Verspätungen",
-    it: "Tempo reale & ritardi",
-    en: "Realtime & delays",
+    fr: "Temps réel et retards",
+    de: "Echtzeit und Verspätungen",
+    it: "Tempo reale e ritardi",
+    en: "Realtime and delays",
   },
   infoTabCredits: {
-    fr: "Crédits",
-    de: "Credits",
-    it: "Crediti",
-    en: "Credits",
+    fr: "Sources et crédits",
+    de: "Quellen und Credits",
+    it: "Fonti e crediti",
+    en: "Sources and credits",
+  },
+  infoModalDescription: {
+    fr: "Aide rapide pour utiliser mesdeparts.ch et comprendre les départs en temps réel.",
+    de: "Schnelle Hilfe zur Nutzung von mesdeparts.ch und zum Verständnis der Echtzeitabfahrten.",
+    it: "Aiuto rapido per usare mesdeparts.ch e capire le partenze in tempo reale.",
+    en: "Quick help to use mesdeparts.ch and understand realtime departures.",
+  },
+  infoHelpSectionQuickStartTitle: {
+    fr: "Démarrage rapide",
+    de: "Schnellstart",
+    it: "Avvio rapido",
+    en: "Quick start",
+  },
+  infoHelpQuickStartItem1: {
+    fr: "Tapez au moins 2 lettres pour rechercher un arrêt, puis choisissez dans la liste.",
+    de: "Geben Sie mindestens 2 Buchstaben ein, suchen Sie eine Haltestelle und wählen Sie sie aus der Liste.",
+    it: "Digita almeno 2 lettere, cerca una fermata e selezionala dall'elenco.",
+    en: "Type at least 2 letters, search for a stop, then choose it from the list.",
+  },
+  infoHelpQuickStartItem2: {
+    fr: "Utilisez l'étoile pour enregistrer vos arrêts favoris sur cet appareil.",
+    de: "Speichern Sie Haltestellen mit dem Stern als Favoriten auf diesem Gerät.",
+    it: "Usa la stella per salvare le fermate preferite su questo dispositivo.",
+    en: "Use the star to save favorite stops on this device.",
+  },
+  infoHelpSectionReadingTitle: {
+    fr: "Lire les départs",
+    de: "Abfahrten lesen",
+    it: "Leggere le partenze",
+    en: "Reading departures",
+  },
+  infoHelpReadingItem1: {
+    fr: "« Départ » affiche l'horaire planifié communiqué par l'exploitant.",
+    de: "„Abfahrt“ zeigt die geplante Zeit laut Betreiberfahrplan.",
+    it: "“Partenza” mostra l'orario pianificato pubblicato dall'operatore.",
+    en: "\"Departure\" shows the planned time published by the operator.",
+  },
+  infoHelpReadingItem2: {
+    fr: "« Min » affiche une estimation en direct qui peut évoluer minute par minute.",
+    de: "„Min“ zeigt eine Live-Schätzung, die sich von Minute zu Minute ändern kann.",
+    it: "“Min” mostra una stima in tempo reale che può cambiare di minuto in minuto.",
+    en: "\"Min\" shows a live estimate that can change minute by minute.",
+  },
+  infoHelpSectionFiltersTitle: {
+    fr: "Filtrer la liste",
+    de: "Liste filtern",
+    it: "Filtrare l'elenco",
+    en: "Filtering the list",
+  },
+  infoHelpFiltersItem1: {
+    fr: "Ouvrez « Filtres » pour limiter l'affichage par ligne ou par quai.",
+    de: "Öffnen Sie „Filter“, um die Anzeige nach Linie oder Kante einzugrenzen.",
+    it: "Apri “Filtri” per limitare la vista per linea o banchina.",
+    en: "Open \"Filters\" to narrow the list by line or platform.",
+  },
+  infoHelpFiltersItem2: {
+    fr: "Utilisez « Réinitialiser » pour revenir à la liste complète.",
+    de: "Verwenden Sie „Zurücksetzen“, um zur vollständigen Liste zurückzukehren.",
+    it: "Usa “Reimposta” per tornare all'elenco completo.",
+    en: "Use \"Reset\" to return to the full list.",
+  },
+  infoHelpSectionPersonalizationTitle: {
+    fr: "Personnaliser l'affichage",
+    de: "Anzeige anpassen",
+    it: "Personalizzare la vista",
+    en: "Personalization",
+  },
+  infoHelpPersonalizationItem1: {
+    fr: "Le menu « … » permet de changer d'arrêt, de langue et de mode d'affichage.",
+    de: "Im Menü „…“ können Sie Haltestelle, Sprache und Anzeige-Modus ändern.",
+    it: "Nel menu “…” puoi cambiare fermata, lingua e modalità di visualizzazione.",
+    en: "Use the \"…\" menu to change stop, language, and display mode.",
+  },
+  infoHelpPersonalizationItem2: {
+    fr: "Vos choix sont conservés localement dans ce navigateur.",
+    de: "Ihre Auswahl wird lokal in diesem Browser gespeichert.",
+    it: "Le tue scelte vengono salvate localmente in questo browser.",
+    en: "Your choices are stored locally in this browser.",
+  },
+  infoRealtimeSectionMinDepartureTitle: {
+    fr: "« Min » vs « Départ »",
+    de: "„Min“ vs „Abfahrt“",
+    it: "“Min” vs “Partenza”",
+    en: "\"Min\" vs \"Departure\"",
+  },
+  infoRealtimeMinDepartureItem1: {
+    fr: "« Départ » indique l'heure théorique prévue au planning.",
+    de: "„Abfahrt“ zeigt die theoretische Planzeit.",
+    it: "“Partenza” indica l'orario teorico pianificato.",
+    en: "\"Departure\" is the scheduled timetable time.",
+  },
+  infoRealtimeMinDepartureItem2: {
+    fr: "« Min » indique l'estimation en direct et peut varier sans alerte de retard.",
+    de: "„Min“ zeigt die Live-Schätzung und kann sich ohne Verspätungsalarm ändern.",
+    it: "“Min” indica la stima in tempo reale e può variare senza avviso di ritardo.",
+    en: "\"Min\" is the live estimate and can move without a delay badge.",
+  },
+  infoRealtimeSectionOfficialTitle: {
+    fr: "Retard officiel",
+    de: "Offizielle Verspätung",
+    it: "Ritardo ufficiale",
+    en: "Official delay",
+  },
+  infoRealtimeOfficialItem1: {
+    fr: "Un écart en temps réel n'est pas toujours publié comme retard officiel.",
+    de: "Eine Echtzeitabweichung wird nicht immer als offizielle Verspätung gemeldet.",
+    it: "Uno scostamento in tempo reale non viene sempre pubblicato come ritardo ufficiale.",
+    en: "A realtime shift is not always published as an official delay.",
+  },
+  infoRealtimeOfficialItem2: {
+    fr: "Le statut officiel dépend des règles de communication de l'exploitant.",
+    de: "Der offizielle Status hängt von den Kommunikationsregeln des Betreibers ab.",
+    it: "Lo stato ufficiale dipende dalle regole di comunicazione dell'operatore.",
+    en: "Official status depends on the operator’s communication rules.",
+  },
+  infoRealtimeSectionThresholdsTitle: {
+    fr: "Seuils mesdeparts.ch",
+    de: "Schwellen auf mesdeparts.ch",
+    it: "Soglie su mesdeparts.ch",
+    en: "mesdeparts.ch thresholds",
+  },
+  infoRealtimeThresholdItem1: {
+    fr: "Bus, tram, métro : étiquette « Retard » dès +2 min.",
+    de: "Bus, Tram, Metro: Label „Verspätung“ ab +2 Min.",
+    it: "Bus, tram, metro: etichetta “Ritardo” da +2 min.",
+    en: "Bus, tram, metro: delay badge from +2 min.",
+  },
+  infoRealtimeThresholdItem2: {
+    fr: "Trains : étiquette « Retard » dès +1 min.",
+    de: "Züge: Label „Verspätung“ ab +1 Min.",
+    it: "Treni: etichetta “Ritardo” da +1 min.",
+    en: "Trains: delay badge from +1 min.",
+  },
+  infoRealtimeThresholdItem3: {
+    fr: "Sous ces seuils, seul le compte à rebours est affiché.",
+    de: "Unter diesen Schwellen wird nur der Countdown angezeigt.",
+    it: "Sotto queste soglie viene mostrato solo il conto alla rovescia.",
+    en: "Below these thresholds, only the countdown is shown.",
+  },
+  infoRealtimeSectionDisruptionsTitle: {
+    fr: "Suppressions et changements",
+    de: "Ausfälle und Änderungen",
+    it: "Soppressioni e cambi",
+    en: "Cancellations and changes",
+  },
+  infoRealtimeDisruptionsItem1: {
+    fr: "En cas de suppression, la mention « Supprimé » est prioritaire.",
+    de: "Bei einem Ausfall hat der Hinweis „Ausfall“ Vorrang.",
+    it: "In caso di soppressione, la dicitura “Soppresso” ha priorità.",
+    en: "If cancelled, the \"Cancelled\" status overrides other remarks.",
+  },
+  infoRealtimeDisruptionsItem2: {
+    fr: "Les changements de quai ou de voie peuvent apparaître dans la remarque.",
+    de: "Änderungen von Kante oder Gleis können in der Bemerkung erscheinen.",
+    it: "I cambi di banchina o binario possono apparire nelle osservazioni.",
+    en: "Platform changes can appear in the remarks column.",
+  },
+  infoRealtimeSectionCheckTitle: {
+    fr: "En cas de doute",
+    de: "Bei Unsicherheit",
+    it: "In caso di dubbio",
+    en: "When uncertain",
+  },
+  infoRealtimeCheckItem1: {
+    fr: "Comparez avec les écrans officiels en station ou l'app de l'exploitant.",
+    de: "Vergleichen Sie mit den offiziellen Anzeigen vor Ort oder der Betreiber-App.",
+    it: "Confronta con i display ufficiali in stazione o con l'app dell'operatore.",
+    en: "Compare with official station displays or the operator app.",
+  },
+  infoRealtimeCheckItem2: {
+    fr: "Les données publiques peuvent évoluer rapidement selon la situation réseau.",
+    de: "Öffentliche Daten können sich je nach Netzlage schnell ändern.",
+    it: "I dati pubblici possono cambiare rapidamente in base alla situazione di rete.",
+    en: "Public data can change quickly depending on network conditions.",
+  },
+  infoCreditsSectionSourcesTitle: {
+    fr: "Source des données",
+    de: "Datenquelle",
+    it: "Fonte dei dati",
+    en: "Data source",
+  },
+  infoCreditsSourcesItem1: {
+    fr: "Données : api.mesdeparts.ch (agrégation de sources publiques suisses).",
+    de: "Daten: api.mesdeparts.ch (Aggregation öffentlicher Schweizer Quellen).",
+    it: "Dati: api.mesdeparts.ch (aggregazione di fonti pubbliche svizzere).",
+    en: "Data: api.mesdeparts.ch (aggregation of Swiss public sources).",
+  },
+  infoCreditsSourcesItem2: {
+    fr: "La disponibilité dépend des flux fournis par les exploitants.",
+    de: "Die Verfügbarkeit hängt von den bereitgestellten Betreiber-Feeds ab.",
+    it: "La disponibilità dipende dai feed forniti dagli operatori.",
+    en: "Availability depends on the feeds provided by operators.",
+  },
+  infoCreditsSectionClockTitle: {
+    fr: "Horloge",
+    de: "Uhr",
+    it: "Orologio",
+    en: "Clock",
+  },
+  infoCreditsClockItem1: {
+    fr: "sbbUhr — © GoetteSebastian — Apache License 2.0.",
+    de: "sbbUhr — © GoetteSebastian — Apache License 2.0.",
+    it: "sbbUhr — © GoetteSebastian — Apache License 2.0.",
+    en: "sbbUhr — © GoetteSebastian — Apache License 2.0.",
+  },
+  infoCreditsClockItem2: {
+    fr: "Adaptation mesdeparts.ch, inspirée de CFF-Clock / SlendyMilky.",
+    de: "Anpassung für mesdeparts.ch, inspiriert von CFF-Clock / SlendyMilky.",
+    it: "Adattamento per mesdeparts.ch, ispirato a CFF-Clock / SlendyMilky.",
+    en: "Adaptation for mesdeparts.ch, inspired by CFF-Clock / SlendyMilky.",
+  },
+  infoCreditsSectionLicenseTitle: {
+    fr: "Licence et copyright",
+    de: "Lizenz und Copyright",
+    it: "Licenza e copyright",
+    en: "License and copyright",
+  },
+  infoCreditsLicenseItem1: {
+    fr: "© 2025 tabbycat18 — mesdeparts.ch.",
+    de: "© 2025 tabbycat18 — mesdeparts.ch.",
+    it: "© 2025 tabbycat18 — mesdeparts.ch.",
+    en: "© 2025 tabbycat18 — mesdeparts.ch.",
+  },
+  infoCreditsLicenseItem2: {
+    fr: "Code publié sous licence Apache 2.0.",
+    de: "Code veröffentlicht unter Apache License 2.0.",
+    it: "Codice pubblicato con licenza Apache 2.0.",
+    en: "Code published under Apache License 2.0.",
+  },
+  infoCreditsSectionIndependenceTitle: {
+    fr: "Indépendance",
+    de: "Unabhängigkeit",
+    it: "Indipendenza",
+    en: "Independence",
+  },
+  infoCreditsIndependenceItem1: {
+    fr: "Projet indépendant, sans affiliation officielle avec CFF/SBB.",
+    de: "Unabhängiges Projekt ohne offizielle Zugehörigkeit zu CFF/SBB.",
+    it: "Progetto indipendente, senza affiliazione ufficiale con CFF/SBB.",
+    en: "Independent project with no official affiliation with CFF/SBB.",
   },
   infoHelpItemSearch: {
-    fr: "Recherchez : tapez 2 lettres → choisissez un arrêt (⭐ favori).",
+    fr: "Recherche : saisissez quelques lettres, puis choisissez votre arrêt (⭐ pour l'ajouter aux favoris).",
     de: "Suchen: Tippen Sie 2 Buchstaben → Haltestelle wählen (⭐ Favorit).",
     it: "Cercate: digitate 2 lettere → scegliete una fermata (⭐ preferito).",
     en: "Search: type 2 letters → choose a stop (⭐ favorite).",
   },
   infoHelpItemViews: {
-    fr: "Vues : Par min = chronologique\nPar ligne = regroupé.",
+    fr: "Affichage : « Min » montre l'estimation en direct ; « Départ » affiche l'heure prévue.",
     de: "Ansichten: Nach min = chronologisch\nNach Linie = gruppiert.",
     it: "Viste: Per min = cronologico\nPer linea = raggruppato.",
     en: "Views: By min = chronological\nBy line = grouped.",
   },
   infoHelpItemFilters: {
-    fr: "Filtres : ouvrez Filtres, cochez les pastilles Quai/Ligne. Le bouton affiche « Quai: … • Lignes: … » ; « Réinitialiser » efface.",
+    fr: "Filtres : limitez la liste par ligne ou par quai, puis utilisez « Réinitialiser » pour revenir à la vue complète.",
     de: "Filter: öffnen Sie „Filter“, wählen Sie Gleis/Linie (Chips). Die Schaltfläche zeigt „Gleis: … • Linien: …“; „Zurücksetzen“ löscht alles.",
     it: "Filtri: aprite Filtri, selezionate le pillole Binario/Linea. Il pulsante mostra \"Binario: … • Linee: …\"; “Reimposta” azzera.",
     en: "Filters: open Filters, tick the Platform/Line chips. The button shows “Platform: … • Lines: …”; “Reset” clears all.",
   },
   infoHelpItemRead: {
-    fr: "Lire l’écran : min = temps réel\nDépart = horaire officiel.",
+    fr: "Menu … : changez rapidement d'arrêt, de langue et de mode d'affichage.",
     de: "Anzeige lesen: min = Echtzeit\nAbfahrt = offizieller Fahrplan.",
     it: "Leggere: min = tempo reale\nPart. = orario ufficiale.",
     en: "Read the screen: min = realtime\nDeparture = scheduled time.",
   },
   infoHelpItemData: {
-    fr: "Données : api.mesdeparts.ch (agrégation de sources publiques suisses ; en cas de doute : affichage officiel/sur place).",
+    fr: "Données : api.mesdeparts.ch regroupe des sources publiques suisses ; en cas de doute, référez-vous à l'affichage officiel sur place.",
     de: "Daten: api.mesdeparts.ch (Aggregation öffentlicher Schweizer Quellen; bei Zweifel offizielle Anzeige/vor Ort prüfen).",
     it: "Dati: api.mesdeparts.ch (aggregazione di fonti pubbliche svizzere; in dubbio: display ufficiale/sul posto).",
     en: "Data: api.mesdeparts.ch (aggregated from Swiss public sources; if unsure: official display/on site).",
@@ -723,25 +963,25 @@ const TRANSLATIONS = {
     en: "Delays and realtime data",
   },
   infoRealtimeMinVsDepartureTitle: {
-    fr: "“min” vs “Départ”",
+    fr: "Comprendre « Min » et « Départ »",
     de: "„min“ vs. „Abfahrt“",
     it: "“min” vs “Part.”",
     en: "“min” vs “Departure”",
   },
   infoRealtimeDeparture: {
-    fr: "Départ : horaire officiel (planifié).",
+    fr: "Départ : heure planifiée publiée par l'exploitant.",
     de: "Abfahrt: offizieller Fahrplan (geplant).",
     it: "Da: orario ufficiale (pianificato).",
     en: "Departure: official timetable (planned).",
   },
   infoRealtimeCountdown: {
-    fr: "min : compte à rebours en temps réel ; il peut bouger même si aucun retard n’est affiché.",
+    fr: "Min : estimation en direct, ajustée en continu selon la circulation.",
     de: "min: Echtzeit-Countdown; kann sich bewegen, auch wenn kein Delay angezeigt wird.",
     it: "min: conto alla rovescia in tempo reale; può cambiare anche senza ritardo visualizzato.",
     en: "min: realtime countdown; it can move even if no delay is shown.",
   },
   delaysBody: {
-    fr: "En Suisse, un retard est considéré comme officiel à partir de 3 minutes. Les écarts de 1 à 2 minutes peuvent apparaître en temps réel sans être considérés comme officiels.",
+    fr: "En Suisse, un retard est communiqué comme officiel à partir d'un certain seuil défini par l'exploitant.",
     de: "In der Schweiz gilt eine Verspätung ab 3 Minuten als offiziell. Abweichungen von 1–2 Minuten können in der Echtzeit erscheinen, ohne als offiziell zu gelten.",
     it: "In Svizzera un ritardo è ufficiale da 3 minuti. Scostamenti di 1–2 minuti possono apparire in tempo reale senza essere considerati ufficiali.",
     en: "In Switzerland a delay is official from 3 minutes. Deviations of 1–2 minutes may appear in realtime without being considered official.",
@@ -771,25 +1011,25 @@ const TRANSLATIONS = {
     en: "Official delay (Switzerland)",
   },
   infoRealtimeThresholdsTitle: {
-    fr: "Seuils d’affichage sur mesdeparts.ch",
+    fr: "Règles d'affichage sur mesdeparts.ch",
     de: "Anzeigeschwellen auf mesdeparts.ch",
     it: "Soglie di visualizzazione su mesdeparts.ch",
     en: "Display thresholds on mesdeparts.ch",
   },
   infoRealtimeThresholdsBus: {
-    fr: "Bus / tram / métro : retard affiché dès +2 min",
+    fr: "Bus, tram, métro : mention « Retard » à partir de +2 min.",
     de: "Bus/Tram/Metro: Verspätung ab +2 Min",
     it: "Bus / tram / metro: ritardo mostrato da +2 min",
     en: "Bus / tram / metro: delay shown from +2 min",
   },
   infoRealtimeThresholdsTrain: {
-    fr: "Trains : retard affiché dès +1 min",
+    fr: "Trains : mention « Retard » à partir de +1 min.",
     de: "Züge: Verspätung ab +1 Min",
     it: "Treni: ritardo mostrato da +1 min",
     en: "Trains: delay shown from +1 min",
   },
   infoRealtimeThresholdsNote: {
-    fr: "En dessous, le compte à rebours reste “clair” (pas d’étiquette).",
+    fr: "Sous ces seuils, seule l'estimation en minutes est affichée.",
     de: "Darunter bleibt der Countdown klar (kein Label).",
     it: "Sotto, il conto alla rovescia resta “pulito” (senza etichetta).",
     en: "Below that, the countdown stays clear (no label).",
@@ -867,13 +1107,13 @@ const TRANSLATIONS = {
     en: "Data",
   },
   creditsData: {
-    fr: "Données : api.mesdeparts.ch",
+    fr: "Données : api.mesdeparts.ch, agrégation de sources publiques suisses.",
     de: "Daten: api.mesdeparts.ch",
     it: "Dati: api.mesdeparts.ch",
     en: "Data: api.mesdeparts.ch",
   },
   creditsAuthor: {
-    fr: "© 2025 tabbycat18 – mesdeparts.ch — Licence Apache 2.0.",
+    fr: "© 2025 tabbycat18 · mesdeparts.ch · Apache 2.0",
     de: "© 2025 tabbycat18 – mesdeparts.ch — Apache-Lizenz 2.0.",
     it: "© 2025 tabbycat18 – mesdeparts.ch — Licenza Apache 2.0.",
     en: "© 2025 tabbycat18 – mesdeparts.ch — Apache License 2.0.",
@@ -885,13 +1125,13 @@ const TRANSLATIONS = {
     en: "Clock",
   },
   creditsClock: {
-    fr: "Horloge : sbbUhr — © GoetteSebastian — Apache License 2.0",
+    fr: "Horloge : sbbUhr — © GoetteSebastian — Apache 2.0.",
     de: "Uhr: sbbUhr — © GoetteSebastian — Apache License 2.0",
     it: "Orologio: sbbUhr — © GoetteSebastian — Apache License 2.0",
     en: "Clock: sbbUhr — © GoetteSebastian — Apache License 2.0",
   },
   creditsClockNote: {
-    fr: "Adaptation et intégration pour mesdeparts.ch (inspiré par CFF-Clock / SlendyMilky).",
+    fr: "Adaptation et intégration : mesdeparts.ch, inspiré de CFF-Clock (SlendyMilky).",
     de: "Anpassung und Integration für mesdeparts.ch (inspiriert von CFF-Clock / SlendyMilky).",
     it: "Adattamento e integrazione per mesdeparts.ch (ispirato da CFF-Clock / SlendyMilky).",
     en: "Adaptation and integration for mesdeparts.ch (inspired by CFF-Clock / SlendyMilky).",
@@ -903,7 +1143,7 @@ const TRANSLATIONS = {
     en: "Affiliation",
   },
   infoCreditsAffiliation: {
-    fr: "Aucune affiliation ni approbation officielle CFF/SBB.",
+    fr: "Projet indépendant, sans affiliation officielle avec CFF/SBB.",
     de: "Keine Zugehörigkeit oder offizielle Genehmigung der SBB/CFF.",
     it: "Nessuna affiliazione o approvazione ufficiale CFF/SBB.",
     en: "No affiliation or official approval from SBB/CFF.",
@@ -1020,8 +1260,16 @@ export function setLanguage(lang) {
     // ignore
   }
 
-  // Force info overlay to rebuild with the new language on next open
+  // Force info overlay to rebuild with the new language on next open.
+  // Hide first to ensure modal side effects (body lock/padding) are cleaned up.
   const overlay = document.getElementById("info-overlay");
+  if (overlay?.__infoControls && typeof overlay.__infoControls.hide === "function") {
+    try {
+      overlay.__infoControls.hide();
+    } catch (_) {
+      // ignore
+    }
+  }
   if (overlay) overlay.remove();
 
   return currentLang;
