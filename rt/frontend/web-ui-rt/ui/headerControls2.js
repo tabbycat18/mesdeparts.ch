@@ -41,6 +41,33 @@ const SAVE_LABELS = {
   en: { ready: "Save this stop", saved: "Stop already saved" },
 };
 
+const SAVE_META_LABELS = {
+  fr: {
+    idle: "Choisissez un arrêt puis appuyez ici",
+    readyPrefix: "Prêt à sauvegarder",
+    savedPrefix: "Déjà dans vos favoris",
+    saving: "Sauvegarde en cours…",
+  },
+  de: {
+    idle: "Haltestelle wählen und hier tippen",
+    readyPrefix: "Bereit zum Speichern",
+    savedPrefix: "Bereits in Favoriten",
+    saving: "Speichere…",
+  },
+  it: {
+    idle: "Seleziona una fermata e tocca qui",
+    readyPrefix: "Pronta da salvare",
+    savedPrefix: "Già nei preferiti",
+    saving: "Salvataggio…",
+  },
+  en: {
+    idle: "Pick a stop, then tap here",
+    readyPrefix: "Ready to save",
+    savedPrefix: "Already in favorites",
+    saving: "Saving…",
+  },
+};
+
 const TRAIN_SEGMENT_VARIANTS = {
   all: {
     fr: { full: "Tous", mid: "Tous", short: "Tous", tiny: "T" },
@@ -385,9 +412,19 @@ function createGlobalSheetsTemplate() {
 
       <div id="favorites-status" class="hc2__status is-hidden" role="status" aria-live="polite"></div>
 
-      <button id="favorites-save-current" class="hc2__primary" data-action="saveStop" type="button">
-        ${pickLocalized(SAVE_LABELS).ready}
-      </button>
+      <div class="hc2__saveCard">
+        <button id="favorites-save-current" class="hc2__saveCta" data-action="saveStop" type="button">
+          <span class="hc2__saveCtaIcon" aria-hidden="true">★</span>
+          <span class="hc2__saveCtaText">
+            <span id="favorites-save-current-label" class="hc2__saveCtaTitle">
+              ${pickLocalized(SAVE_LABELS).ready}
+            </span>
+            <span id="favorites-save-current-meta" class="hc2__saveCtaMeta">
+              ${pickLocalized(SAVE_META_LABELS).idle}
+            </span>
+          </span>
+        </button>
+      </div>
 
       <div id="favorites-chip-list" class="hc2__favList"></div>
       <div id="favorites-empty" class="hc2__empty is-hidden">${t("filterNoFavorites")}</div>
@@ -483,6 +520,8 @@ function cacheRefs() {
     favoritesClose: d.querySelector("[data-fav-sheet-close='true']"),
     favoritesStatus: dq("favorites-status"),
     favoritesSave: dq("favorites-save-current"),
+    favoritesSaveLabel: dq("favorites-save-current-label"),
+    favoritesSaveMeta: dq("favorites-save-current-meta"),
     favoritesManage: dq("favorites-manage"),
     favoritesList: dq("favorites-chip-list"),
     favoritesEmpty: dq("favorites-empty"),
@@ -1819,14 +1858,36 @@ function resetAllFilters() {
 function updateSaveButton() {
   const button = state.refs.favoritesSave;
   if (!button) return;
+  const labelEl = state.refs.favoritesSaveLabel;
+  const metaEl = state.refs.favoritesSaveMeta;
 
   const stop = state.currentStop;
   const hasStop = !!(stop && stop.id && stop.name);
   const alreadySaved = hasStop && (state.favorites || []).some((fav) => fav.id === stop.id);
 
   const labels = pickLocalized(SAVE_LABELS);
+  const metaLabels = pickLocalized(SAVE_META_LABELS);
   button.disabled = !hasStop || alreadySaved || !!state.isSaving;
-  button.textContent = alreadySaved ? labels.saved : labels.ready;
+  button.classList.toggle("is-saved", !!alreadySaved);
+  button.classList.toggle("is-ready", hasStop && !alreadySaved && !state.isSaving);
+  button.classList.toggle("is-busy", !!state.isSaving);
+
+  let labelText = labels.ready;
+  let metaText = metaLabels.idle;
+  if (state.isSaving) {
+    labelText = labels.ready;
+    metaText = metaLabels.saving;
+  } else if (hasStop && alreadySaved) {
+    labelText = labels.saved;
+    metaText = `${metaLabels.savedPrefix} · ${stop.name}`;
+  } else if (hasStop) {
+    labelText = labels.ready;
+    metaText = `${metaLabels.readyPrefix} · ${stop.name}`;
+  }
+
+  if (labelEl) labelEl.textContent = labelText;
+  if (metaEl) metaEl.textContent = metaText;
+  if (!labelEl && !metaEl) button.textContent = labelText;
 }
 
 function renderFavoritesSheet() {
