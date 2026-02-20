@@ -2944,29 +2944,12 @@ export function renderDepartures(rows) {
 
     const showPlatformChange = dep.mode === "train" && dep.platformChanged && platformVal;
     if (showPlatformChange) {
-      const wrap = document.createElement("div");
-      wrap.className = "platform-change-wrap";
-
-      if (prevPlatform) {
-        const prevBadge = document.createElement("span");
-        prevBadge.className = "platform-badge platform-badge--prev";
-        prevBadge.textContent = prevPlatform;
-        wrap.appendChild(prevBadge);
-      }
-
-      const curBadge = document.createElement("span");
-      curBadge.className = "platform-badge platform-badge--current";
-      curBadge.textContent = platformVal;
-
-      const arrow = document.createElement("span");
-      arrow.className = "platform-change-arrow";
-      arrow.textContent = "⇄";
-      curBadge.appendChild(arrow);
-
-      wrap.appendChild(curBadge);
-
-      tdPlat.appendChild(wrap);
-      tdPlat.classList.add("platform-changed");
+      const platformChangeSpan = document.createElement("span");
+      platformChangeSpan.className = "platform-badge";
+      const displayText = prevPlatform ? `${prevPlatform} ↔ ${platformVal}` : platformVal;
+      platformChangeSpan.textContent = displayText;
+      tdPlat.appendChild(platformChangeSpan);
+      tdPlat.classList.add("status-delay");
     } else if (platformVal) {
       const badge = document.createElement("span");
       badge.className = "platform-badge";
