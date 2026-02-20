@@ -3110,8 +3110,8 @@ body.dual-body {
   right: 14px;
   padding: 8px 14px;
   border-radius: 14px;
-  border: 1px solid rgba(3, 105, 161, 0.3);
-  background: #0369a1;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(1, 21, 127, 0.85);
   color: #ffffff;
   font-weight: 600;
   font-size: 0.81rem;
@@ -3119,26 +3119,26 @@ body.dual-body {
   display: none;
   align-items: center;
   gap: 6px;
-  box-shadow: 0 2px 6px rgba(3, 105, 161, 0.2);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
   cursor: pointer;
   z-index: 60;
   transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .show-controls-button:hover {
-  background: #0284c7;
-  border-color: rgba(2, 132, 199, 0.4);
-  box-shadow: 0 3px 8px rgba(3, 105, 161, 0.28);
+  background: rgba(1, 21, 127, 0.95);
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.4);
 }
 
 .show-controls-button:active {
-  background: #0359a6;
-  border-color: rgba(3, 105, 161, 0.3);
-  box-shadow: 0 1px 3px rgba(3, 105, 161, 0.12);
+  background: rgba(1, 21, 127, 0.75);
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
 
 .show-controls-button:focus-visible {
-  outline: 2px solid rgba(6, 182, 212, 0.6);
+  outline: 2px solid rgba(255, 255, 255, 0.3);
   outline-offset: 3px;
 }
 
