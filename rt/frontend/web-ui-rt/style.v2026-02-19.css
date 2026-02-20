@@ -2960,7 +2960,7 @@ body.dual-body {
   border-radius: 9999px;
   border: none;
   background-color: #ffffff;
-  color: #0369a1;
+  color: #01157f;
   font-weight: 600;
   font-size: 0.81rem;
   letter-spacing: 0.035em;
@@ -2992,7 +2992,7 @@ body.dual-body {
   border-radius: 9999px;
   border: none;
   background: #ffffff;
-  color: #0369a1;
+  color: #01157f;
   font-size: 0.81rem;
   font-weight: 600;
   letter-spacing: 0.012em;
@@ -3031,7 +3031,7 @@ body.dual-body {
 
 #fullscreenBtn.dual-action {
   background: #ffffff;
-  color: #0369a1;
+  color: #01157f;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 

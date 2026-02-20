@@ -550,7 +550,7 @@
   border: none;
   border-radius: 9999px;
   background: #ffffff;
-  color: #0369a1;
+  color: #01157f;
   text-decoration: none;
   display: inline-flex;
   align-items: center;
@@ -566,7 +566,7 @@
 }
 
 .hc2__pill svg {
-  stroke: #0369a1;
+  stroke: #01157f;
 }
 
 .hc2__pillIcon {
@@ -752,7 +752,7 @@
 .hc2__primary {
   width: 100%;
   background: #ffffff;
-  color: #0369a1;
+  color: #01157f;
   border: none;
   margin-bottom: 10px;
   padding: 8px 12px;
