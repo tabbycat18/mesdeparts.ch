@@ -763,7 +763,6 @@ export class DualPicker {
     this.state.language = lang;
     this.renderViewControls();
     this.syncHideToggle();
-    this.syncFavToggle();
     if (!silent) this.triggerChange();
   }
 
