@@ -219,16 +219,16 @@ const TRANSLATIONS = {
     en: "Reset",
   },
   dualHideControls: {
-    fr: "Masquer les contrôles",
-    de: "Bedienelemente ausblenden",
-    it: "Nascondi i controlli",
-    en: "Hide controls",
+    fr: "Masquer les boutons",
+    de: "Tasten ausblenden",
+    it: "Nascondi i pulsanti",
+    en: "Hide buttons",
   },
   dualShowControls: {
-    fr: "Afficher les contrôles",
-    de: "Bedienelemente anzeigen",
-    it: "Mostra i controlli",
-    en: "Show controls",
+    fr: "Afficher les boutons",
+    de: "Tasten anzeigen",
+    it: "Mostra i pulsanti",
+    en: "Show buttons",
   },
   dualFullscreen: {
     fr: "Plein écran",
@@ -398,6 +398,18 @@ const TRANSLATIONS = {
     it: "Preferiti",
     en: "Favorites",
   },
+  favoriteAdded: {
+    fr: "Ajouté aux favoris",
+    de: "Zu Favoriten hinzugefügt",
+    it: "Aggiunto ai preferiti",
+    en: "Added to favorites",
+  },
+  favoriteRemoved: {
+    fr: "Retiré des favoris",
+    de: "Aus Favoriten entfernt",
+    it: "Rimosso dai preferiti",
+    en: "Removed from favorites",
+  },
   headerUnofficialTag: {
     fr: "Non officiel — aucune affiliation",
     de: "Inoffiziell — keine Zugehörigkeit",
@@ -507,10 +519,10 @@ const TRANSLATIONS = {
     en: "All",
   },
   trainFilterRegional: {
-    fr: "Régional (S/R)",
-    de: "Regional (S/R)",
-    it: "Regionale (S/R)",
-    en: "Regional (S/R)",
+    fr: "Régional",
+    de: "Regional",
+    it: "Regionale",
+    en: "Regional",
   },
   trainFilterLongDistance: {
     fr: "Grande ligne",

@@ -31,11 +31,19 @@
       (function markEmbed() {
         if (window.self === window.top) return;
         document.documentElement.classList.add("dual-embed");
+        const isDual = new URLSearchParams(window.location.search).get("dual") === "1";
+        if (isDual) {
+          document.documentElement.classList.add("dual-mode");
+        }
         if (document.body) {
           document.body.classList.add("dual-embed");
+          if (isDual) document.body.classList.add("dual-mode");
         } else {
           document.addEventListener("DOMContentLoaded", () => {
-            document.body && document.body.classList.add("dual-embed");
+            if (document.body) {
+              document.body.classList.add("dual-embed");
+              if (isDual) document.body.classList.add("dual-mode");
+            }
           });
         }
       })();
