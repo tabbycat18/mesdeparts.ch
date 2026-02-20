@@ -469,7 +469,7 @@
 .hc2__segmentBtn {
   border: none;
   border-radius: 14px;
-  padding: 4px 10px;
+  padding: 4px 12px;
   background: transparent;
   color: rgba(255, 255, 255, 0.84);
   font-size: 0.81rem;
@@ -507,7 +507,7 @@
 .hc2__segment.hc2__segment--train .hc2__segmentBtn {
   flex: 1 1 calc(33.333% - 4px);
   min-width: 0;
-  padding: 4px 6px;
+  padding: 4px 12px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.08);
@@ -552,7 +552,7 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 4px 8px;
+  padding: 4px 12px;
   font-size: 0.81rem;
   font-weight: 600;
   cursor: pointer;
@@ -753,7 +753,7 @@
   color: #ffffff;
   border: 1px solid rgba(255, 255, 255, 0.10);
   margin-bottom: 10px;
-  padding: 4px 8px;
+  padding: 4px 12px;
   border-radius: 19px;
   font-weight: 600;
   font-size: 0.81rem;
@@ -814,7 +814,7 @@
   background: rgba(255, 255, 255, 0.08);
   color: #fff;
   text-align: left;
-  padding: 4px 10px;
+  padding: 4px 12px;
   font-size: 0.81rem;
   font-weight: 600;
   cursor: pointer;
@@ -1063,7 +1063,7 @@
   .hc2__rowDual .hc2__pill {
     min-height: 40px;
     border-radius: 16px;
-    padding: 2px 7px;
+    padding: 4px 12px;
     font-size: 0.79rem;
   }
 
@@ -1098,7 +1098,7 @@
 
   .hc2__rowDual .hc2__pill {
     min-height: 40px;
-    padding: 0 8px;
+    padding: 4px 12px;
   }
 
   .hc2__served {
