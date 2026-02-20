@@ -322,27 +322,39 @@ assert.equal(detectNetworkFromStation("Zurich HB"), "vbz");
       makeBusEntry({ line: 9, earlyMin: 1 }),
       // Rounded minutes can be -2 around ~1m35s early.
       makeBusEntry({ line: 10, earlySeconds: 96 }),
+      // Regression: -54s must still round to -1 minute.
+      makeBusEntry({ line: 11, earlySeconds: 54 }),
     ];
 
     const rows = buildDeparturesGrouped({ stationboard }, VIEW_MODE_TIME);
     const line8 = rows.find((row) => String(row.simpleLineId || "") === "8");
     const line9 = rows.find((row) => String(row.simpleLineId || "") === "9");
     const line10 = rows.find((row) => String(row.simpleLineId || "") === "10");
+    const line11 = rows.find((row) => String(row.simpleLineId || "") === "11");
 
     assert.ok(line8);
     assert.equal(line8.status, "early");
     assert.ok(String(line8.remark || "").toLowerCase().includes("avance"));
     assert.equal(line8.delayMin, -2);
+    assert.equal(line8.delaySource, "timestamps");
 
     assert.ok(line9);
     assert.equal(line9.status, "early");
     assert.equal(line9.delayMin, -1);
     assert.ok(String(line9.remark || "").toLowerCase().includes("avance"));
+    assert.equal(line9.delaySource, "timestamps");
 
     assert.ok(line10);
     assert.equal(line10.status, "early");
     assert.equal(line10.delayMin, -2);
     assert.ok(String(line10.remark || "").toLowerCase().includes("avance"));
+    assert.equal(line10.delaySource, "timestamps");
+
+    assert.ok(line11);
+    assert.equal(line11.status, "early");
+    assert.equal(line11.delayMin, -1);
+    assert.ok(String(line11.remark || "").toLowerCase().includes("avance"));
+    assert.equal(line11.delaySource, "timestamps");
   } finally {
     appState.STATION = previous.station;
     appState.stationId = previous.stationId;
@@ -471,6 +483,87 @@ assert.equal(detectNetworkFromStation("Zurich HB"), "vbz");
     const parsed = new URL(requestedUrl, "http://localhost");
     assert.equal(parsed.searchParams.get("stop_id"), "Parent8501609");
     assert.equal(parsed.searchParams.get("lang"), "it");
+  } finally {
+    appState.STATION = previous.station;
+    appState.stationId = previous.stationId;
+    appState.language = previous.language;
+    globalThis.fetch = originalFetch;
+  }
+}
+
+// fetchStationboardRaw should derive fallback banners from departure alerts when API banners are empty
+{
+  const originalFetch = globalThis.fetch;
+  const previous = {
+    station: appState.STATION,
+    stationId: appState.stationId,
+    language: appState.language,
+  };
+
+  appState.STATION = "Bern";
+  appState.stationId = "Parent8507000";
+  appState.language = "fr";
+
+  const nowMs = Date.now() + 10 * 60 * 1000;
+  const scheduledIso = new Date(nowMs).toISOString();
+
+  globalThis.fetch = async () => ({
+    ok: true,
+    status: 200,
+    statusText: "OK",
+    json: async () => ({
+      station: { id: "Parent8507000", name: "Bern" },
+      banners: [],
+      departures: [
+        {
+          trip_id: "trip-1",
+          category: "S",
+          number: "5",
+          line: "S5",
+          destination: "Kerzers",
+          scheduledDeparture: scheduledIso,
+          realtimeDeparture: scheduledIso,
+          delayMin: 0,
+          alerts: [
+            {
+              id: "route-disruption",
+              severity: "warning",
+              header: "Limited train service between Kerzers and Payerne",
+              description: "Construction work, replacement transport.",
+            },
+          ],
+        },
+        {
+          trip_id: "trip-2",
+          category: "S",
+          number: "5",
+          line: "S5",
+          destination: "Kerzers",
+          scheduledDeparture: scheduledIso,
+          realtimeDeparture: scheduledIso,
+          delayMin: 0,
+          alerts: [
+            {
+              id: "route-disruption",
+              severity: "warning",
+              header: "Limited train service between Kerzers and Payerne",
+              description: "Construction work, replacement transport.",
+            },
+          ],
+        },
+      ],
+    }),
+  });
+
+  try {
+    const data = await fetchStationboardRaw({ allowRetry: false, bustCache: false });
+    assert.equal(Array.isArray(data?.banners), true);
+    assert.equal(data.banners.length, 1);
+    assert.deepEqual(data.banners[0], {
+      severity: "warning",
+      header: "Limited train service between Kerzers and Payerne",
+      description: "Construction work, replacement transport.",
+    });
   } finally {
     appState.STATION = previous.station;
     appState.stationId = previous.stationId;

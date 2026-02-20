@@ -217,6 +217,73 @@ test("attachAlerts keeps synthetic rows pinned to origin alert only", () => {
   assert.equal(noOrigin.alerts.length, 0);
 });
 
+test("attachAlerts falls back to route/trip banners when no stop-scoped banners exist", () => {
+  const now = new Date("2026-02-20T21:00:00.000Z");
+  const departures = [
+    {
+      trip_id: "trip-s5",
+      route_id: "route-s5",
+      stop_id: "8507000:0:13AB",
+      stop_sequence: 6,
+      destination: "Kerzers",
+      tags: [],
+      source: "scheduled",
+    },
+    {
+      trip_id: "trip-s1",
+      route_id: "route-s1",
+      stop_id: "8507000:0:13D-F",
+      stop_sequence: 7,
+      destination: "Thun",
+      tags: [],
+      source: "scheduled",
+    },
+  ];
+
+  const alerts = {
+    entities: [
+      {
+        id: "route-disruption",
+        severity: "warning",
+        headerText: "Limited train service between Kerzers and Payerne",
+        descriptionText: "Construction work, replacement transport.",
+        activePeriods: [],
+        informedEntities: [{ route_id: "route-s5" }],
+      },
+      {
+        id: "trip-disruption",
+        severity: "warning",
+        headerText: "Limited train service between Thörishaus and Flamatt",
+        descriptionText: "Construction work, timetable changes.",
+        activePeriods: [],
+        informedEntities: [{ trip_id: "trip-s1" }],
+      },
+    ],
+  };
+
+  const out = attachAlerts({
+    stopId: "Parent8507000",
+    routeIds: departures.map((dep) => dep.route_id),
+    tripIds: departures.map((dep) => dep.trip_id),
+    departures,
+    alerts,
+    now,
+  });
+
+  const bannerHeaders = out.banners.map((banner) => banner.header).sort();
+  assert.deepEqual(bannerHeaders, [
+    "Limited train service between Kerzers and Payerne",
+    "Limited train service between Thörishaus and Flamatt",
+  ]);
+
+  const depS5 = out.departures.find((dep) => dep.trip_id === "trip-s5");
+  const depS1 = out.departures.find((dep) => dep.trip_id === "trip-s1");
+  assert.ok(depS5);
+  assert.ok(depS1);
+  assert.deepEqual(depS5.alerts.map((alert) => alert.id), ["route-disruption"]);
+  assert.deepEqual(depS1.alerts.map((alert) => alert.id), ["trip-disruption"]);
+});
+
 test("attachAlerts does not apply skipped_stop tag from stop-only alert to all departures", () => {
   const now = new Date("2026-02-19T12:00:00.000Z");
   const departures = [

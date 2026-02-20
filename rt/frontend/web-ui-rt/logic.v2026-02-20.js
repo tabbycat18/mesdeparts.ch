@@ -519,7 +519,29 @@ export async function fetchStationsNearby(lat, lon, limit = 7) {
 
 function normalizeBackendStationboard(data) {
   const departures = Array.isArray(data?.departures) ? data.departures : [];
-  const banners = Array.isArray(data?.banners) ? data.banners : [];
+  const apiBanners = Array.isArray(data?.banners) ? data.banners : [];
+  const fallbackBanners = [];
+  const fallbackSeen = new Set();
+  if (apiBanners.length === 0) {
+    for (const dep of departures) {
+      const depAlerts = Array.isArray(dep?.alerts) ? dep.alerts : [];
+      for (const alert of depAlerts) {
+        const severity = String(alert?.severity || "unknown").trim().toLowerCase() || "unknown";
+        const header = String(alert?.header || alert?.headerText || "").trim();
+        const description = String(alert?.description || alert?.descriptionText || "").trim();
+        if (!header && !description) continue;
+        const key = `${String(alert?.id || "")}|${severity}|${header}|${description}`;
+        if (fallbackSeen.has(key)) continue;
+        fallbackSeen.add(key);
+        fallbackBanners.push({
+          severity,
+          header,
+          description,
+        });
+      }
+    }
+  }
+  const banners = apiBanners.length > 0 ? apiBanners : fallbackBanners;
   const stationId = String(data?.station?.id || appState.stationId || "").trim();
   const stationName = String(data?.station?.name || appState.STATION || "").trim();
   const station = { id: stationId, name: stationName };

@@ -283,6 +283,7 @@ export function attachAlerts({
 
   const banners = [];
   const bannerSeen = new Set();
+  const fallbackBannerCandidates = [];
 
   const departuresOut = sourceDepartures.map((dep) => ({
     ...dep,
@@ -325,6 +326,7 @@ export function attachAlerts({
     }
 
     // B) Per-departure tags.
+    let matchedByTripOrRoute = false;
     for (let idx = 0; idx < departuresOut.length; idx += 1) {
       const dep = departuresOut[idx];
       const originAlertId = syntheticOriginAlertId(dep);
@@ -383,6 +385,9 @@ export function attachAlerts({
         });
 
       if (!depMatched) continue;
+      if (matchCtx.tripMatch || matchCtx.routeMatch || isSyntheticOriginMatch) {
+        matchedByTripOrRoute = true;
+      }
       if (depSeenByIndex[idx].has(alert.id)) continue;
 
       depSeenByIndex[idx].add(alert.id);
@@ -396,6 +401,39 @@ export function attachAlerts({
         if (!shouldAttachServiceTag(tag, matchCtx, dep)) continue;
         uniqPush(dep.tags, tag);
       }
+    }
+
+    if (matchedByTripOrRoute) {
+      const hasText =
+        String(alert?.headerText || "").trim() !== "" ||
+        String(alert?.descriptionText || "").trim() !== "";
+      if (hasText) {
+        fallbackBannerCandidates.push({
+          id: String(alert.id),
+          severity: alert.severity || "unknown",
+          header: alert.headerText || "",
+          description: alert.descriptionText || "",
+          affected: pickFirstAffected(
+            informedEntities,
+            (entity) => !!(entity?.trip_id || entity?.route_id || entity?.stop_id)
+          ),
+        });
+      }
+    }
+  }
+
+  // Fallback: when no stop-scoped banners exist, still surface route/trip disruptions
+  // that matched departures on this board.
+  if (banners.length === 0) {
+    for (const candidate of fallbackBannerCandidates) {
+      if (!candidate?.id || bannerSeen.has(candidate.id)) continue;
+      bannerSeen.add(candidate.id);
+      banners.push({
+        severity: candidate.severity || "unknown",
+        header: candidate.header || "",
+        description: candidate.description || "",
+        affected: candidate.affected || {},
+      });
     }
   }
 
