@@ -573,11 +573,6 @@
 
         saveStates(leftPicker.getSerializableState(), rightPicker.getSerializableState());
 
-        if (showStatus && (leftChanged || rightChanged)) {
-          setStatus(
-            `${leftPicker.getDisplayName()} / ${rightPicker.getDisplayName()} ${t("dualStatusLoadedSuffix")}`,
-          );
-        }
         return true;
       }
 
