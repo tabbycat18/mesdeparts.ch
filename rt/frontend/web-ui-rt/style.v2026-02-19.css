@@ -3111,7 +3111,7 @@ body.dual-body {
   padding: 8px 14px;
   border-radius: 14px;
   border: 1px solid rgba(255, 255, 255, 0.08);
-  background: #060e3b;
+  background: #0b1863;
   color: #ffffff;
   font-weight: 600;
   font-size: 0.81rem;
@@ -3126,13 +3126,13 @@ body.dual-body {
 }
 
 .show-controls-button:hover {
-  background: #0d1a5c;
+  background: #142599;
   border-color: rgba(255, 255, 255, 0.12);
   box-shadow: 0 3px 8px rgba(0, 0, 0, 0.4);
 }
 
 .show-controls-button:active {
-  background: #050a2e;
+  background: #070d42;
   border-color: rgba(255, 255, 255, 0.08);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
