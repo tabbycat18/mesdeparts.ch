@@ -3116,7 +3116,7 @@ body.dual-body {
   font-weight: 600;
   font-size: 0.81rem;
   letter-spacing: 0.015em;
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 6px;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
