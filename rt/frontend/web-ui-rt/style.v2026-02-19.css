@@ -3081,11 +3081,10 @@ body.dual-body {
   padding: 16px;
   margin: 0;
   box-shadow: none;
-  overflow: hidden;
-  max-height: 500px;
-  transition: max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1),
-              opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  transform: translateY(0);
   opacity: 1;
+  transition: transform 0.35s ease-out, opacity 0.35s ease-out;
+  pointer-events: auto;
 }
 
 .dual-header-row {
@@ -3097,16 +3096,16 @@ body.dual-body {
 }
 
 .dual-controls.is-collapsed {
-  max-height: 0;
+  transform: translateY(-100%);
   opacity: 0;
-  padding: 0 16px;
+  pointer-events: none;
 }
 
 /* Hide all controls (picker panels + floating badges) when collapsed */
 .dual-body.dual-controls-hidden .dual-controls {
-  max-height: 0;
+  transform: translateY(-100%);
   opacity: 0;
-  padding: 0 16px;
+  pointer-events: none;
 }
 
 .dual-body.dual-controls-hidden .dual-info-float {
