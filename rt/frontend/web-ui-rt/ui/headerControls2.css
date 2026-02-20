@@ -555,8 +555,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 7px;
-  padding: 8px 12px;
+  gap: 6px;
+  padding: 4px 10px;
   font-size: 0.81rem;
   font-weight: 600;
   cursor: pointer;
@@ -751,6 +751,16 @@
   color: #0369a1;
   border: none;
   margin-bottom: 10px;
+  padding: 8px 12px;
+  height: 38px;
+  min-height: 38px;
+  border-radius: 9999px;
+  font-weight: 600;
+  font-size: 0.81rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
   transition: background-color 0.2s ease, box-shadow 0.2s ease;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
 }
