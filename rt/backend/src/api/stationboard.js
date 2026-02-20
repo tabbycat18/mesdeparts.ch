@@ -115,9 +115,14 @@ async function getServiceAlertsCached() {
 function localizeServiceAlerts(alerts, langPrefs) {
   const entities = Array.isArray(alerts?.entities) ? alerts.entities : [];
   return {
-    ...(alerts || {}),
     entities: entities.map((alert) => ({
-      ...alert,
+      id: alert?.id || "",
+      severity: alert?.severity || "unknown",
+      effect: alert?.effect || null,
+      activePeriods: Array.isArray(alert?.activePeriods) ? alert.activePeriods : [],
+      informedEntities: Array.isArray(alert?.informedEntities)
+        ? alert.informedEntities
+        : [],
       headerText:
         pickTranslation(alert?.headerTranslations || alert?.headerText, langPrefs) ||
         null,
@@ -127,6 +132,64 @@ function localizeServiceAlerts(alerts, langPrefs) {
           langPrefs
         ) || null,
     })),
+  };
+}
+
+function filterLocalizedAlertsByScope(alerts, { stopId, scopeStopIds, routeIds, tripIds } = {}) {
+  const entities = Array.isArray(alerts?.entities) ? alerts.entities : [];
+  if (!entities.length) return { entities: [] };
+
+  function stopTokens(value) {
+    const raw = String(value || "").trim().toLowerCase();
+    if (!raw) return [];
+    const noParent = raw.startsWith("parent") ? raw.slice("parent".length) : raw;
+    const base = noParent.split(":")[0] || noParent;
+    return Array.from(new Set([raw, noParent, base].filter(Boolean)));
+  }
+
+  const stopTokenSet = new Set();
+  for (const stop of [
+    stopId,
+    ...(Array.isArray(scopeStopIds) ? scopeStopIds : []),
+  ]) {
+    for (const token of stopTokens(stop)) stopTokenSet.add(token);
+  }
+  const stopSet = new Set(
+    [stopId, ...(Array.isArray(scopeStopIds) ? scopeStopIds : [])]
+      .map((v) => String(v || "").trim())
+      .filter(Boolean)
+  );
+  const routeSet = new Set(
+    (Array.isArray(routeIds) ? routeIds : [])
+      .map((v) => String(v || "").trim())
+      .filter(Boolean)
+  );
+  const tripSet = new Set(
+    (Array.isArray(tripIds) ? tripIds : [])
+      .map((v) => String(v || "").trim())
+      .filter(Boolean)
+  );
+
+  const filtered = entities.filter((alert) => {
+    const informed = Array.isArray(alert?.informedEntities) ? alert.informedEntities : [];
+    if (informed.length === 0) return false;
+    for (const entity of informed) {
+      const eStop = String(entity?.stop_id || "").trim();
+      const eRoute = String(entity?.route_id || "").trim();
+      const eTrip = String(entity?.trip_id || "").trim();
+      if (eStop && stopSet.has(eStop)) return true;
+      if (eStop) {
+        const tokens = stopTokens(eStop);
+        if (tokens.some((token) => stopTokenSet.has(token))) return true;
+      }
+      if (eRoute && routeSet.has(eRoute)) return true;
+      if (eTrip && tripSet.has(eTrip)) return true;
+    }
+    return false;
+  });
+
+  return {
+    entities: filtered,
   };
 }
 
@@ -975,7 +1038,7 @@ export async function getStationboard({
 
   try {
     const alertsWaitStartedMs = performance.now();
-    const alerts = localizeServiceAlerts((await alertsPromise) || { entities: [] }, langPrefs);
+    const alertsRaw = (await alertsPromise) || { entities: [] };
     timing.alertsWaitMs = roundMs(performance.now() - alertsWaitStartedMs);
     const alertsMergeStartedMs = performance.now();
     const syntheticDepartures = [];
@@ -1007,6 +1070,12 @@ export async function getStationboard({
     traceCancellation("after_alert_synthesis_merge", mergedDepartures);
     const routeIds = mergedDepartures.map((dep) => dep?.route_id).filter(Boolean);
     const tripIds = mergedDepartures.map((dep) => dep?.trip_id).filter(Boolean);
+    const alerts = filterLocalizedAlertsByScope(localizeServiceAlerts(alertsRaw, langPrefs), {
+      stopId: locationId,
+      scopeStopIds,
+      routeIds,
+      tripIds,
+    });
 
     const attached = attachAlerts({
       stopId: locationId,
