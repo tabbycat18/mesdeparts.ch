@@ -681,6 +681,11 @@
   backdrop-filter: blur(8px);
 }
 
+.hc2__backdrop[hidden],
+.hc2__sheet[hidden] {
+  display: none !important;
+}
+
 #favorites-backdrop.hc2__backdrop {
   position: fixed;
   inset: 0;
@@ -691,11 +696,10 @@
   position: fixed;
   top: 50%;
   left: 50%;
-  transform: translate(-50%, -50%);
+  translate: -50% -50%;
   width: 90%;
   max-width: 440px;
   max-height: 70vh;
-  overflow: auto;
   z-index: 1601;
   border-radius: 16px;
   border: 1px solid rgba(255, 255, 255, 0.16);
@@ -704,6 +708,9 @@
     radial-gradient(120% 120% at 100% 0%, rgba(255, 255, 255, 0.13), rgba(255, 255, 255, 0.01) 58%);
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
   padding: 16px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .hc2 .is-hidden,
@@ -785,6 +792,11 @@
 .hc2__favList {
   display: grid;
   gap: 8px;
+  max-height: 45vh;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 4px;
 }
 
 .hc2__favoriteRow {
@@ -938,6 +950,10 @@
 .hc2__sheetBody {
   display: grid;
   gap: 12px;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .hc2__filterSection {
