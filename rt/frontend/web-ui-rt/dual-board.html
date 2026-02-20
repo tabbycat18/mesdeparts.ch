@@ -30,43 +30,35 @@
   </head>
   <body class="dual-body">
     <div class="dual-shell">
-      <header class="dual-header">
-        <div class="dual-brand">
-          <div class="dual-title-row">
-            <div class="dual-title">Dual board</div>
-            <div class="dual-badges">
-              <div class="dual-version">v1.7.1</div>
-              <button id="info-badge-dual" class="dual-info" type="button" aria-label="Info" title="Info">INFO</button>
-            </div>
-          </div>
-          <div id="dual-status" class="dual-status" aria-live="polite"></div>
-        </div>
-        <div class="dual-actions">
-          <div class="language-switcher language-switcher--inline dual-lang-switcher">
-            <label class="sr-only" for="language-select-global">Langue</label>
-            <select
-              id="language-select-global"
-              class="language-select"
-              aria-label="Langue"
-            ></select>
-          </div>
-          <button id="swapBtn" class="filters-pill dual-action" type="button">Échanger</button>
-          <button id="resetBtn" class="filters-pill dual-action" type="button">Réinitialiser</button>
-          <button id="hideBtn" class="filters-pill dual-action" type="button" aria-pressed="false">
-            Masquer les contrôles
-          </button>
-          <button id="fullscreenBtn" class="filters-pill dual-action" type="button">Plein écran</button>
-          <button id="info-btn" class="info-button" type="button" aria-label="Informations">
-            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" class="info-button__icon">
-              <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"></circle>
-              <line x1="12" y1="11" x2="12" y2="17" stroke="currentColor" stroke-width="2" stroke-linecap="round"></line>
-              <circle cx="12" cy="8" r="1.2" fill="currentColor"></circle>
-            </svg>
-          </button>
-        </div>
-      </header>
-
       <section class="dual-controls" id="dual-controls">
+        <div class="dual-header-row">
+          <div class="dual-brand">
+            <div class="dual-title-row">
+              <div class="dual-title">Dual board</div>
+              <div class="dual-badges">
+                <div class="dual-version">v1.7.1</div>
+                <button id="info-badge-dual" class="dual-info" type="button" aria-label="Info" title="Info">INFO</button>
+              </div>
+            </div>
+            <div id="dual-status" class="dual-status" aria-live="polite"></div>
+          </div>
+          <div class="dual-actions">
+            <div class="language-switcher language-switcher--inline dual-lang-switcher">
+              <label class="sr-only" for="language-select-global">Langue</label>
+              <select
+                id="language-select-global"
+                class="language-select"
+                aria-label="Langue"
+              ></select>
+            </div>
+            <button id="swapBtn" class="dual-action" type="button">Échanger</button>
+            <button id="resetBtn" class="dual-action" type="button">Réinitialiser</button>
+            <button id="hideBtn" class="dual-action" type="button" aria-pressed="false">
+              Masquer les contrôles
+            </button>
+            <button id="fullscreenBtn" class="dual-action" type="button">Plein écran</button>
+          </div>
+        </div>
         <div class="dual-picker-grid">
           <div class="dual-picker" data-side="left" id="picker-mount-left"></div>
           <div class="dual-picker" data-side="right" id="picker-mount-right"></div>
@@ -106,11 +98,13 @@
       } from "./state.v2026-02-19.js";
       import { setupInfoButton } from "./infoBTN.v2026-02-19.js";
       import { DualPicker } from "./ui/dualPicker.js";
+      import { migrateFavoritesToSided } from "./favourites.v2026-02-19.js";
 
       const DEFAULT_LANG = initI18n();
       appState.STATION = "Dual board";
 
       setupInfoButton();
+      migrateFavoritesToSided();
 
       const params = new URLSearchParams(window.location.search || "");
       const autoFullscreen = params.get("fs") === "1" || params.get("fullscreen") === "1";
@@ -178,6 +172,7 @@
 
       const statusEl = document.getElementById("dual-status");
       const controls = document.getElementById("dual-controls");
+      const badgesFloat = document.querySelector(".dual-badges-float");
       const wrapper = document.getElementById("wrapper");
       const leftFrame = document.getElementById("leftPane");
       const rightFrame = document.getElementById("rightPane");
@@ -187,7 +182,6 @@
       const swapBtn = document.getElementById("swapBtn");
       const resetBtn = document.getElementById("resetBtn");
       const languageSelect = document.getElementById("language-select-global");
-      const infoBtn = document.getElementById("info-btn");
 
       const sideLabel = (side) => (side === "right" ? t("dualSideRight") : t("dualSideLeft"));
 
@@ -230,8 +224,6 @@
         }
         const langLabel = document.querySelector("label[for='language-select-global']");
         setText(langLabel, "languageLabel");
-
-        if (infoBtn) infoBtn.setAttribute("aria-label", t("dualInfoLabel"));
 
         ["left", "right"].forEach((side) => {
           const suffix = side === "right" ? "right" : "left";

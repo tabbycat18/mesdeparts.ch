@@ -1,6 +1,6 @@
 import { t } from "../i18n.v2026-02-19.js";
 import { fetchStationSuggestions, fetchStationsNearby } from "../logic.v2026-02-19.js";
-import { loadFavorites, addFavorite, removeFavorite, isFavorite } from "../favourites.v2026-02-19.js";
+import { loadFavorites, addFavoriteForSide, removeFavoriteForSide } from "../favourites.v2026-02-19.js";
 import {
   VIEW_MODE_LINE,
   VIEW_MODE_TIME,
@@ -14,102 +14,83 @@ function createPickerTemplate(side) {
   const sideLabel = side === "right" ? t("dualSideRight") : t("dualSideLeft");
 
   return `
-    <div class="hc2">
-      <div class="hc2__pickerHeader">
-        <span class="dual-picker-side-label" id="side-label-${suffix}">${sideLabel}</span>
-      </div>
+    <div class="hc2__pickerHeader">
+      <span class="dual-picker-side-label" id="side-label-${suffix}">${sideLabel}</span>
+    </div>
 
-      <label for="station-input-${suffix}" class="sr-only">${t("searchStop")}</label>
-      <div class="hc2__search">
-        <input
-          id="station-input-${suffix}"
-          type="text"
-          class="hc2__searchInput"
-          placeholder="${t("searchAction")}..."
-          autocomplete="off"
-        />
-        <div class="hc2__searchActions">
-          <button
-            id="station-search-${suffix}"
-            class="hc2__actionBtn"
-            data-action="geo"
-            type="button"
-            aria-label="${t("nearbyButton")}"
-            title="${t("nearbyButton")}"
-          >
-            <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-              <path
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.8"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                d="M12 21s-6-5.94-6-11a6 6 0 1 1 12 0c0 5.06-6 11-6 11Z"
-              />
-              <circle cx="12" cy="10" r="2.4" fill="currentColor" />
-            </svg>
-          </button>
-          <button
-            id="station-fav-toggle-${suffix}"
-            class="hc2__actionBtn"
-            type="button"
-            aria-label="${t("filterFavoritesLabel")}"
-            aria-pressed="false"
-          >
-            <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-              <path
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.8"
-                stroke-linejoin="round"
-                d="M6 4h12a1 1 0 0 1 1 1v15l-7-3-7 3V5a1 1 0 0 1 1-1Z"
-              />
-            </svg>
-          </button>
-          <button
-            id="favorites-only-toggle-${suffix}"
-            class="hc2__pill"
-            type="button"
-            aria-label="${t("filterFavoritesTitle")}"
-            aria-pressed="false"
-            aria-expanded="false"
-            aria-controls="favorites-popover-${suffix}"
-          >
-            <span aria-hidden="true">★</span>
-            <span>${t("filterFavoritesOnlyShort")}</span>
-          </button>
-        </div>
-        <ul id="station-suggestions-${suffix}" class="hc2__suggestions"></ul>
-      </div>
-
-      <div class="hc2__row hc2__displayRow">
-        <div class="hc2__rowLabel hc2__displayLabel">${t("filterDisplay")}</div>
-        <div id="view-segment-${suffix}" class="hc2__segment"></div>
-      </div>
-
-      <div class="hc2__row">
+    <label for="station-input-${suffix}" class="sr-only">${t("searchStop")}</label>
+    <div class="hc2__search">
+      <input
+        id="station-input-${suffix}"
+        type="text"
+        class="hc2__searchInput"
+        placeholder="${t("searchAction")}..."
+        autocomplete="off"
+      />
+      <div class="hc2__searchActions">
         <button
-          id="filters-open-${suffix}"
+          id="station-search-${suffix}"
+          class="hc2__actionBtn"
+          data-action="geo"
+          type="button"
+          aria-label="${t("nearbyButton")}"
+          title="${t("nearbyButton")}"
+        >
+          <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+            <path
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M12 21s-6-5.94-6-11a6 6 0 1 1 12 0c0 5.06-6 11-6 11Z"
+            />
+            <circle cx="12" cy="10" r="2.4" fill="currentColor" />
+          </svg>
+        </button>
+        <button
+          id="favorites-only-toggle-${suffix}"
           class="hc2__pill"
           type="button"
+          aria-label="${t("filterFavoritesTitle")}"
+          aria-pressed="false"
           aria-expanded="false"
-          aria-controls="filters-popover-${suffix}"
+          aria-controls="favorites-popover-${suffix}"
         >
-          <span class="hc2__pillIcon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" focusable="false">
-              <path
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                d="M4 6h16l-6.4 7.1v4.9l-3.2 1.8v-6.7z"
-              />
-            </svg>
-          </span>
-          <span>${t("filterButton")}</span>
+          <span aria-hidden="true">★</span>
+          <span>${t("filterFavoritesOnlyShort")}</span>
         </button>
       </div>
+      <ul id="station-suggestions-${suffix}" class="station-suggestions"></ul>
+    </div>
+
+    <div class="hc2__row hc2__displayRow">
+      <div class="hc2__rowLabel hc2__displayLabel">${t("filterDisplay")}</div>
+      <div id="view-segment-${suffix}" class="hc2__segment"></div>
+    </div>
+
+    <div class="hc2__row">
+      <button
+        id="filters-open-${suffix}"
+        class="hc2__pill"
+        type="button"
+        aria-expanded="false"
+        aria-controls="filters-popover-${suffix}"
+      >
+        <span class="hc2__pillIcon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" focusable="false">
+            <path
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M4 6h16l-6.4 7.1v4.9l-3.2 1.8v-6.7z"
+            />
+          </svg>
+        </span>
+        <span>${t("filterButton")}</span>
+      </button>
     </div>
   `;
 }
@@ -118,7 +99,7 @@ function createPickerSheetsTemplate(side) {
   const suffix = side === "right" ? "right" : "left";
 
   return `
-    <div id="favorites-backdrop-${suffix}" class="hc2__backdrop"></div>
+    <div id="favorites-backdrop-${suffix}" class="hc2__backdrop" hidden></div>
 
     <section
       id="favorites-popover-${suffix}"
@@ -144,7 +125,7 @@ function createPickerSheetsTemplate(side) {
       <div id="favorites-empty-${suffix}" class="hc2__empty is-hidden">${t("filterNoFavorites")}</div>
     </section>
 
-    <div id="filters-backdrop-${suffix}" class="hc2__backdrop"></div>
+    <div id="filters-backdrop-${suffix}" class="hc2__backdrop" hidden></div>
 
     <section
       id="filters-popover-${suffix}"
@@ -212,6 +193,7 @@ export class DualPicker {
     this.mountEl = mountEl;
     mountEl.innerHTML = createPickerTemplate(this.side);
     document.body.insertAdjacentHTML("beforeend", createPickerSheetsTemplate(this.side));
+    this.debouncedSuggest = this.debounce((q) => this.fetchSuggestions(q), 180);
     this.cacheRefs();
     this.syncAll();
     this.bindEvents();
@@ -223,7 +205,6 @@ export class DualPicker {
       input: document.getElementById(`station-input-${suffix}`),
       suggestions: document.getElementById(`station-suggestions-${suffix}`),
       geoBtn: document.getElementById(`station-search-${suffix}`),
-      favToggle: document.getElementById(`station-fav-toggle-${suffix}`),
       favoritesBtn: document.getElementById(`favorites-only-toggle-${suffix}`),
       favoritesPopover: document.getElementById(`favorites-popover-${suffix}`),
       favoritesList: document.getElementById(`favorites-chip-list-${suffix}`),
@@ -236,6 +217,8 @@ export class DualPicker {
       filtersApply: document.querySelector(`[data-filter-apply='${suffix}']`),
       filtersClose: document.querySelector(`[data-filter-close='${suffix}']`),
       favClose: document.querySelector(`[data-fav-close='${suffix}']`),
+      filtersBackdrop: document.getElementById(`filters-backdrop-${suffix}`),
+      favBackdrop: document.getElementById(`favorites-backdrop-${suffix}`),
     };
   }
 
@@ -243,7 +226,6 @@ export class DualPicker {
     this.syncInputValue();
     this.renderViewControls();
     this.syncHideToggle();
-    this.syncFavToggle();
     this.renderFavoritesList();
   }
 
@@ -296,13 +278,6 @@ export class DualPicker {
     }
   }
 
-  syncFavToggle() {
-    if (!this.els.favToggle) return;
-    const hasId = !!this.state.stationId;
-    const fav = hasId ? isFavorite(this.state.stationId) : false;
-    this.els.favToggle.disabled = !hasId;
-    this.els.favToggle.setAttribute("aria-pressed", fav ? "true" : "false");
-  }
 
   bindEvents() {
     if (this.els.input) {
@@ -345,10 +320,6 @@ export class DualPicker {
       this.els.geoBtn.addEventListener("click", () => this.handleGeo());
     }
 
-    if (this.els.favToggle) {
-      this.els.favToggle.addEventListener("click", () => this.toggleFavorite());
-    }
-
     if (this.els.favoritesBtn) {
       this.els.favoritesBtn.addEventListener("click", () => this.toggleFavoritesPopover());
     }
@@ -373,6 +344,13 @@ export class DualPicker {
 
     if (this.els.favClose) {
       this.els.favClose.addEventListener("click", () => this.closeFavoritesPopover());
+    }
+
+    if (this.els.filtersBackdrop) {
+      this.els.filtersBackdrop.addEventListener("click", () => this.closeFilters());
+    }
+    if (this.els.favBackdrop) {
+      this.els.favBackdrop.addEventListener("click", () => this.closeFavoritesPopover());
     }
   }
 
@@ -402,6 +380,7 @@ export class DualPicker {
     this.pendingHideDeparture = !!this.state.hideDeparture;
     this.syncHideToggle();
     this.els.filtersPopover.hidden = false;
+    if (this.els.filtersBackdrop) this.els.filtersBackdrop.hidden = false;
     this.els.filtersOpen.setAttribute("aria-expanded", "true");
   }
 
@@ -416,6 +395,7 @@ export class DualPicker {
       }
     }
     this.els.filtersPopover.hidden = true;
+    if (this.els.filtersBackdrop) this.els.filtersBackdrop.hidden = true;
     this.els.filtersOpen.setAttribute("aria-expanded", "false");
   }
 
@@ -451,7 +431,7 @@ export class DualPicker {
     const frag = document.createDocumentFragment();
     list.forEach((item) => {
       const li = document.createElement("li");
-      li.className = "hc2__suggestionItem";
+      li.className = "station-suggestion-item";
       li.dataset.id = item.id;
       li.dataset.name = item.name;
       li.textContent = item.name;
@@ -460,8 +440,6 @@ export class DualPicker {
     this.els.suggestions.appendChild(frag);
     this.els.suggestions.style.display = "";
   }
-
-  debouncedSuggest = this.debounce((q) => this.fetchSuggestions(q), 180);
 
   debounce(fn, wait = 200) {
     let t;
@@ -553,18 +531,32 @@ export class DualPicker {
     }
   }
 
-  toggleFavorite() {
+  addCurrentStationToFavorites() {
     if (!this.state.stationId) {
       return;
     }
-    const isFav = isFavorite(this.state.stationId);
-    if (isFav) {
-      removeFavorite(this.state.stationId);
-    } else {
-      addFavorite({ id: this.state.stationId, name: this.state.stationName || "" });
-    }
-    this.syncFavToggle();
+    const stationName = this.state.stationName || "";
+    addFavoriteForSide(this.side, { id: this.state.stationId, name: stationName });
+    this.showToast(t("favoriteAdded"));
     this.renderFavoritesList();
+  }
+
+  showToast(message) {
+    const toast = document.createElement("div");
+    toast.className = "hc2__toast";
+    toast.textContent = message;
+    toast.setAttribute("role", "status");
+    toast.setAttribute("aria-live", "polite");
+    document.body.appendChild(toast);
+
+    requestAnimationFrame(() => {
+      toast.classList.add("hc2__toast--visible");
+    });
+
+    setTimeout(() => {
+      toast.classList.remove("hc2__toast--visible");
+      setTimeout(() => toast.remove(), 300);
+    }, 2000);
   }
 
   toggleFavoritesPopover() {
@@ -575,6 +567,7 @@ export class DualPicker {
     } else {
       this.renderFavoritesList();
       this.els.favoritesPopover.hidden = false;
+      if (this.els.favBackdrop) this.els.favBackdrop.hidden = false;
       this.els.favoritesBtn.setAttribute("aria-expanded", "true");
     }
   }
@@ -582,30 +575,78 @@ export class DualPicker {
   closeFavoritesPopover() {
     if (!this.els.favoritesPopover || !this.els.favoritesBtn) return;
     this.els.favoritesPopover.hidden = true;
+    if (this.els.favBackdrop) this.els.favBackdrop.hidden = true;
     this.els.favoritesBtn.setAttribute("aria-expanded", "false");
   }
 
   renderFavoritesList() {
     if (!this.els.favoritesList || !this.els.favoritesPopover) return;
-    const favs = loadFavorites();
-    this.els.favoritesList.innerHTML = "";
-    if (this.els.favoritesEmpty) {
-      this.els.favoritesEmpty.classList.toggle("is-hidden", favs.length > 0);
-    }
-    if (!favs.length) return;
 
+    // Load all favorites and group by side
+    const allFavs = loadFavorites();
+    const sideLabel = this.side === "right" ? t("dualSideRight") : t("dualSideLeft");
+
+    this.els.favoritesList.innerHTML = "";
+
+    // Render header with "Add current station" button
+    const header = document.createElement("div");
+    header.className = "hc2__favoritesHeader";
+
+    const addBtn = document.createElement("button");
+    addBtn.type = "button";
+    addBtn.className = "hc2__primary";
+    addBtn.textContent = `+ ${t("filterFavoritesTitle")} (${sideLabel})`;
+    addBtn.addEventListener("click", () => this.addCurrentStationToFavorites());
+
+    header.appendChild(addBtn);
+    this.els.favoritesList.appendChild(header);
+
+    // Filter favorites for this side
+    const sideFavs = allFavs.filter((f) => (f.side || "left") === this.side);
+
+    if (sideFavs.length === 0) {
+      if (this.els.favoritesEmpty) {
+        this.els.favoritesEmpty.classList.remove("is-hidden");
+      }
+      return;
+    }
+
+    if (this.els.favoritesEmpty) {
+      this.els.favoritesEmpty.classList.add("is-hidden");
+    }
+
+    // Render favorite items with delete buttons
     const frag = document.createDocumentFragment();
-    favs.forEach((fav) => {
+    sideFavs.forEach((fav) => {
+      const item = document.createElement("div");
+      item.className = "hc2__favoriteItem";
+
       const btn = document.createElement("button");
       btn.type = "button";
-      btn.className = "hc2__chip";
+      btn.className = "hc2__favItemBtn";
       btn.textContent = fav.name;
       btn.addEventListener("click", () => {
         this.setStation(fav.name, fav.id);
         this.closeFavoritesPopover();
       });
-      frag.appendChild(btn);
+
+      const deleteBtn = document.createElement("button");
+      deleteBtn.type = "button";
+      deleteBtn.className = "hc2__favoriteDelete";
+      deleteBtn.setAttribute("aria-label", `${t("favoritesDelete")} ${fav.name}`);
+      deleteBtn.innerHTML = '<svg viewBox="0 0 24 24" focusable="false" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M12 5v14"/></svg>';
+      deleteBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        removeFavoriteForSide(this.side, fav.id);
+        this.showToast(t("favoriteRemoved"));
+        this.renderFavoritesList();
+      });
+
+      item.appendChild(btn);
+      item.appendChild(deleteBtn);
+      frag.appendChild(item);
     });
+
     this.els.favoritesList.appendChild(frag);
   }
 
@@ -654,7 +695,6 @@ export class DualPicker {
 
     this.renderViewControls();
     this.syncHideToggle();
-    this.syncFavToggle();
     if (!silent) this.triggerChange();
   }
 
@@ -669,6 +709,7 @@ export class DualPicker {
     if (viewForUrl) url.searchParams.set("view", viewForUrl);
     if (this.state.hideDeparture) url.searchParams.set("hideDeparture", "1");
     if (this.state.language) url.searchParams.set("lang", this.state.language);
+    url.searchParams.set("dual", "1");
 
     return url.toString();
   }
