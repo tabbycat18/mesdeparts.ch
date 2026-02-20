@@ -31,18 +31,12 @@
   <body class="dual-body">
     <div class="dual-shell">
       <section class="dual-controls" id="dual-controls">
-        <div class="dual-header-row">
-          <div class="dual-brand">
-            <div class="dual-title-row">
-              <div class="dual-title">Dual board</div>
-              <div class="dual-badges">
-                <div class="dual-version">v1.7.1</div>
-                <button id="info-badge-dual" class="dual-info" type="button" aria-label="Info" title="Info">INFO</button>
-              </div>
-            </div>
-            <div id="dual-status" class="dual-status" aria-live="polite"></div>
+        <div class="dual-app-bar">
+          <div class="dual-bar-left">
+            <div class="dual-title">Dual</div>
+            <div class="dual-version">v1.7.1</div>
           </div>
-          <div class="dual-actions">
+          <div class="dual-bar-right">
             <div class="language-switcher language-switcher--inline dual-lang-switcher">
               <label class="sr-only" for="language-select-global">Langue</label>
               <select
@@ -51,14 +45,16 @@
                 aria-label="Langue"
               ></select>
             </div>
-            <button id="swapBtn" class="dual-action" type="button">Échanger</button>
-            <button id="resetBtn" class="dual-action" type="button">Réinitialiser</button>
-            <button id="hideBtn" class="dual-action" type="button" aria-pressed="false">
-              Masquer les contrôles
+            <div class="dual-controls-divider"></div>
+            <button id="swapBtn" class="dual-action" type="button" title="Swap boards">Échanger</button>
+            <button id="resetBtn" class="dual-action" type="button" title="Reset to defaults">Réinitialiser</button>
+            <button id="hideBtn" class="dual-action" type="button" aria-pressed="false" title="Hide controls">
+              Masquer
             </button>
-            <button id="fullscreenBtn" class="dual-action" type="button">Plein écran</button>
+            <button id="fullscreenBtn" class="dual-action" type="button" title="Toggle fullscreen">Plein écran</button>
           </div>
         </div>
+        <div id="dual-status" class="dual-status" aria-live="polite"></div>
         <div class="dual-picker-grid">
           <div class="dual-picker" data-side="left" id="picker-mount-left"></div>
           <div class="dual-picker" data-side="right" id="picker-mount-right"></div>
@@ -382,6 +378,8 @@
         const view = normalizeView(params.get("view"));
         const hide = parseHide(params.get("hideDeparture"));
         const language = normalizeLang(params.get("lang"));
+        const linesParam = params.get("lines");
+        const lineFilter = linesParam ? linesParam.split(",").filter(Boolean) : null;
         const isSameApp =
           parsed.origin === window.location.origin || parsed.hostname.includes("mesdeparts");
 
@@ -390,6 +388,7 @@
           stationId: stationId || null,
           view,
           hideDeparture: hide,
+          lineFilter,
           language,
         };
 
@@ -410,6 +409,7 @@
         if (s.stationId) url.searchParams.set("stationId", s.stationId);
         if (s.view && VALID_VIEWS.has(s.view)) url.searchParams.set("view", s.view);
         if (s.hideDeparture) url.searchParams.set("hideDeparture", "1");
+        if (s.lineFilter && s.lineFilter.length > 0) url.searchParams.set("lines", s.lineFilter.join(","));
         if (s.language && VALID_LANGS.has(s.language)) url.searchParams.set("lang", s.language);
 
         return url.toString();

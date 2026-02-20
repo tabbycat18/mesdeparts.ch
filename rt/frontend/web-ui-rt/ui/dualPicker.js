@@ -806,6 +806,9 @@ export class DualPicker {
     if (this.state.stationId) url.searchParams.set("stationId", this.state.stationId);
     if (viewForUrl) url.searchParams.set("view", viewForUrl);
     if (this.state.hideDeparture) url.searchParams.set("hideDeparture", "1");
+    if (this.state.lineFilter && this.state.lineFilter.length > 0) {
+      url.searchParams.set("lines", this.state.lineFilter.join(","));
+    }
     if (this.state.language) url.searchParams.set("lang", this.state.language);
     url.searchParams.set("dual", "1");
 
