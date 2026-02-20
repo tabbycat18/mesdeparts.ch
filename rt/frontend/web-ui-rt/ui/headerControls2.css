@@ -550,7 +550,7 @@
   border: none;
   border-radius: 9999px;
   background: #ffffff;
-  color: #0369a1;
+  color: #0369a1 !important;
   text-decoration: none;
   display: inline-flex;
   align-items: center;
@@ -565,10 +565,20 @@
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
 }
 
+.hc2__pill span {
+  color: #0369a1 !important;
+}
+
+.hc2__pill svg {
+  color: #0369a1 !important;
+  stroke: #0369a1 !important;
+}
+
 .hc2__pillIcon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  color: #0369a1 !important;
 }
 
 .hc2__pill:hover:not(:disabled) {
@@ -748,7 +758,7 @@
 .hc2__primary {
   width: 100%;
   background: #ffffff;
-  color: #0369a1;
+  color: #0369a1 !important;
   border: none;
   margin-bottom: 10px;
   padding: 8px 12px;
@@ -763,6 +773,10 @@
   cursor: pointer;
   transition: background-color 0.2s ease, box-shadow 0.2s ease;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+}
+
+.hc2__primary span {
+  color: #0369a1 !important;
 }
 
 .hc2__primary:hover {
