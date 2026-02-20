@@ -2955,62 +2955,72 @@ body.dual-body {
 
 .dual-lang-switcher .language-select {
   min-width: 72px;
-  height: 38px;
-  min-height: 38px;
+  height: 44px;
+  min-height: 44px;
   border-radius: 9999px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background-color: rgba(255, 255, 255, 0.08);
+  border: none;
+  background-color: rgba(255, 255, 255, 0.1);
   color: #f8faff;
   font-weight: 600;
   font-size: 0.81rem;
   letter-spacing: 0.035em;
-  padding: 8px 24px 8px 11px;
-  background-position: right 9px center;
+  padding: 0 16px 0 16px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='7' viewBox='0 0 10 7'%3E%3Cpath fill='%23f8faff' d='M1 1l4 4 4-4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
   background-size: 10px 7px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
-  transition: background-color 0.2s ease, border-color 0.2s ease;
+  padding-right: 40px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+  transition: background-color 0.2s ease;
   cursor: pointer;
 }
 
 .dual-lang-switcher .language-select:hover {
-  background-color: rgba(255, 255, 255, 0.14);
-  border-color: rgba(255, 255, 255, 0.14);
+  background-color: rgba(255, 255, 255, 0.15);
+}
+
+.dual-lang-switcher .language-select:focus-visible {
+  outline: 3px solid #06b6d4;
+  outline-offset: 2px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
 }
 
 .dual-action {
-  height: 38px;
-  min-height: 38px;
-  padding: 8px 12px;
+  height: 44px;
+  min-height: 44px;
+  padding: 0 16px;
   border-radius: 9999px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.08);
+  border: none;
+  background: rgba(255, 255, 255, 0.1);
   color: #f8faff;
   font-size: 0.81rem;
   font-weight: 600;
   letter-spacing: 0.012em;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
   transition:
     background-color 0.2s ease,
-    border-color 0.2s ease,
     box-shadow 0.2s ease;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
 }
 
 .dual-action:hover {
-  background: rgba(255, 255, 255, 0.14);
-  border-color: rgba(255, 255, 255, 0.14);
-  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.12);
+  background: rgba(255, 255, 255, 0.15);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.16);
 }
 
 .dual-action:active {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.08);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  background: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
 
 .dual-action:focus-visible {
-  outline: 2px solid rgba(6, 182, 212, 0.6);
-  outline-offset: 3px;
+  outline: 3px solid #06b6d4;
+  outline-offset: 2px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
 }
 
 .dual-action:disabled {
@@ -3020,22 +3030,24 @@ body.dual-body {
 }
 
 #fullscreenBtn.dual-action {
-  background: #0369a1;
+  background: rgba(3, 105, 161, 0.25);
   color: #ffffff;
-  border-color: rgba(3, 105, 161, 0.3);
-  box-shadow: 0 2px 6px rgba(3, 105, 161, 0.2);
+  box-shadow: 0 2px 6px rgba(3, 105, 161, 0.15);
 }
 
 #fullscreenBtn.dual-action:hover {
-  background: #0284c7;
-  border-color: rgba(2, 132, 199, 0.4);
-  box-shadow: 0 3px 8px rgba(3, 105, 161, 0.28);
+  background: rgba(3, 105, 161, 0.35);
+  box-shadow: 0 3px 8px rgba(3, 105, 161, 0.2);
 }
 
 #fullscreenBtn.dual-action:active {
-  background: #0359a6;
-  border-color: rgba(3, 105, 161, 0.3);
-  box-shadow: 0 1px 3px rgba(3, 105, 161, 0.12);
+  background: rgba(3, 105, 161, 0.2);
+  box-shadow: 0 1px 3px rgba(3, 105, 161, 0.1);
+}
+
+#fullscreenBtn.dual-action:focus-visible {
+  outline: 3px solid #06b6d4;
+  outline-offset: 2px;
 }
 
 #hideBtn.dual-action[aria-pressed="true"] {
@@ -3074,20 +3086,20 @@ body.dual-body {
 .dual-controls {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  background: rgba(255, 255, 255, 0.03);
+  gap: 16px;
+  background: transparent;
   border: none;
-  border-radius: 12px;
-  padding: 14px;
+  border-radius: 0;
+  padding: 16px 14px;
   margin: 0 14px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  box-shadow: none;
 }
 
 .dual-header-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 16px;
   flex-wrap: nowrap;
 }
 
@@ -3190,17 +3202,17 @@ body.dual-body {
 
   .dual-lang-switcher .language-select {
     min-width: 68px;
-    height: 36px;
-    min-height: 36px;
-    padding: 6px 20px 6px 9px;
+    height: 40px;
+    min-height: 40px;
+    padding: 0 38px 0 14px;
   }
 
   .dual-action {
     flex: 1 1 calc(50% - 8px);
     justify-content: center;
-    padding: 6px 10px;
-    height: 36px;
-    min-height: 36px;
+    padding: 0 12px;
+    height: 40px;
+    min-height: 40px;
     font-size: 0.79rem;
   }
 }
