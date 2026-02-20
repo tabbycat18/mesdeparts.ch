@@ -458,7 +458,7 @@
   align-items: center;
   gap: 6px;
   padding: 4px;
-  border-radius: 9999px;
+  border-radius: 16px;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.06);
   width: fit-content;
@@ -469,7 +469,7 @@
 .hc2__segmentBtn {
   border: none;
   min-height: 36px;
-  border-radius: 9999px;
+  border-radius: 12px;
   padding: 6px 12px;
   background: transparent;
   color: rgba(255, 255, 255, 0.84);
@@ -511,8 +511,8 @@
   min-height: 36px;
   padding: 6px 8px;
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 9999px;
-  background: rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.08);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -547,22 +547,21 @@
 .hc2__pill {
   height: 38px;
   min-height: 38px;
-  border: none;
-  border-radius: 9999px;
-  background: rgba(30, 35, 55, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.08);
   color: #ffffff;
   text-decoration: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 4px 10px;
+  padding: 0 12px;
   font-size: 0.81rem;
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
-  transition: background-color 0.2s ease, box-shadow 0.2s ease;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+  transition: background-color 0.2s ease;
 }
 
 .hc2__pill svg {
@@ -576,13 +575,16 @@
 }
 
 .hc2__pill:hover:not(:disabled) {
-  background: rgba(50, 55, 75, 0.95);
-  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.4);
+  background: rgba(255, 255, 255, 0.14);
 }
 
 .hc2__pill:active:not(:disabled) {
-  background: rgba(40, 45, 65, 0.88);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.hc2__pill:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.25);
+  outline-offset: 2px;
 }
 
 .hc2__pill.is-disabled,
@@ -742,7 +744,7 @@
 .hc2__secondary,
 .hc2__danger {
   min-height: 38px;
-  border-radius: 9999px;
+  border-radius: 14px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   padding: 8px 16px;
   font-weight: 600;
@@ -751,32 +753,34 @@
 
 .hc2__primary {
   width: 100%;
-  background: rgba(30, 35, 55, 0.9);
+  background: rgba(255, 255, 255, 0.08);
   color: #ffffff;
-  border: none;
+  border: 1px solid rgba(255, 255, 255, 0.10);
   margin-bottom: 10px;
   padding: 8px 12px;
   height: 38px;
   min-height: 38px;
-  border-radius: 9999px;
+  border-radius: 14px;
   font-weight: 600;
   font-size: 0.81rem;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: background-color 0.2s ease, box-shadow 0.2s ease;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+  transition: background-color 0.2s ease;
 }
 
 .hc2__primary:hover {
-  background-color: rgba(50, 55, 75, 0.95);
-  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.4);
+  background-color: rgba(255, 255, 255, 0.14);
 }
 
 .hc2__primary:active {
-  background-color: rgba(40, 45, 65, 0.88);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  background-color: rgba(255, 255, 255, 0.18);
+}
+
+.hc2__primary:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.25);
+  outline-offset: 2px;
 }
 
 .hc2__primary:disabled {
@@ -812,8 +816,8 @@
 .hc2__favItemBtn {
   flex: 1;
   min-height: 38px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 14px;
   background: rgba(255, 255, 255, 0.08);
   color: #fff;
   text-align: left;
@@ -821,14 +825,12 @@
   font-size: 0.81rem;
   font-weight: 600;
   cursor: pointer;
-  transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  transition: background-color 0.2s ease, border-color 0.2s ease;
 }
 
 .hc2__favItemBtn:hover {
   background: rgba(255, 255, 255, 0.14);
   border-color: rgba(255, 255, 255, 0.14);
-  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.12);
 }
 
 .hc2__favItemDelete {
@@ -1067,7 +1069,7 @@
 
   .hc2__rowDual .hc2__pill {
     min-height: 40px;
-    border-radius: 10px;
+    border-radius: 14px;
     padding: 0 9px;
     font-size: 0.79rem;
   }

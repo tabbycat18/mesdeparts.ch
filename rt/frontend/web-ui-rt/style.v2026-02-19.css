@@ -2957,49 +2957,44 @@ body.dual-body {
   min-width: 72px;
   height: 44px;
   min-height: 44px;
-  border-radius: 9999px;
-  border: none;
-  background-color: rgba(30, 35, 55, 0.9);
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background-color: rgba(255, 255, 255, 0.08);
   color: #ffffff;
   font-weight: 600;
   font-size: 0.81rem;
   letter-spacing: 0.035em;
   padding: 0 16px 0 16px;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='7' viewBox='0 0 10 7'%3E%3Cpath fill='%23fee401' d='M1 1l4 4 4-4'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='7' viewBox='0 0 10 7'%3E%3Cpath fill='%23ffffff' d='M1 1l4 4 4-4'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 14px center;
   background-size: 10px 7px;
   padding-right: 40px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
   transition: background-color 0.2s ease;
   cursor: pointer;
 }
 
 .dual-lang-switcher .language-select:hover {
-  background-color: rgba(50, 55, 75, 0.95);
+  background-color: rgba(255, 255, 255, 0.14);
 }
 
 .dual-lang-switcher .language-select:focus-visible {
-  outline: 3px solid rgba(254, 228, 1, 0.95);
+  outline: 2px solid rgba(255, 255, 255, 0.25);
   outline-offset: 2px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
 }
 
 .dual-action {
   height: 44px;
   min-height: 44px;
-  padding: 0 6px;
-  border-radius: 9999px;
-  border: none;
-  background: rgba(30, 35, 55, 0.9);
+  padding: 0 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.08);
   color: #ffffff;
   font-size: 0.81rem;
   font-weight: 600;
   letter-spacing: 0.012em;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
-  transition:
-    background-color 0.2s ease,
-    box-shadow 0.2s ease;
+  transition: background-color 0.2s ease;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -3008,19 +3003,16 @@ body.dual-body {
 }
 
 .dual-action:hover {
-  background: rgba(50, 55, 75, 0.95);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  background: rgba(255, 255, 255, 0.14);
 }
 
 .dual-action:active {
-  background: rgba(40, 45, 65, 0.88);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  background: rgba(255, 255, 255, 0.18);
 }
 
 .dual-action:focus-visible {
-  outline: 3px solid rgba(254, 228, 1, 0.95);
+  outline: 2px solid rgba(255, 255, 255, 0.25);
   outline-offset: 2px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
 }
 
 .dual-action:disabled {
@@ -3046,12 +3038,12 @@ body.dual-body {
 }
 
 #fullscreenBtn.dual-action:focus-visible {
-  outline: 3px solid rgba(254, 228, 1, 0.95);
+  outline: 2px solid #01157f;
   outline-offset: 2px;
 }
 
 #hideBtn.dual-action[aria-pressed="true"] {
-  background: rgba(50, 55, 75, 0.95);
+  background: rgba(255, 255, 255, 0.18);
   color: #ffffff;
 }
 
@@ -3121,7 +3113,7 @@ body.dual-body {
   bottom: 14px;
   right: 14px;
   padding: 8px 14px;
-  border-radius: 9999px;
+  border-radius: 14px;
   border: 1px solid rgba(3, 105, 161, 0.3);
   background: #0369a1;
   color: #ffffff;
