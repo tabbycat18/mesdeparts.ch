@@ -164,11 +164,18 @@ export function computeDisplayFields(dep, options = {}) {
     out.delayMin = null;
     out.debug.flags = uniqueStrings([...out.debug.flags, "delay:unknown_no_schedule"]);
   } else if (realtimeMs !== scheduledMs) {
-    sourceUsed = sourceHint === "rt_delay_field" ? "rt_delay_field" : "rt_time_diff";
+    sourceUsed =
+      sourceHint === "rt_delay_field" || sourceHint === "rt_trip_fallback_delay_field"
+        ? sourceHint
+        : "rt_time_diff";
     rawRtDelaySecUsed =
-      sourceUsed === "rt_delay_field" ? asFiniteNumber(delayMeta?.rawRtDelaySecUsed) : null;
+      sourceUsed === "rt_delay_field" || sourceUsed === "rt_trip_fallback_delay_field"
+        ? asFiniteNumber(delayMeta?.rawRtDelaySecUsed)
+        : null;
     computedDelaySec =
-      sourceUsed === "rt_delay_field" && Number.isFinite(rawRtDelaySecUsed)
+      (sourceUsed === "rt_delay_field" ||
+        sourceUsed === "rt_trip_fallback_delay_field") &&
+      Number.isFinite(rawRtDelaySecUsed)
         ? rawRtDelaySecUsed
         : computeDelaySecondsFromTimestamps(scheduledMs, realtimeMs);
 
@@ -180,13 +187,18 @@ export function computeDisplayFields(dep, options = {}) {
     roundingMethodUsed = delayDisplay.roundingMethodUsed;
     out.debug.flags = uniqueStrings([
       ...out.debug.flags,
-      sourceUsed === "rt_delay_field" ? "delay:from_rt_delay_field" : "delay:from_rt_diff",
+      sourceUsed === "rt_time_diff" ? "delay:from_rt_diff" : "delay:from_rt_delay_field",
     ]);
   } else if (rtConfirmed) {
     out.delayMin = 0;
-    sourceUsed = sourceHint === "rt_delay_field" ? "rt_delay_field" : "rt_time_diff";
+    sourceUsed =
+      sourceHint === "rt_delay_field" || sourceHint === "rt_trip_fallback_delay_field"
+        ? sourceHint
+        : "rt_time_diff";
     rawRtDelaySecUsed =
-      sourceUsed === "rt_delay_field" ? asFiniteNumber(delayMeta?.rawRtDelaySecUsed) : null;
+      sourceUsed === "rt_delay_field" || sourceUsed === "rt_trip_fallback_delay_field"
+        ? asFiniteNumber(delayMeta?.rawRtDelaySecUsed)
+        : null;
     computedDelaySec = 0;
     const delayDisplay = computeDepartureDelayDisplayFromSeconds(computedDelaySec);
     computedDelayMinBeforeClamp = delayDisplay.delayMinBeforeClamp;

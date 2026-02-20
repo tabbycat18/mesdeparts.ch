@@ -171,6 +171,168 @@ test("applyTripUpdates delay source preference: departure.time first, then depar
   assert.equal(mergedDelayFallback[0]._delaySourceUsed, "rt_delay_field");
 });
 
+test("applyTripUpdates matches RT even when stop_sequence drifts (trip+stop fallback)", () => {
+  const baseRows = [
+    {
+      trip_id: "trip-seq-drift",
+      stop_id: "8591988:0:C",
+      stop_sequence: 11,
+      scheduledDeparture: "2026-02-20T10:00:00.000Z",
+      realtimeDeparture: "2026-02-20T10:00:00.000Z",
+      delayMin: 0,
+      source: "scheduled",
+    },
+  ];
+
+  const tripUpdates = {
+    entities: [
+      {
+        tripUpdate: {
+          trip: {
+            tripId: "trip-seq-drift",
+            scheduleRelationship: "SCHEDULED",
+            startDate: "20260220",
+          },
+          stopTimeUpdate: [
+            {
+              stopId: "8591988:0:C",
+              stopSequence: 12,
+              departure: {
+                time: Math.floor(Date.parse("2026-02-20T10:02:59.000Z") / 1000),
+              },
+            },
+          ],
+        },
+      },
+    ],
+  };
+
+  const merged = applyTripUpdates(baseRows, tripUpdates);
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0]._rtMatched, true);
+  assert.equal(merged[0].source, "tripupdate");
+  assert.equal(merged[0].realtimeDeparture, "2026-02-20T10:02:59.000Z");
+  assert.equal(merged[0].delayMin, 3);
+});
+
+test("applyTripUpdates falls back to nearest trip stop delay when stop-level update is missing", () => {
+  const baseRows = [
+    {
+      trip_id: "trip-missing-stop-update",
+      stop_id: "8591988:0:A",
+      stop_sequence: 15,
+      scheduledDeparture: "2026-02-20T10:00:00.000Z",
+      realtimeDeparture: "2026-02-20T10:00:00.000Z",
+      delayMin: 0,
+      source: "scheduled",
+    },
+  ];
+
+  const tripUpdates = {
+    entities: [
+      {
+        tripUpdate: {
+          trip: {
+            tripId: "trip-missing-stop-update",
+            scheduleRelationship: "SCHEDULED",
+            startDate: "20260220",
+          },
+          stopTimeUpdate: [
+            {
+              stopId: "8579254:0:A",
+              stopSequence: 14,
+              departure: { delay: 90 },
+            },
+            {
+              stopId: "8592004:0:10001",
+              stopSequence: 18,
+              departure: { delay: 102 },
+            },
+          ],
+        },
+      },
+    ],
+  };
+
+  const merged = applyTripUpdates(baseRows, tripUpdates);
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0]._rtMatched, true);
+  assert.equal(merged[0].source, "tripupdate");
+  assert.equal(merged[0].delayMin, 2);
+  assert.equal(merged[0].realtimeDeparture, "2026-02-20T10:01:30.000Z");
+  assert.equal(merged[0]._delaySourceUsed, "rt_trip_fallback_delay_field");
+  assert.equal(merged[0]._rawRtDelaySecUsed, 90);
+});
+
+test("applyTripUpdates keeps realtimeDeparture at schedule for early/jitter delays", () => {
+  const baseRows = [
+    {
+      trip_id: "trip-early-clamp",
+      stop_id: "8591988:0:A",
+      stop_sequence: 15,
+      scheduledDeparture: "2026-02-20T10:00:00.000Z",
+      realtimeDeparture: "2026-02-20T10:00:00.000Z",
+      delayMin: 0,
+      source: "scheduled",
+    },
+    {
+      trip_id: "trip-jitter-clamp",
+      stop_id: "8591988:0:B",
+      stop_sequence: 12,
+      scheduledDeparture: "2026-02-20T10:01:00.000Z",
+      realtimeDeparture: "2026-02-20T10:01:00.000Z",
+      delayMin: 0,
+      source: "scheduled",
+    },
+  ];
+
+  const tripUpdates = {
+    entities: [
+      {
+        tripUpdate: {
+          trip: {
+            tripId: "trip-early-clamp",
+            scheduleRelationship: "SCHEDULED",
+            startDate: "20260220",
+          },
+          stopTimeUpdate: [
+            {
+              stopId: "8591988:0:A",
+              stopSequence: 15,
+              departure: { delay: -61 },
+            },
+          ],
+        },
+      },
+      {
+        tripUpdate: {
+          trip: {
+            tripId: "trip-jitter-clamp",
+            scheduleRelationship: "SCHEDULED",
+            startDate: "20260220",
+          },
+          stopTimeUpdate: [
+            {
+              stopId: "8591988:0:B",
+              stopSequence: 12,
+              departure: { delay: 20 },
+            },
+          ],
+        },
+      },
+    ],
+  };
+
+  const merged = applyTripUpdates(baseRows, tripUpdates);
+  const early = merged.find((row) => row.trip_id === "trip-early-clamp");
+  const jitter = merged.find((row) => row.trip_id === "trip-jitter-clamp");
+
+  assert.equal(early.delayMin, 0);
+  assert.equal(early.realtimeDeparture, "2026-02-20T10:00:00.000Z");
+  assert.equal(jitter.delayMin, 0);
+  assert.equal(jitter.realtimeDeparture, "2026-02-20T10:01:00.000Z");
+});
+
 test("applyAddedTrips emits only ADDED stop_time_updates matching station scope", () => {
   const now = new Date("2026-02-16T23:55:00.000Z");
   const depEpoch = Math.floor(now.getTime() / 1000) + 4 * 60;

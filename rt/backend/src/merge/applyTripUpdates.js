@@ -47,6 +47,11 @@ function buildTripStartKey(tripId, tripStartDate = "") {
   return start ? `${id}|${start}` : `${id}|`;
 }
 
+const RT_TRIP_FALLBACK_MAX_SEQ_GAP = Math.max(
+  1,
+  Number(process.env.RT_TRIP_FALLBACK_MAX_SEQ_GAP || "4")
+);
+
 const ZURICH_YMD_FORMATTER = new Intl.DateTimeFormat("en-CA", {
   timeZone: "Europe/Zurich",
   year: "numeric",
@@ -190,6 +195,69 @@ function shouldApplyRealtimeEpoch(scheduledMs, realtimeMs) {
   return driftMs <= maxDriftMinutes * 60 * 1000;
 }
 
+function upsertTripFallbackCandidate(byTripStart, candidate) {
+  if (!byTripStart || typeof byTripStart !== "object") return;
+  const tripId = String(candidate?.tripId || "").trim();
+  if (!tripId) return;
+  const start = normalizeTripStartDate(candidate?.tripStartDate);
+  const seq = Number(candidate?.stopSequence);
+  if (!Number.isFinite(seq)) return;
+
+  const delaySecRaw =
+    typeof candidate?.delaySec === "number" && Number.isFinite(candidate.delaySec)
+      ? Number(candidate.delaySec)
+      : typeof candidate?.delayMin === "number" && Number.isFinite(candidate.delayMin)
+        ? Number(candidate.delayMin) * 60
+        : null;
+  if (!Number.isFinite(delaySecRaw)) return;
+
+  const key = start ? `${tripId}|${start}` : `${tripId}|`;
+  if (!byTripStart[key]) byTripStart[key] = [];
+  const list = byTripStart[key];
+  const next = {
+    tripId,
+    tripStartDate: start,
+    stopSequence: seq,
+    delaySec: delaySecRaw,
+    delayMin:
+      typeof candidate?.delayMin === "number" && Number.isFinite(candidate.delayMin)
+        ? Number(candidate.delayMin)
+        : null,
+    updatedDepartureEpoch:
+      typeof candidate?.updatedDepartureEpoch === "number" &&
+      Number.isFinite(candidate.updatedDepartureEpoch)
+        ? Number(candidate.updatedDepartureEpoch)
+        : null,
+  };
+
+  const existingIndex = list.findIndex((row) => Number(row?.stopSequence) === seq);
+  if (existingIndex < 0) {
+    list.push(next);
+    return;
+  }
+  const prev = list[existingIndex];
+  const prevEpoch =
+    typeof prev?.updatedDepartureEpoch === "number" && Number.isFinite(prev.updatedDepartureEpoch)
+      ? Number(prev.updatedDepartureEpoch)
+      : null;
+  const nextEpoch = next.updatedDepartureEpoch;
+
+  if (prevEpoch !== null && nextEpoch !== null && prevEpoch > nextEpoch) return;
+  if (prevEpoch !== null && nextEpoch === null) return;
+  list[existingIndex] = next;
+}
+
+function deriveTripFallbackByTripStart(delayByKey) {
+  const out = Object.create(null);
+  for (const value of Object.values(delayByKey || {})) {
+    upsertTripFallbackCandidate(out, value);
+  }
+  for (const list of Object.values(out)) {
+    list.sort((a, b) => Number(a?.stopSequence || 0) - Number(b?.stopSequence || 0));
+  }
+  return out;
+}
+
 function buildRealtimeIndex(tripUpdates) {
   if (tripUpdates?.byKey && typeof tripUpdates.byKey === "object") {
     return tripUpdates.byKey;
@@ -202,6 +270,7 @@ function buildRealtimeIndex(tripUpdates) {
       : [];
 
   const byKey = Object.create(null);
+  const tripFallbackByTripStart = Object.create(null);
 
   for (const entity of entities) {
     const tu = getTripUpdate(entity);
@@ -220,35 +289,52 @@ function buildRealtimeIndex(tripUpdates) {
       const delaySec = getDelaySeconds(stu);
       const updatedEpoch = getUpdatedEpoch(stu);
       const delayDisplay = computeDepartureDelayDisplayFromSeconds(delaySec);
+      upsertTripFallbackCandidate(tripFallbackByTripStart, {
+        tripId,
+        tripStartDate,
+        stopSequence,
+        delaySec,
+        delayMin: delayDisplay.delayMinAfterClamp,
+        updatedDepartureEpoch: updatedEpoch,
+      });
 
       for (const stopId of stopIdVariants(rawStopId)) {
-        const key = buildStopKey(tripId, stopId, seqPart, tripStartDate);
-
-        const prev = byKey[key];
-        if (prev) {
-          const prevEpoch = prev.updatedDepartureEpoch ?? null;
-          if (prevEpoch !== null && updatedEpoch !== null && prevEpoch >= updatedEpoch) {
-            continue;
-          }
-          if (prevEpoch !== null && updatedEpoch === null) {
-            continue;
-          }
+        const candidateKeys = [buildStopKey(tripId, stopId, seqPart, tripStartDate)];
+        if (seqPart !== "") {
+          // Keep a no-sequence alias so static/RT sequence drifts still match by trip+stop.
+          candidateKeys.push(buildStopKey(tripId, stopId, "", tripStartDate));
         }
 
-        byKey[key] = {
-          tripId,
-          stopId,
-          stopSequence: seqPart === "" ? null : Number(seqPart),
-          delaySec,
-          delayMin: delayDisplay.delayMinAfterClamp,
-          updatedDepartureEpoch: updatedEpoch,
-          tripStartDate,
-        };
+        for (const key of candidateKeys) {
+          const prev = byKey[key];
+          if (prev) {
+            const prevEpoch = prev.updatedDepartureEpoch ?? null;
+            if (prevEpoch !== null && updatedEpoch !== null && prevEpoch >= updatedEpoch) {
+              continue;
+            }
+            if (prevEpoch !== null && updatedEpoch === null) {
+              continue;
+            }
+          }
+
+          byKey[key] = {
+            tripId,
+            stopId,
+            stopSequence: seqPart === "" ? null : Number(seqPart),
+            delaySec,
+            delayMin: delayDisplay.delayMinAfterClamp,
+            updatedDepartureEpoch: updatedEpoch,
+            tripStartDate,
+          };
+        }
       }
     }
   }
 
-  return byKey;
+  return {
+    byKey,
+    tripFallbackByTripStart,
+  };
 }
 
 function buildCancelledTripIdSet(tripUpdates) {
@@ -503,6 +589,56 @@ function getDelayForRow(delayByKey, tripId, stopId, stopSequence, tripStartDate 
   return null;
 }
 
+function getTripFallbackDelayForRow(
+  tripFallbackByTripStart,
+  tripId,
+  stopSequence,
+  tripStartDate = ""
+) {
+  if (!tripFallbackByTripStart || !tripId) return null;
+  const start = normalizeTripStartDate(tripStartDate);
+  const keyWithStart = start ? `${tripId}|${start}` : "";
+  const keyNoStart = `${tripId}|`;
+  const candidates = Array.isArray(tripFallbackByTripStart[keyWithStart])
+    ? tripFallbackByTripStart[keyWithStart]
+    : Array.isArray(tripFallbackByTripStart[keyNoStart])
+      ? tripFallbackByTripStart[keyNoStart]
+      : [];
+  if (!candidates.length) return null;
+
+  const rowSeq = Number(stopSequence);
+  if (Number.isFinite(rowSeq)) {
+    let best = null;
+    for (const item of candidates) {
+      const seq = Number(item?.stopSequence);
+      if (!Number.isFinite(seq)) continue;
+      const gap = Math.abs(seq - rowSeq);
+      if (!Number.isFinite(gap) || gap > RT_TRIP_FALLBACK_MAX_SEQ_GAP) continue;
+      const isDownstream = seq > rowSeq ? 1 : 0;
+      const updatedEpoch =
+        typeof item?.updatedDepartureEpoch === "number" &&
+        Number.isFinite(item.updatedDepartureEpoch)
+          ? Number(item.updatedDepartureEpoch)
+          : -1;
+      const score = [gap, isDownstream, -updatedEpoch];
+      if (!best || score[0] < best.score[0]) {
+        best = { item, score };
+        continue;
+      }
+      if (score[0] > best.score[0]) continue;
+      if (score[1] < best.score[1]) {
+        best = { item, score };
+        continue;
+      }
+      if (score[1] > best.score[1]) continue;
+      if (score[2] < best.score[2]) best = { item, score };
+    }
+    return best?.item || null;
+  }
+
+  return candidates.find((item) => Number.isFinite(Number(item?.delaySec))) || null;
+}
+
 function getStopStatusForRow(
   stopStatusByKey,
   tripId,
@@ -543,7 +679,21 @@ export function applyTripUpdates(baseRows, tripUpdates) {
     return [];
   }
 
-  const delayByKey = buildRealtimeIndex(tripUpdates);
+  const realtimeIndex = buildRealtimeIndex(tripUpdates);
+  const delayByKey =
+    realtimeIndex?.byKey && typeof realtimeIndex.byKey === "object"
+      ? realtimeIndex.byKey
+      : realtimeIndex && typeof realtimeIndex === "object"
+        ? realtimeIndex
+        : Object.create(null);
+  const tripFallbackByTripStart =
+    tripUpdates?.tripFallbackByTripStart &&
+    typeof tripUpdates.tripFallbackByTripStart === "object"
+      ? tripUpdates.tripFallbackByTripStart
+      : realtimeIndex?.tripFallbackByTripStart &&
+          typeof realtimeIndex.tripFallbackByTripStart === "object"
+        ? realtimeIndex.tripFallbackByTripStart
+        : deriveTripFallbackByTripStart(delayByKey);
   const cancelledTripIds = buildCancelledTripIdSet(tripUpdates);
   const cancelledTripStartDatesByTripId =
     buildCancelledTripStartDatesByTripId(tripUpdates);
@@ -573,10 +723,40 @@ export function applyTripUpdates(baseRows, tripUpdates) {
       row.stop_sequence,
       rowTripStartDate
     );
+    const tripFallbackDelay = delay
+      ? null
+      : getTripFallbackDelayForRow(
+          tripFallbackByTripStart,
+          row.trip_id,
+          row.stop_sequence,
+          rowTripStartDate
+        );
 
     let realtimeMs = Number.isFinite(scheduledMs) ? scheduledMs : null;
     let delayMin = typeof row.delayMin === "number" ? row.delayMin : null;
     let delayComputationMeta = null;
+
+    const applyDelayFieldFallback = (
+      delaySecCandidate,
+      sourceUsed = "rt_delay_field",
+      rawRtDelaySecUsed = delaySecCandidate
+    ) => {
+      if (!Number.isFinite(delaySecCandidate)) return false;
+      const delayDisplay = computeDepartureDelayDisplayFromSeconds(delaySecCandidate);
+      delayMin = delayDisplay.delayMinAfterClamp;
+      if (Number.isFinite(scheduledMs)) {
+        // Keep departure timestamps aligned with display rules (no-early + jitter clamp).
+        realtimeMs =
+          delayDisplay.delayMinAfterClamp === 0
+            ? scheduledMs
+            : scheduledMs + delaySecCandidate * 1000;
+      }
+      delayComputationMeta = {
+        sourceUsed,
+        rawRtDelaySecUsed: Number.isFinite(rawRtDelaySecUsed) ? Number(rawRtDelaySecUsed) : null,
+      };
+      return true;
+    };
 
     if (delay) {
       merged._rtMatched = true;
@@ -585,20 +765,6 @@ export function applyTripUpdates(baseRows, tripUpdates) {
         : Number.isFinite(delay?.delayMin)
           ? Number(delay.delayMin) * 60
           : null;
-
-      const applyDelayFieldFallback = () => {
-        if (!Number.isFinite(delayFieldSec)) return false;
-        const delayDisplay = computeDepartureDelayDisplayFromSeconds(delayFieldSec);
-        delayMin = delayDisplay.delayMinAfterClamp;
-        if (Number.isFinite(scheduledMs)) {
-          realtimeMs = scheduledMs + delayFieldSec * 1000;
-        }
-        delayComputationMeta = {
-          sourceUsed: "rt_delay_field",
-          rawRtDelaySecUsed: Number.isFinite(delay?.delaySec) ? Number(delay.delaySec) : null,
-        };
-        return true;
-      };
 
       if (typeof delay.updatedDepartureEpoch === "number") {
         const candidateRealtimeMs = delay.updatedDepartureEpoch * 1000;
@@ -612,18 +778,57 @@ export function applyTripUpdates(baseRows, tripUpdates) {
             const delayDisplay =
               computeDepartureDelayDisplayFromSeconds(computedDelaySec);
             delayMin = delayDisplay.delayMinAfterClamp;
+            if (delayDisplay.delayMinAfterClamp === 0) {
+              realtimeMs = scheduledMs;
+            }
             delayComputationMeta = {
               sourceUsed: "rt_time_diff",
               rawRtDelaySecUsed: null,
             };
-          } else if (!applyDelayFieldFallback()) {
+          } else if (
+            !applyDelayFieldFallback(
+              delayFieldSec,
+              "rt_delay_field",
+              Number.isFinite(delay?.delaySec) ? Number(delay.delaySec) : null
+            )
+          ) {
             delayMin = null;
           }
-        } else if (!applyDelayFieldFallback()) {
+        } else if (
+          !applyDelayFieldFallback(
+            delayFieldSec,
+            "rt_delay_field",
+            Number.isFinite(delay?.delaySec) ? Number(delay.delaySec) : null
+          )
+        ) {
           delayMin = null;
         }
-      } else if (!applyDelayFieldFallback()) {
+      } else if (
+        !applyDelayFieldFallback(
+          delayFieldSec,
+          "rt_delay_field",
+          Number.isFinite(delay?.delaySec) ? Number(delay.delaySec) : null
+        )
+      ) {
         delayMin = null;
+      }
+    } else if (tripFallbackDelay) {
+      const fallbackDelaySec = Number.isFinite(tripFallbackDelay?.delaySec)
+        ? Number(tripFallbackDelay.delaySec)
+        : Number.isFinite(tripFallbackDelay?.delayMin)
+          ? Number(tripFallbackDelay.delayMin) * 60
+          : null;
+      const fallbackRawDelaySec = Number.isFinite(tripFallbackDelay?.delaySec)
+        ? Number(tripFallbackDelay.delaySec)
+        : null;
+      if (
+        applyDelayFieldFallback(
+          fallbackDelaySec,
+          "rt_trip_fallback_delay_field",
+          fallbackRawDelaySec
+        )
+      ) {
+        merged._rtMatched = true;
       }
     }
 

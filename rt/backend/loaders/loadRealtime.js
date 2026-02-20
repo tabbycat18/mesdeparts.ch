@@ -153,6 +153,68 @@ function buildStopRealtimeKey(tripId, stopId, seqPart, tripStartDate = "") {
   return start ? `${base}|${start}` : base;
 }
 
+function upsertTripFallbackCandidate(byTripStart, candidate) {
+  if (!byTripStart || typeof byTripStart !== "object") return;
+  const tripId = String(candidate?.tripId || "").trim();
+  if (!tripId) return;
+  const tripStartDate = normalizeTripStartDate(candidate?.tripStartDate);
+  const stopSequence = Number(candidate?.stopSequence);
+  if (!Number.isFinite(stopSequence)) return;
+
+  const delaySecRaw =
+    typeof candidate?.delaySec === "number" && Number.isFinite(candidate.delaySec)
+      ? Number(candidate.delaySec)
+      : typeof candidate?.delayMin === "number" && Number.isFinite(candidate.delayMin)
+        ? Number(candidate.delayMin) * 60
+        : null;
+  if (!Number.isFinite(delaySecRaw)) return;
+
+  const key = tripStartDate ? `${tripId}|${tripStartDate}` : `${tripId}|`;
+  if (!byTripStart[key]) byTripStart[key] = [];
+  const list = byTripStart[key];
+  const next = {
+    tripId,
+    tripStartDate,
+    stopSequence,
+    delaySec: delaySecRaw,
+    delayMin:
+      typeof candidate?.delayMin === "number" && Number.isFinite(candidate.delayMin)
+        ? Number(candidate.delayMin)
+        : null,
+    updatedDepartureEpoch:
+      typeof candidate?.updatedDepartureEpoch === "number" &&
+      Number.isFinite(candidate.updatedDepartureEpoch)
+        ? Number(candidate.updatedDepartureEpoch)
+        : null,
+  };
+
+  const existingIndex = list.findIndex((row) => Number(row?.stopSequence) === stopSequence);
+  if (existingIndex < 0) {
+    list.push(next);
+    return;
+  }
+  const prev = list[existingIndex];
+  const prevEpoch =
+    typeof prev?.updatedDepartureEpoch === "number" && Number.isFinite(prev.updatedDepartureEpoch)
+      ? Number(prev.updatedDepartureEpoch)
+      : null;
+  const nextEpoch = next.updatedDepartureEpoch;
+  if (prevEpoch !== null && nextEpoch !== null && prevEpoch > nextEpoch) return;
+  if (prevEpoch !== null && nextEpoch === null) return;
+  list[existingIndex] = next;
+}
+
+function deriveTripFallbackByTripStartFromByKey(byKey) {
+  const out = Object.create(null);
+  for (const value of Object.values(byKey || {})) {
+    upsertTripFallbackCandidate(out, value);
+  }
+  for (const list of Object.values(out)) {
+    list.sort((a, b) => Number(a?.stopSequence || 0) - Number(b?.stopSequence || 0));
+  }
+  return out;
+}
+
 function cloneTripFlags(value) {
   const src = value && typeof value === "object" ? value : {};
   return {
@@ -513,6 +575,7 @@ export function buildDelayIndex(gtfsRtFeed) {
   const stopStatusByKey = Object.create(null);
   const tripFlagsByTripId = Object.create(null);
   const tripFlagsByTripStartKey = Object.create(null);
+  const tripFallbackByTripStart = Object.create(null);
   const addedTripStopUpdates = [];
   const addedTripStopUpdateSeen = new Set();
   const rtRows = [];
@@ -534,6 +597,7 @@ export function buildDelayIndex(gtfsRtFeed) {
       tripFlagsByTripId,
       tripFlagsByTripStartKey,
       addedTripStopUpdates,
+      tripFallbackByTripStart,
       entityCount: entities.length,
     };
   }
@@ -577,6 +641,14 @@ export function buildDelayIndex(gtfsRtFeed) {
       const delayDisplay = computeDepartureDelayDisplayFromSeconds(delaySec);
       const updatedEpoch = getUpdatedEpoch(stu);
       const stopScheduleRelationship = getStopTimeScheduleRelationship(stu);
+      upsertTripFallbackCandidate(tripFallbackByTripStart, {
+        tripId,
+        tripStartDate,
+        stopSequence,
+        delaySec,
+        delayMin: delayDisplay.delayMinAfterClamp,
+        updatedDepartureEpoch: updatedEpoch,
+      });
 
       if (stopScheduleRelationship === "SKIPPED") {
         const keyTrip = String(tripId);
@@ -623,6 +695,11 @@ export function buildDelayIndex(gtfsRtFeed) {
 
       for (const stopId of stopIdVariants(rawStopId)) {
         const key = buildStopRealtimeKey(tripId, stopId, seqPart, tripStartDate);
+        const keyNoSeq =
+          seqPart === ""
+            ? null
+            : buildStopRealtimeKey(tripId, stopId, "", tripStartDate);
+        const delayKeys = keyNoSeq ? [key, keyNoSeq] : [key];
         // Keep stop-status index only for non-default relationships.
         // "SCHEDULED" at stop level is the default and duplicates the delay index,
         // inflating memory significantly without adding behavior.
@@ -641,27 +718,29 @@ export function buildDelayIndex(gtfsRtFeed) {
           }
         }
 
-        const prev = byKey[key];
-        if (prev) {
-          const prevEpoch = prev.updatedDepartureEpoch ?? null;
-          if (
-            prevEpoch !== null &&
-            updatedEpoch !== null &&
-            prevEpoch >= updatedEpoch
-          )
-            continue;
-          if (prevEpoch !== null && updatedEpoch === null) continue;
-        }
+        for (const delayKey of delayKeys) {
+          const prev = byKey[delayKey];
+          if (prev) {
+            const prevEpoch = prev.updatedDepartureEpoch ?? null;
+            if (
+              prevEpoch !== null &&
+              updatedEpoch !== null &&
+              prevEpoch >= updatedEpoch
+            )
+              continue;
+            if (prevEpoch !== null && updatedEpoch === null) continue;
+          }
 
-        byKey[key] = {
-          tripId,
-          stopId,
-          stopSequence: seqPart === "" ? null : Number(seqPart),
-          delaySec,
-          delayMin: delayDisplay.delayMinAfterClamp,
-          updatedDepartureEpoch: updatedEpoch,
-          tripStartDate,
-        };
+          byKey[delayKey] = {
+            tripId,
+            stopId,
+            stopSequence: seqPart === "" ? null : Number(seqPart),
+            delaySec,
+            delayMin: delayDisplay.delayMinAfterClamp,
+            updatedDepartureEpoch: updatedEpoch,
+            tripStartDate,
+          };
+        }
       }
 
       if (tripScheduleRelationship === "ADDED") {
@@ -711,6 +790,7 @@ export function buildDelayIndex(gtfsRtFeed) {
     stopStatusByKey,
     tripFlagsByTripId,
     tripFlagsByTripStartKey,
+    tripFallbackByTripStart,
     addedTripStopUpdates,
     entityCount: entities.length,
   };
@@ -938,6 +1018,7 @@ export function mergeDelayIndexes(previous, incoming, options = {}) {
     nowMs,
     prevSeenAtMs
   );
+  const mergedTripFallback = deriveTripFallbackByTripStartFromByKey(mergedByKey);
 
   const cancelledState = deriveCancelledTripState(mergedCancelledByStart);
   return {
@@ -948,6 +1029,7 @@ export function mergeDelayIndexes(previous, incoming, options = {}) {
     stopStatusByKey: mergedStopStatus,
     tripFlagsByTripStartKey: mergedTripFlagsByStart,
     tripFlagsByTripId: deriveTripFlagsByTripId(mergedTripFlagsByStart),
+    tripFallbackByTripStart: mergedTripFallback,
     addedTripStopUpdates: mergedAddedTrips,
   };
 }
@@ -999,6 +1081,7 @@ function emptyDelayIndex() {
     stopStatusByKey: Object.create(null),
     tripFlagsByTripId: Object.create(null),
     tripFlagsByTripStartKey: Object.create(null),
+    tripFallbackByTripStart: Object.create(null),
     addedTripStopUpdates: [],
   };
 }

@@ -170,4 +170,24 @@ test("normalizeDeparture includes delay computation debug fields only when reque
   assert.equal(depWithDelayFieldDebug.delayMin, 4);
   assert.equal(depWithDelayFieldDebug.debug?.delayComputation?.sourceUsed, "rt_delay_field");
   assert.equal(depWithDelayFieldDebug.debug?.delayComputation?.rawRtDelaySecUsed, 181);
+
+  const depWithTripFallbackDebug = normalizeDeparture(
+    {
+      trip_id: "trip-delay-debug-trip-fallback",
+      stop_id: "8501120:0:14",
+      scheduledDeparture: "2026-02-17T10:00:00.000Z",
+      realtimeDeparture: "2026-02-17T10:01:30.000Z",
+      source: "tripupdate",
+      _rtMatched: true,
+      _delaySourceUsed: "rt_trip_fallback_delay_field",
+      _rawRtDelaySecUsed: 90,
+    },
+    { includeDelayDebug: true }
+  );
+  assert.equal(depWithTripFallbackDebug.delayMin, 2);
+  assert.equal(
+    depWithTripFallbackDebug.debug?.delayComputation?.sourceUsed,
+    "rt_trip_fallback_delay_field"
+  );
+  assert.equal(depWithTripFallbackDebug.debug?.delayComputation?.rawRtDelaySecUsed, 90);
 });
