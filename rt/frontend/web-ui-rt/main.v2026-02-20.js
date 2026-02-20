@@ -15,7 +15,7 @@ import {
   TRAIN_FILTER_LONG_DISTANCE,
   DEFAULT_STATION_ID,
   STATION_ID_STORAGE_KEY,
-} from "./state.v2026-02-19.js";
+} from "./state.v2026-02-20.js";
 
 import {
   detectNetworkFromStation,
@@ -23,7 +23,7 @@ import {
   fetchStationboardRaw,
   buildDeparturesGrouped,
   stationboardLooksStale,
-} from "./logic.v2026-02-19.js";
+} from "./logic.v2026-02-20.js";
 
 import {
   setupClock,
@@ -34,11 +34,11 @@ import {
   publishEmbedState,
   updateCountdownRows,
   renderServiceBanners,
-} from "./ui.v2026-02-19.js";
+} from "./ui.v2026-02-20.js";
 
-import { setupInfoButton } from "./infoBTN.v2026-02-19.js";
-import { initI18n, applyStaticTranslations } from "./i18n.v2026-02-19.js";
-import { loadFavorites } from "./favourites.v2026-02-19.js";
+import { setupInfoButton } from "./infoBTN.v2026-02-20.js";
+import { initI18n, applyStaticTranslations } from "./i18n.v2026-02-20.js";
+import { loadFavorites } from "./favourites.v2026-02-20.js";
 import {
   initHeaderControls2,
   updateHeaderControls2,
