@@ -3099,6 +3099,7 @@ body.dual-body {
 
 .dual-controls.is-collapsed {
   max-height: 0;
+  padding: 0;
   opacity: 0;
   pointer-events: none;
 }
@@ -3106,6 +3107,7 @@ body.dual-body {
 /* Hide all controls (picker panels + floating badges) when collapsed */
 .dual-body.dual-controls-hidden .dual-controls {
   max-height: 0;
+  padding: 0;
   opacity: 0;
   pointer-events: none;
 }
