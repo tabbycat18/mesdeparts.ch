@@ -310,6 +310,13 @@ function applyUrlPreferences() {
       const raw = (params.get("hideDeparture") || "").toLowerCase();
       appState.hideBusDeparture = raw === "1" || raw === "true" || raw === "on" || raw === "yes";
     }
+
+    if (params.has("lines")) {
+      const linesParam = (params.get("lines") || "").trim();
+      if (linesParam) {
+        appState.lineFilter = linesParam.split(",").map(l => l.trim()).filter(Boolean);
+      }
+    }
   } catch (err) {
     console.warn("[MesDeparts] failed to read URL prefs", err);
   }
