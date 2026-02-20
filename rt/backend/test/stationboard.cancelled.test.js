@@ -149,6 +149,43 @@ test("applyTripUpdates marks suppressed stop for SKIPPED stop_time_update", () =
   assert.ok(merged[0].cancelReasons.includes("skipped_stop"));
 });
 
+test("applyTripUpdates ignores trip-level cancellation when start_date is for another service day", () => {
+  const baseRows = [
+    {
+      trip_id: "trip-startdate-safe",
+      stop_id: "8503000:0:2",
+      stop_sequence: 8,
+      scheduledDeparture: "2026-02-16T10:00:00.000Z",
+      realtimeDeparture: "2026-02-16T10:00:00.000Z",
+      delayMin: 0,
+      cancelled: false,
+    },
+  ];
+
+  const tripUpdates = {
+    entities: [
+      {
+        tripUpdate: {
+          trip: {
+            tripId: "trip-startdate-safe",
+            startDate: "20260217",
+            scheduleRelationship: "CANCELED",
+          },
+          stopTimeUpdate: [],
+        },
+      },
+    ],
+  };
+
+  const merged = applyTripUpdates(baseRows, tripUpdates);
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0].cancelled, false);
+  assert.ok(
+    !Array.isArray(merged[0].cancelReasons) ||
+      !merged[0].cancelReasons.includes("trip_schedule_relationship_canceled")
+  );
+});
+
 test("dedupe preference keeps cancelled departure when duplicates collide", () => {
   const active = {
     trip_id: "trip-dup",

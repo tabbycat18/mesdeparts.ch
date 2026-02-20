@@ -98,6 +98,28 @@ These fields provide detail and must not be used as the sole cancellation source
 - When `debug=1` is passed, `debug` is included for tracing only.
 - Consumers must not rely on `debug` fields for business logic.
 
+## Stop Resolution Debug/Verification
+
+Use these backend-only tools when a stop resolves incorrectly (for example `Lausanne, Bel-Air`):
+
+```bash
+# One-query repro: search -> chosen stop_id -> stationboard(debug=1) summary
+npm run stops:debug -- "Lausanne, Bel-Air"
+
+# Multi-query verification sweep (built-in golden list)
+npm run stops:verify
+
+# Optional custom JSON list (array of strings)
+npm run stops:verify -- ./scripts/stopQueries.json
+```
+
+Manual API checks:
+
+```bash
+curl "http://localhost:3001/api/stops/search?q=Lausanne,%20Bel-Air&limit=10&debug=1"
+curl "http://localhost:3001/api/stationboard?stop_id=<returned_id>&limit=20&debug=1"
+```
+
 ### Schema
 
 - Canonical JSON schema: `rt/backend/docs/stationboard.schema.json`

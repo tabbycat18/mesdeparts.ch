@@ -533,6 +533,13 @@ function normalizeBackendStationboard(data) {
           delay: delta.deltaMin,
           status: String(dep?.status || (cancelled ? "CANCELED" : "")),
           cancelled,
+          platform:
+            dep?.prognosis?.platform ||
+            dep?.stop?.prognosis?.platform ||
+            dep?.prognosis?.departure?.platform ||
+            null,
+          capacity1st: dep?.prognosis?.capacity1st || null,
+          capacity2nd: dep?.prognosis?.capacity2nd || null,
         },
       },
       prognosis: {
@@ -940,13 +947,14 @@ export function buildDeparturesGrouped(data, viewMode = VIEW_MODE_LINE) {
       });
     }
 
-    const plannedPlatform = String(stop.platform || "").replace("!", "");
+    const platformRaw = String(stop.platform || "");
+    const isMarkedChanged = platformRaw.includes("!");
+    const plannedPlatform = platformRaw.replace("!", "");
     const realtimePlatform = String(prog.platform || "").replace("!", "");
     const platform = realtimePlatform || plannedPlatform;
-    const platformChanged = !!(realtimePlatform && realtimePlatform !== plannedPlatform);
-    const previousPlatform = platformChanged
-      ? plannedPlatform
-      : journeyId && lastPlatforms[journeyId] && lastPlatforms[journeyId] !== platform
+    const platformChanged = isMarkedChanged || !!(realtimePlatform && realtimePlatform !== plannedPlatform);
+    const previousPlatform =
+      journeyId && lastPlatforms[journeyId] && lastPlatforms[journeyId] !== platform
         ? lastPlatforms[journeyId]
         : null;
     const didChange = platformChanged || !!previousPlatform;

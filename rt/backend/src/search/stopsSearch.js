@@ -66,10 +66,13 @@ export function normalizeSearchText(value) {
   return raw
     .normalize("NFKD")
     .replace(/\p{M}+/gu, "")
+    .replace(/[\u2010-\u2015]/g, "-")
     .replace(/[-_.\/’'`]+/g, " ")
-    .replace(/[^\p{L}\p{N}\s]+/gu, " ")
+    .replace(/[,]+/g, " , ")
+    .replace(/[^\p{L}\p{N}\s,]+/gu, " ")
     .replace(/\b(st|saint)\b/g, "saint")
     .replace(/\b(hauptbahnhof|hbf|hb)\b/g, "hb")
+    .replace(/\s*,\s*/g, ", ")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -86,7 +89,19 @@ export function stripStopWords(normalizedText) {
 function tokenize(normalizedText) {
   const text = normalizeSearchText(normalizedText);
   if (!text) return [];
-  return text.split(" ").filter(Boolean);
+  return text
+    .replace(/,/g, " ")
+    .split(" ")
+    .filter(Boolean);
+}
+
+function splitCommaParts(normalizedText) {
+  const text = normalizeSearchText(normalizedText);
+  if (!text) return [];
+  return text
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
 }
 
 function hasHubWord(tokens) {
@@ -228,8 +243,12 @@ function computeFuzzySimilarity({
 function compareScored(a, b) {
   if (a.score !== b.score) return b.score - a.score;
   if (a.tier !== b.tier) return b.tier - a.tier;
-  if (a.parentBoost !== b.parentBoost) return b.parentBoost - a.parentBoost;
+  if (a.parentTieRank !== b.parentTieRank) return b.parentTieRank - a.parentTieRank;
+  if (a.locationTypeTieRank !== b.locationTypeTieRank) {
+    return b.locationTypeTieRank - a.locationTypeTieRank;
+  }
   if (a.nbStopTimes !== b.nbStopTimes) return b.nbStopTimes - a.nbStopTimes;
+  if (a.nameLength !== b.nameLength) return a.nameLength - b.nameLength;
   const nameCmp = a.stopName.localeCompare(b.stopName, "en", { sensitivity: "base" });
   if (nameCmp !== 0) return nameCmp;
   return a.stopId.localeCompare(b.stopId);
@@ -255,6 +274,9 @@ function scoreCandidate(row, queryCtx) {
   const nameTokens = tokenize(nameNorm);
   const coreTokens = tokenize(coreNorm);
   const candidateTokens = coreTokens.length > 0 ? coreTokens : nameTokens;
+  const nameParts = splitCommaParts(nameNorm);
+  const candidateHeadTokens = tokenize(nameParts[0] || nameNorm);
+  const candidatePostCommaTokens = tokenize(nameParts.slice(1).join(" "));
 
   const aliasWeight = toFiniteNumber(row?.alias_weight, 0);
   const aliasSimilarity = toFiniteNumber(row?.alias_similarity, 0);
@@ -277,6 +299,22 @@ function scoreCandidate(row, queryCtx) {
 
   const startsMatch = wordStartMatch(queryCtx.queryTokens, candidateTokens);
   const tokenContains = tokenContainmentMatch(queryCtx.queryTokens, candidateTokens);
+  const postCommaStrongMatch =
+    queryCtx.queryPostCommaTokens.length > 0 &&
+    tokenContainmentMatch(
+      queryCtx.queryPostCommaTokens,
+      candidatePostCommaTokens.length > 0 ? candidatePostCommaTokens : candidateTokens
+    );
+  const postCommaPrefixMatch =
+    queryCtx.queryPostCommaTokens.length > 0 &&
+    wordStartMatch(
+      queryCtx.queryPostCommaTokens,
+      candidatePostCommaTokens.length > 0 ? candidatePostCommaTokens : candidateTokens
+    );
+  const headCityMatch =
+    queryCtx.queryHeadTokens.length > 0 &&
+    tokenContainmentMatch(queryCtx.queryHeadTokens, candidateHeadTokens);
+  const commaStructureMatch = queryCtx.queryHasComma && nameNorm.includes(",");
 
   const fuzzySimilarity = computeFuzzySimilarity({
     queryNorm: queryCtx.queryNorm,
@@ -300,7 +338,18 @@ function scoreCandidate(row, queryCtx) {
   if (tier === 0) return null;
 
   const parentLike = isParentLike(row);
-  const parentBoost = queryCtx.isShortQuery ? (parentLike ? 1 : -1) : parentLike ? 1 : 0;
+  const parentPreference =
+    queryCtx.queryPostCommaTokens.length > 0
+      ? parentLike
+        ? -1
+        : 1
+      : queryCtx.isShortQuery
+        ? parentLike
+          ? 1
+          : -1
+        : parentLike
+          ? 1
+          : 0;
 
   const cityName = extractCityName(stopName, row?.city_name);
   const cityNorm = normalizeSearchText(cityName);
@@ -335,7 +384,14 @@ function scoreCandidate(row, queryCtx) {
     score += 700;
   }
 
-  if (queryCtx.isShortQuery) {
+  if (queryCtx.queryPostCommaTokens.length > 0) {
+    if (postCommaStrongMatch) score += 2600;
+    if (postCommaPrefixMatch) score += 900;
+    if (commaStructureMatch) score += 220;
+    if (headCityMatch) score += 180;
+    if (parentLike && !postCommaStrongMatch) score -= 1800;
+    if (!postCommaStrongMatch && !postCommaPrefixMatch) score -= 1200;
+  } else if (queryCtx.isShortQuery) {
     score += parentLike ? 350 : -220;
   } else {
     score += parentLike ? 120 : 0;
@@ -344,62 +400,114 @@ function scoreCandidate(row, queryCtx) {
   if (tokenContains) score += 120;
   if (startsMatch) score += 180;
 
+  const parentTieRank = queryCtx.queryPostCommaTokens.length > 0 ? (parentLike ? 0 : 1) : parentLike ? 1 : 0;
+  const locationType = toString(row?.location_type).trim();
+  const locationTypeTieRank = queryCtx.queryPostCommaTokens.length > 0
+    ? locationType === "0" || locationType === "" ? 2 : locationType === "1" ? 1 : 0
+    : locationType === "1" ? 2 : locationType === "0" || locationType === "" ? 1 : 0;
+
   return {
     score,
     tier,
-    parentBoost,
+    parentTieRank,
+    locationTypeTieRank,
     stopId,
     groupId,
     stopName,
     parentStation: toString(row?.parent_station).trim() || null,
-    locationType: toString(row?.location_type).trim(),
+    locationType,
+    nameLength: stopName.length,
     nbStopTimes,
     cityName,
     aliasesMatched,
+    debugScore: {
+      tier,
+      fuzzySimilarity: Number(fuzzySimilarity.toFixed(4)),
+      exactName,
+      exactAlias,
+      prefixName,
+      prefixAlias,
+      startsMatch,
+      tokenContains,
+      cityMatch,
+      parentLike,
+      parentPreference,
+      candidateHasHubToken,
+      commaStructureMatch,
+      postCommaStrongMatch,
+      postCommaPrefixMatch,
+      headCityMatch,
+      aliasWeight: Number(aliasWeight.toFixed(4)),
+      nbStopTimes,
+      queryHasHubToken: queryCtx.queryHasHubToken,
+      isShortQuery: queryCtx.isShortQuery,
+      queryHasComma: queryCtx.queryHasComma,
+      queryPostCommaTokens: queryCtx.queryPostCommaTokens,
+    },
+    isParent: parentLike,
   };
 }
 
-export function rankStopCandidates(rows, query, limit = DEFAULT_LIMIT) {
+export function rankStopCandidatesDetailed(rows, query, limit = DEFAULT_LIMIT) {
   const lim = clampLimit(limit);
   const queryNorm = normalizeSearchText(query);
   if (queryNorm.length < MIN_QUERY_LEN) return [];
 
   const queryCore = stripStopWords(queryNorm);
   const queryTokens = tokenize(queryCore || queryNorm);
-  const cityToken = queryTokens[0] || "";
+  const queryCommaParts = splitCommaParts(queryNorm);
+  const queryHasComma = queryCommaParts.length > 1;
+  const queryHeadTokens = tokenize(queryCommaParts[0] || queryNorm);
+  const queryPostCommaTokens = tokenize(queryCommaParts.slice(1).join(" "));
+  const cityToken = queryHeadTokens[0] || queryTokens[0] || "";
 
   const queryCtx = {
     queryNorm,
     queryCore,
     queryTokens,
+    queryHasComma,
+    queryHeadTokens,
+    queryPostCommaTokens,
     cityToken,
     isShortQuery: queryNorm.length <= 6,
     queryHasHubToken: hasHubWord(queryTokens),
     fuzzyThreshold: similarityThreshold(queryNorm.length),
   };
 
-  const bestByGroup = new Map();
+  const bestByStopId = new Map();
 
   for (const row of rows || []) {
     const scored = scoreCandidate(row, queryCtx);
     if (!scored) continue;
 
-    const key = scored.groupId || scored.stopId;
-    const previous = bestByGroup.get(key);
+    const key = scored.stopId;
+    const previous = bestByStopId.get(key);
     if (!previous || compareScored(scored, previous) < 0) {
-      bestByGroup.set(key, scored);
+      bestByStopId.set(key, scored);
     }
   }
 
-  const ordered = Array.from(bestByGroup.values()).sort(compareScored);
+  const ordered = Array.from(bestByStopId.values()).sort(compareScored);
 
-  return ordered.slice(0, lim).map((row) => {
-    const canonicalId = row.groupId || row.stopId;
+  return ordered.slice(0, lim).map((row, index) => ({
+    rank: index + 1,
+    ...row,
+  }));
+}
+
+export function rankStopCandidates(rows, query, limit = DEFAULT_LIMIT) {
+  const ranked = rankStopCandidatesDetailed(rows, query, limit);
+  return ranked.map((row) => {
+    const stopId = row.stopId;
+    const stationId = row.groupId || row.parentStation || row.stopId;
+    const isParent = row.isParent === true;
     const out = {
-      id: canonicalId,
+      id: stopId,
       name: row.stopName,
-      stop_id: canonicalId,
-      group_id: canonicalId,
+      stop_id: stopId,
+      stationId,
+      stationName: row.stopName,
+      group_id: stationId,
       raw_stop_id: row.stopId,
       stop_name: row.stopName,
       parent_station: row.parentStation,
@@ -407,6 +515,8 @@ export function rankStopCandidates(rows, query, limit = DEFAULT_LIMIT) {
       nb_stop_times: row.nbStopTimes,
       city: row.cityName || null,
       canton: null,
+      isParent,
+      isPlatform: !isParent,
     };
 
     if (row.aliasesMatched.length > 0) {
@@ -954,10 +1064,12 @@ async function runFallbackSearch(db, queryNorm, candidateLimit, caps) {
   return baseRows.concat(aliasRows);
 }
 
-export async function searchStops(db, query, limit = DEFAULT_LIMIT) {
+async function runStopSearch(db, query, limit = DEFAULT_LIMIT, options = {}) {
   const qRaw = toString(query).trim();
   const qNorm = normalizeSearchText(qRaw);
-  if (qNorm.length < MIN_QUERY_LEN) return [];
+  if (qNorm.length < MIN_QUERY_LEN) {
+    return options?.debug === true ? { stops: [], debug: { queryNorm: qNorm, rows: 0 } } : [];
+  }
 
   const lim = clampLimit(limit);
   const candidateLimit = candidateLimitFor(lim);
@@ -1002,5 +1114,40 @@ export async function searchStops(db, query, limit = DEFAULT_LIMIT) {
     }
   }
 
-  return rankStopCandidates(rows, qNorm, lim);
+  if (options?.debug !== true) {
+    return rankStopCandidates(rows, qNorm, lim);
+  }
+
+  const rankedDetailed = rankStopCandidatesDetailed(rows, qNorm, lim);
+  const stops = rankStopCandidates(rows, qNorm, lim);
+
+  return {
+    stops,
+    debug: {
+      query: qRaw,
+      queryNorm: qNorm,
+      candidateLimit,
+      rawRows: rows.length,
+      rankedTop: rankedDetailed.slice(0, 10).map((row) => ({
+        rank: row.rank,
+        stop_id: row.stopId,
+        group_id: row.groupId,
+        stop_name: row.stopName,
+        parent_station: row.parentStation,
+        location_type: row.locationType,
+        isParent: row.isParent === true,
+        score: row.score,
+        tier: row.tier,
+        score_components: row.debugScore,
+      })),
+    },
+  };
+}
+
+export async function searchStops(db, query, limit = DEFAULT_LIMIT) {
+  return runStopSearch(db, query, limit);
+}
+
+export async function searchStopsWithDebug(db, query, limit = DEFAULT_LIMIT) {
+  return runStopSearch(db, query, limit, { debug: true });
 }

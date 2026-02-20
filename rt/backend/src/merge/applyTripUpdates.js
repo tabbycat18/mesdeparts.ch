@@ -21,6 +21,45 @@ function seqKeyPart(stopSequence) {
   return Number.isFinite(n) ? String(n) : "";
 }
 
+function normalizeTripStartDate(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const digits = raw.replace(/[^0-9]/g, "");
+  if (digits.length !== 8) return "";
+  return digits;
+}
+
+function buildStopKey(tripId, stopId, seqPart, tripStartDate = "") {
+  const start = normalizeTripStartDate(tripStartDate);
+  const base = `${tripId}|${stopId}|${seqPart}`;
+  return start ? `${base}|${start}` : base;
+}
+
+function buildTripStartKey(tripId, tripStartDate = "") {
+  const id = String(tripId || "").trim();
+  if (!id) return "";
+  const start = normalizeTripStartDate(tripStartDate);
+  return start ? `${id}|${start}` : `${id}|`;
+}
+
+const ZURICH_YMD_FORMATTER = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Europe/Zurich",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+function ymdZurichFromIso(value) {
+  const ms = Date.parse(String(value || ""));
+  if (!Number.isFinite(ms)) return "";
+  const parts = ZURICH_YMD_FORMATTER.formatToParts(new Date(ms));
+  const year = parts.find((part) => part.type === "year")?.value || "";
+  const month = parts.find((part) => part.type === "month")?.value || "";
+  const day = parts.find((part) => part.type === "day")?.value || "";
+  if (!year || !month || !day) return "";
+  return `${year}${month}${day}`;
+}
+
 function stopIdVariants(stopId) {
   if (!stopId) return [];
   const variants = new Set([String(stopId)]);
@@ -43,6 +82,11 @@ function getTripUpdate(entity) {
 function getTripIdFromUpdate(update) {
   const trip = pick(update, "trip") || null;
   return pick(trip, "trip_id", "tripId") || null;
+}
+
+function getTripStartDateFromUpdate(update) {
+  const trip = pick(update, "trip") || null;
+  return normalizeTripStartDate(pick(trip, "start_date", "startDate"));
 }
 
 function getScheduleRelationship(update) {
@@ -170,6 +214,7 @@ function buildRealtimeIndex(tripUpdates) {
 
     const tripId = getTripIdFromUpdate(tu);
     if (!tripId) continue;
+    const tripStartDate = getTripStartDateFromUpdate(tu);
 
     for (const stu of getStopTimeUpdates(tu)) {
       const rawStopId = getStopId(stu);
@@ -181,7 +226,7 @@ function buildRealtimeIndex(tripUpdates) {
       const updatedEpoch = getUpdatedEpoch(stu);
 
       for (const stopId of stopIdVariants(rawStopId)) {
-        const key = `${tripId}|${stopId}|${seqPart}`;
+        const key = buildStopKey(tripId, stopId, seqPart, tripStartDate);
 
         const prev = byKey[key];
         if (prev) {
@@ -201,6 +246,7 @@ function buildRealtimeIndex(tripUpdates) {
           delaySec,
           delayMin: Math.round(delaySec / 60),
           updatedDepartureEpoch: updatedEpoch,
+          tripStartDate,
         };
       }
     }
@@ -242,6 +288,35 @@ function buildCancelledTripIdSet(tripUpdates) {
   return cancelled;
 }
 
+function buildCancelledTripStartDatesByTripId(tripUpdates) {
+  if (
+    tripUpdates?.cancelledTripStartDatesByTripId &&
+    typeof tripUpdates.cancelledTripStartDatesByTripId === "object"
+  ) {
+    return tripUpdates.cancelledTripStartDatesByTripId;
+  }
+
+  const entities = Array.isArray(tripUpdates?.entities)
+    ? tripUpdates.entities
+    : Array.isArray(tripUpdates?.entity)
+      ? tripUpdates.entity
+      : [];
+
+  const out = Object.create(null);
+  for (const entity of entities) {
+    const tu = getTripUpdate(entity);
+    if (!tu) continue;
+    const tripId = getTripIdFromUpdate(tu);
+    if (!tripId) continue;
+    if (getScheduleRelationship(tu) !== "CANCELED") continue;
+
+    const key = String(tripId);
+    if (!out[key]) out[key] = new Set();
+    out[key].add(getTripStartDateFromUpdate(tu));
+  }
+  return out;
+}
+
 function buildStopStatusIndex(tripUpdates) {
   if (tripUpdates?.stopStatusByKey && typeof tripUpdates.stopStatusByKey === "object") {
     return tripUpdates.stopStatusByKey;
@@ -259,6 +334,7 @@ function buildStopStatusIndex(tripUpdates) {
     if (!tu) continue;
     const tripId = getTripIdFromUpdate(tu);
     if (!tripId) continue;
+    const tripStartDate = getTripStartDateFromUpdate(tu);
 
     for (const stu of getStopTimeUpdates(tu)) {
       const stopId = getStopId(stu);
@@ -269,7 +345,7 @@ function buildStopStatusIndex(tripUpdates) {
       if (!rel) continue;
       const epoch = getUpdatedEpoch(stu);
       for (const sid of stopIdVariants(stopId)) {
-        const key = `${tripId}|${sid}|${seqPart}`;
+        const key = buildStopKey(tripId, sid, seqPart, tripStartDate);
         const prev = byKey[key];
         const prevEpoch =
           prev && Number.isFinite(prev.updatedDepartureEpoch)
@@ -281,6 +357,7 @@ function buildStopStatusIndex(tripUpdates) {
         byKey[key] = {
           relationship: rel,
           updatedDepartureEpoch: nextEpoch,
+          tripStartDate,
         };
       }
     }
@@ -337,30 +414,130 @@ function buildTripFlagsByTripId(tripUpdates) {
   return out;
 }
 
-function getDelayForRow(delayByKey, tripId, stopId, stopSequence) {
+function buildTripFlagsByTripStartKey(tripUpdates) {
+  if (
+    tripUpdates?.tripFlagsByTripStartKey &&
+    typeof tripUpdates.tripFlagsByTripStartKey === "object"
+  ) {
+    return tripUpdates.tripFlagsByTripStartKey;
+  }
+
+  const entities = Array.isArray(tripUpdates?.entities)
+    ? tripUpdates.entities
+    : Array.isArray(tripUpdates?.entity)
+      ? tripUpdates.entity
+      : [];
+
+  const out = Object.create(null);
+  for (const entity of entities) {
+    const tu = getTripUpdate(entity);
+    if (!tu) continue;
+    const tripId = getTripIdFromUpdate(tu);
+    if (!tripId) continue;
+    const tripStartDate = getTripStartDateFromUpdate(tu);
+
+    for (const stu of getStopTimeUpdates(tu)) {
+      const rel = getStopScheduleRelationship(stu);
+      if (rel !== "SKIPPED") continue;
+
+      const seq = getStopSequence(stu);
+      const key = buildTripStartKey(tripId, tripStartDate);
+      const prev = out[key] || {
+        tripId: String(tripId),
+        tripStartDate,
+        hasSuppressedStop: false,
+        maxSuppressedStopSequence: null,
+        minSuppressedStopSequence: null,
+        hasUnknownSuppressedSequence: false,
+      };
+      prev.hasSuppressedStop = true;
+      if (Number.isFinite(seq)) {
+        const n = Number(seq);
+        if (prev.maxSuppressedStopSequence === null || n > prev.maxSuppressedStopSequence) {
+          prev.maxSuppressedStopSequence = n;
+        }
+        if (prev.minSuppressedStopSequence === null || n < prev.minSuppressedStopSequence) {
+          prev.minSuppressedStopSequence = n;
+        }
+      } else {
+        prev.hasUnknownSuppressedSequence = true;
+      }
+      out[key] = prev;
+    }
+  }
+
+  return out;
+}
+
+function matchesTripStartDate(candidate, rowTripStartDate) {
+  const rowStart = normalizeTripStartDate(rowTripStartDate);
+  if (!rowStart) return true;
+  const candidateStart = normalizeTripStartDate(candidate?.tripStartDate);
+  if (!candidateStart) return true;
+  return candidateStart === rowStart;
+}
+
+function getDelayForRow(delayByKey, tripId, stopId, stopSequence, tripStartDate = "") {
   if (!delayByKey || !tripId || !stopId) return null;
 
   const seqPart = seqKeyPart(stopSequence);
+  const start = normalizeTripStartDate(tripStartDate);
   for (const sid of stopIdVariants(stopId)) {
-    const keyWithSeq = `${tripId}|${sid}|${seqPart}`;
-    if (delayByKey[keyWithSeq]) return delayByKey[keyWithSeq];
+    const keyWithSeq = buildStopKey(tripId, sid, seqPart, start);
+    if (delayByKey[keyWithSeq] && matchesTripStartDate(delayByKey[keyWithSeq], start)) {
+      return delayByKey[keyWithSeq];
+    }
 
-    const keyNoSeq = `${tripId}|${sid}|`;
-    if (delayByKey[keyNoSeq]) return delayByKey[keyNoSeq];
+    const keyNoSeq = buildStopKey(tripId, sid, "", start);
+    if (delayByKey[keyNoSeq] && matchesTripStartDate(delayByKey[keyNoSeq], start)) {
+      return delayByKey[keyNoSeq];
+    }
+
+    // Backward-compatible fallback for legacy indexes that had no start-date in key.
+    const legacyWithSeq = `${tripId}|${sid}|${seqPart}`;
+    if (delayByKey[legacyWithSeq] && matchesTripStartDate(delayByKey[legacyWithSeq], start)) {
+      return delayByKey[legacyWithSeq];
+    }
+    const legacyNoSeq = `${tripId}|${sid}|`;
+    if (delayByKey[legacyNoSeq] && matchesTripStartDate(delayByKey[legacyNoSeq], start)) {
+      return delayByKey[legacyNoSeq];
+    }
   }
 
   return null;
 }
 
-function getStopStatusForRow(stopStatusByKey, tripId, stopId, stopSequence) {
+function getStopStatusForRow(
+  stopStatusByKey,
+  tripId,
+  stopId,
+  stopSequence,
+  tripStartDate = ""
+) {
   if (!stopStatusByKey || !tripId || !stopId) return null;
   const seqPart = seqKeyPart(stopSequence);
+  const start = normalizeTripStartDate(tripStartDate);
 
   for (const sid of stopIdVariants(stopId)) {
-    const withSeq = stopStatusByKey[`${tripId}|${sid}|${seqPart}`];
-    if (withSeq?.relationship) return withSeq.relationship;
-    const withoutSeq = stopStatusByKey[`${tripId}|${sid}|`];
-    if (withoutSeq?.relationship) return withoutSeq.relationship;
+    const withSeq = stopStatusByKey[buildStopKey(tripId, sid, seqPart, start)];
+    if (withSeq?.relationship && matchesTripStartDate(withSeq, start)) {
+      return withSeq.relationship;
+    }
+
+    const withoutSeq = stopStatusByKey[buildStopKey(tripId, sid, "", start)];
+    if (withoutSeq?.relationship && matchesTripStartDate(withoutSeq, start)) {
+      return withoutSeq.relationship;
+    }
+
+    const legacyWithSeq = stopStatusByKey[`${tripId}|${sid}|${seqPart}`];
+    if (legacyWithSeq?.relationship && matchesTripStartDate(legacyWithSeq, start)) {
+      return legacyWithSeq.relationship;
+    }
+
+    const legacyWithoutSeq = stopStatusByKey[`${tripId}|${sid}|`];
+    if (legacyWithoutSeq?.relationship && matchesTripStartDate(legacyWithoutSeq, start)) {
+      return legacyWithoutSeq.relationship;
+    }
   }
   return null;
 }
@@ -372,8 +549,11 @@ export function applyTripUpdates(baseRows, tripUpdates) {
 
   const delayByKey = buildRealtimeIndex(tripUpdates);
   const cancelledTripIds = buildCancelledTripIdSet(tripUpdates);
+  const cancelledTripStartDatesByTripId =
+    buildCancelledTripStartDatesByTripId(tripUpdates);
   const stopStatusByKey = buildStopStatusIndex(tripUpdates);
   const tripFlagsByTripId = buildTripFlagsByTripId(tripUpdates);
+  const tripFlagsByTripStartKey = buildTripFlagsByTripStartKey(tripUpdates);
 
   return baseRows.map((row) => {
     const merged = {
@@ -388,7 +568,15 @@ export function applyTripUpdates(baseRows, tripUpdates) {
     if (merged.cancelled) addCancelReason(merged, "preexisting_cancelled_flag");
 
     const scheduledMs = Date.parse(row.scheduledDeparture || "");
-    const delay = getDelayForRow(delayByKey, row.trip_id, row.stop_id, row.stop_sequence);
+    const rowTripStartDate =
+      ymdZurichFromIso(row.scheduledDeparture || row.realtimeDeparture || "");
+    const delay = getDelayForRow(
+      delayByKey,
+      row.trip_id,
+      row.stop_id,
+      row.stop_sequence,
+      rowTripStartDate
+    );
 
     let realtimeMs = Number.isFinite(scheduledMs) ? scheduledMs : null;
     let delayMin = typeof row.delayMin === "number" ? row.delayMin : null;
@@ -418,7 +606,13 @@ export function applyTripUpdates(baseRows, tripUpdates) {
     }
 
     merged.delayMin = delayMin;
-    if (cancelledTripIds.has(String(row.trip_id || ""))) {
+    const tripIdKey = String(row.trip_id || "");
+    const cancelledStartSet = cancelledTripStartDatesByTripId[tripIdKey];
+    const hasStartSpecificCancellation = cancelledStartSet instanceof Set && cancelledStartSet.size > 0;
+    const isCancelledForStart =
+      cancelledStartSet instanceof Set &&
+      (cancelledStartSet.has(rowTripStartDate) || cancelledStartSet.has(""));
+    if (isCancelledForStart || (!hasStartSpecificCancellation && cancelledTripIds.has(tripIdKey))) {
       merged.cancelled = true;
       addCancelReason(merged, "trip_schedule_relationship_canceled");
       merged._rtMatched = true;
@@ -427,7 +621,8 @@ export function applyTripUpdates(baseRows, tripUpdates) {
       stopStatusByKey,
       row.trip_id,
       row.stop_id,
-      row.stop_sequence
+      row.stop_sequence,
+      rowTripStartDate
     );
     if (stopStatus) {
       merged._rtMatched = true;
@@ -439,7 +634,10 @@ export function applyTripUpdates(baseRows, tripUpdates) {
       addCancelReason(merged, "skipped_stop");
     }
 
-    const tripFlags = row?.trip_id ? tripFlagsByTripId[String(row.trip_id)] : null;
+    const tripStartKey = buildTripStartKey(row.trip_id, rowTripStartDate);
+    const tripFlags =
+      tripFlagsByTripStartKey[tripStartKey] ||
+      (row?.trip_id ? tripFlagsByTripId[String(row.trip_id)] : null);
     const rowStopSeqRaw = row?.stop_sequence;
     const rowStopSeq = rowStopSeqRaw == null ? Number.NaN : Number(rowStopSeqRaw);
     if (tripFlags?.hasSuppressedStop && !merged.suppressedStop) {

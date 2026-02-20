@@ -63,6 +63,16 @@ function isNumericLike(value) {
   return /^\d+$/.test(String(value || "").trim());
 }
 
+function isParentIdLike(value) {
+  return /^parent/i.test(normalizeText(value));
+}
+
+function isPlatformLike(value) {
+  const text = normalizeText(value);
+  if (!text) return false;
+  return text.includes(":");
+}
+
 function stopKindFromRow(row, { hasChildren = false } = {}) {
   const stopId = normalizeText(row?.stop_id);
   const parentStation = normalizeText(row?.parent_station);
@@ -147,6 +157,30 @@ async function getAnyChildByParentId(db, parentId) {
   return res.rows?.[0] || null;
 }
 
+async function getParentForChildLikeInput(db, childLikeId) {
+  const raw = normalizeText(childLikeId);
+  if (!raw) return null;
+  const res = await db.query(
+    `
+    SELECT
+      p.stop_id,
+      p.stop_name,
+      ''::text AS location_type,
+      p.parent_station,
+      p.platform_code
+    FROM public.gtfs_stops c
+    JOIN public.gtfs_stops p ON p.stop_id = c.parent_station
+    WHERE c.stop_id = $1 OR c.stop_id LIKE $1 || ':%'
+    ORDER BY
+      CASE WHEN c.stop_id = $1 THEN 0 ELSE 1 END,
+      char_length(c.stop_id) ASC
+    LIMIT 1
+    `,
+    [raw]
+  );
+  return res.rows?.[0] || null;
+}
+
 async function hasChildrenForParent(db, parentId) {
   const id = normalizeText(parentId);
   if (!id) return false;
@@ -202,17 +236,20 @@ async function resolveCandidateStop(db, candidate) {
   const raw = normalizeText(candidate);
   if (!raw) return null;
 
-  const tried = unique(
-    [
-      raw,
-      raw.startsWith("Parent") ? raw.slice("Parent".length) : "",
-      isNumericLike(raw) ? `Parent${raw}` : "",
-    ].map(normalizeText)
-  );
+  const tried = unique([raw, !isParentIdLike(raw) && isNumericLike(raw) ? `Parent${raw}` : ""].map(normalizeText));
 
   for (const key of tried) {
     const stop = await getStopById(db, key);
     if (stop) return stop;
+  }
+
+  if (isParentIdLike(raw)) {
+    return null;
+  }
+
+  if (isPlatformLike(raw)) {
+    const parent = await getParentForChildLikeInput(db, raw);
+    if (parent) return parent;
   }
 
   // Some stations can be addressed by parent_station value without a dedicated
@@ -223,20 +260,6 @@ async function resolveCandidateStop(db, candidate) {
       return {
         stop_id: raw,
         stop_name: normalizeText(child.stop_name) || raw,
-        location_type: "1",
-        parent_station: "",
-        platform_code: "",
-      };
-    }
-  }
-
-  if (raw.startsWith("Parent")) {
-    const bare = raw.slice("Parent".length);
-    const child = await getAnyChildByParentId(db, bare);
-    if (child) {
-      return {
-        stop_id: bare,
-        stop_name: normalizeText(child.stop_name) || bare,
         location_type: "1",
         parent_station: "",
         platform_code: "",
@@ -419,8 +442,15 @@ export async function resolveStop(
   }
 
   const err = new Error("unknown_stop");
-  err.code = "unknown_stop";
-  err.status = 400;
+  err.code = "stop_not_found";
+  err.status = 404;
   err.tried = tried;
+  err.details = {
+    reason: isParentIdLike(stopId || stationId)
+      ? "parent_stop_id_not_found_in_static_db"
+      : "stop_id_not_found_in_static_db",
+    requestedStopId: stopId || stationId || null,
+    requestedStationName: stationName || null,
+  };
   throw err;
 }

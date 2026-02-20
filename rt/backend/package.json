@@ -9,6 +9,8 @@
     "seed:aliases": "node scripts/seedStopAliases.js",
     "search:sync-aliases": "node scripts/syncStopSearchAliases.js",
     "search:verify": "node scripts/verifyStopSearchCases.js",
+    "stops:debug": "node scripts/debugStop.js",
+    "stops:verify": "node scripts/verifyStops.js",
     "search:bench": "node scripts/benchmarkStopSearch.js",
     "schema:drift": "node scripts/schemaDriftTask.js",
     "sb:filter": "node scripts/filter-stationboard.js",
@@ -20,7 +22,7 @@
     "csv-parse": "^5.5.6",
     "csv-stringify": "^6.5.2",
     "express": "^4.19.2",
-    "gtfs-realtime-bindings": "^1.1.1",
+    "gtfs-realtime-bindings": "^0.0.6",
     "pg": "^8.16.3"
   }
 }

@@ -1,7 +1,7 @@
 const DEFAULT_TRIP_UPDATES_URL = "https://api.opentransportdata.swiss/la/gtfs-rt?format=JSON";
 const TRIP_UPDATES_FETCH_TIMEOUT_MS = Math.max(
   500,
-  Number(process.env.GTFS_RT_FETCH_TIMEOUT_MS || "2000")
+  Number(process.env.GTFS_RT_FETCH_TIMEOUT_MS || "8000")
 );
 
 function pick(obj, ...keys) {
@@ -87,9 +87,17 @@ export async function fetchTripUpdates({ apiKey, urlOverride } = {}) {
     : Array.isArray(raw?.entities)
       ? raw.entities
       : [];
+  const feedVersion =
+    pick(header, "feed_version", "feedVersion") ||
+    pick(raw, "feed_version", "feedVersion") ||
+    // Fallback only when Swiss feed_version is unavailable.
+    pick(header, "gtfs_realtime_version", "gtfsRealtimeVersion") ||
+    "";
 
   return {
-    feedVersion: pick(header, "gtfs_realtime_version", "gtfsRealtimeVersion") || "",
+    feedVersion,
+    gtfsRealtimeVersion:
+      pick(header, "gtfs_realtime_version", "gtfsRealtimeVersion") || "",
     headerTimestamp: normalizeHeaderTimestamp(header),
     entities,
     // Compatibility for existing code that still expects `entity`.

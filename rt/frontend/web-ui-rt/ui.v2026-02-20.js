@@ -2396,14 +2396,14 @@ function renderJourneyStops(dep, detail) {
     const cleanPlat = (p) => (p ? String(p).replace("!", "").trim() : "");
 
     const platCandidates = [
-      s.platform,
       s.prognosis?.platform,
+      s.stop?.prognosis?.platform,
+      s.prognosis?.departure?.platform,
+      s.prognosis?.arrival?.platform,
+      s.platform,
       s.stop?.platform,
       s.departure?.platform,
       s.arrival?.platform,
-      s.prognosis?.departure?.platform,
-      s.prognosis?.arrival?.platform,
-      s.stop?.prognosis?.platform,
       s.stop?.departure?.platform,
       s.stop?.arrival?.platform,
       isFirst ? section?.departure?.platform : null,
@@ -2562,8 +2562,40 @@ async function openJourneyDetails(dep) {
     const hasDelay = typeof dep.delayMin === "number" && dep.delayMin !== 0;
     const isTrain = dep.mode === "train";
 
+    const passList =
+      section?.journey?.passList ||
+      detail?.journey?.passList ||
+      detail?.passList ||
+      detail?.stops ||
+      [];
+
+    const originId =
+      dep.fromStationId ||
+      section?.departure?.station?.id ||
+      connection?.from?.station?.id ||
+      appState.stationId ||
+      null;
+    const originName =
+      dep.fromStationName ||
+      section?.departure?.station?.name ||
+      connection?.from?.station?.name ||
+      appState.STATION ||
+      "";
+
+    const currentStopItem = passList.find((item) =>
+      stopMatchesStation(item?.stop || item, originId, originName)
+    );
+    const s = currentStopItem?.stop || currentStopItem;
+    const detailRealtimePlatform =
+      s?.prognosis?.platform ||
+      s?.stop?.prognosis?.platform ||
+      s?.prognosis?.departure?.platform;
+    const detailPlannedPlatform = s?.platform || s?.stop?.platform;
+
     const platformVal =
+      detailRealtimePlatform ||
       dep.platform ||
+      detailPlannedPlatform ||
       section?.departure?.platform ||
       section?.departure?.stop?.platform ||
       section?.departure?.prognosis?.platform ||

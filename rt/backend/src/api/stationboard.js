@@ -1,6 +1,7 @@
 import { buildStationboard } from "../logic/buildStationboard.js";
 import { query as dbQuery } from "../db/query.js";
 import { performance } from "node:perf_hooks";
+import os from "node:os";
 import { resolveStop } from "../resolve/resolveStop.js";
 import { fetchServiceAlerts } from "../loaders/fetchServiceAlerts.js";
 import { attachAlerts } from "../merge/attachAlerts.js";
@@ -35,6 +36,7 @@ const OTD_SUPPLEMENT_CACHE_MS = Math.max(
   Number(process.env.OTD_SUPPLEMENT_CACHE_MS || "30000")
 );
 const OTD_SUPPLEMENT_BLOCK_ON_COLD = process.env.OTD_EV_SUPPLEMENT_BLOCK_ON_COLD === "1";
+const INSTANCE_ID = `${os.hostname()}:${process.pid}`;
 
 let alertsCacheValue = null;
 let alertsCacheTs = 0;
@@ -375,6 +377,104 @@ function uniqueStopIds(values) {
   );
 }
 
+function isParentIdLike(value) {
+  return /^parent/i.test(String(value || "").trim());
+}
+
+function isPlatformLike(value) {
+  return String(value || "").trim().includes(":");
+}
+
+async function fetchStopRowsByIds(ids = []) {
+  const keys = uniqueStopIds(ids);
+  if (keys.length === 0) return [];
+  const res = await dbQuery(
+    `
+    SELECT
+      s.stop_id,
+      s.stop_name,
+      COALESCE(NULLIF(to_jsonb(s) ->> 'parent_station', ''), '') AS parent_station,
+      COALESCE(NULLIF(to_jsonb(s) ->> 'location_type', ''), '') AS location_type
+    FROM public.gtfs_stops s
+    WHERE s.stop_id = ANY($1::text[])
+    ORDER BY s.stop_id
+    `,
+    [keys]
+  );
+  return Array.isArray(res?.rows) ? res.rows : [];
+}
+
+async function findParentRowForChildLikeInput(stopId) {
+  const id = String(stopId || "").trim();
+  if (!id) return null;
+  const res = await dbQuery(
+    `
+    SELECT
+      p.stop_id,
+      p.stop_name,
+      COALESCE(NULLIF(to_jsonb(p) ->> 'parent_station', ''), '') AS parent_station,
+      COALESCE(NULLIF(to_jsonb(p) ->> 'location_type', ''), '') AS location_type
+    FROM public.gtfs_stops c
+    JOIN public.gtfs_stops p ON p.stop_id = c.parent_station
+    WHERE c.stop_id = $1 OR c.stop_id LIKE $1 || ':%'
+    ORDER BY
+      CASE WHEN c.stop_id = $1 THEN 0 ELSE 1 END,
+      char_length(c.stop_id) ASC
+    LIMIT 1
+    `,
+    [id]
+  );
+  return res.rows?.[0] || null;
+}
+
+function sumScheduledRows(board) {
+  const rowSources = Array.isArray(board?.debugMeta?.rowSources) ? board.debugMeta.rowSources : [];
+  return rowSources.reduce((acc, source) => acc + (Number(source?.rowCount) || 0), 0);
+}
+
+async function fetchVersionSkewDebugInfo() {
+  let staticVersion = null;
+  let rtVersion = null;
+
+  try {
+    const staticRes = await dbQuery(
+      `
+      SELECT value
+      FROM public.meta_kv
+      WHERE key = 'gtfs_current_feed_version'
+      LIMIT 1
+      `
+    );
+    staticVersion = String(staticRes?.rows?.[0]?.value || "").trim() || null;
+  } catch {
+    staticVersion = null;
+  }
+
+  try {
+    const rtRes = await dbQuery(
+      `
+      SELECT feed_version
+      FROM public.rt_feed_meta
+      WHERE feed_name = 'trip_updates'
+      ORDER BY updated_at DESC NULLS LAST, fetched_at DESC NULLS LAST
+      LIMIT 1
+      `
+    );
+    rtVersion = String(rtRes?.rows?.[0]?.feed_version || "").trim() || null;
+  } catch {
+    rtVersion = null;
+  }
+
+  return {
+    staticVersion,
+    rtVersion,
+    hasSkew:
+      !!staticVersion &&
+      !!rtVersion &&
+      String(staticVersion).toLowerCase() !== String(rtVersion).toLowerCase(),
+  };
+}
+
 function countCancelled(rows) {
   return (Array.isArray(rows) ? rows : []).reduce(
     (acc, row) => acc + (row?.cancelled === true ? 1 : 0),
@@ -429,6 +529,28 @@ function withDebugDepartureFlags(departures) {
   });
 }
 
+function toRtTripUpdatesDebug(rtMeta, departureAuditRows) {
+  const base = rtMeta && typeof rtMeta === "object" ? rtMeta : {};
+  const appliedToDeparturesCount = (Array.isArray(departureAuditRows) ? departureAuditRows : []).reduce(
+    (acc, row) =>
+      acc +
+      (Array.isArray(row?.sourceTags) && row.sourceTags.includes("tripupdate") ? 1 : 0),
+    0
+  );
+
+  return {
+    cacheStatus: String(base.cacheStatus || "MISS"),
+    fetchedAtUtc: base.fetchedAtUtc || null,
+    ageSec: Number.isFinite(base.ageSec) ? Number(base.ageSec) : null,
+    ttlSec: Number.isFinite(base.ttlSec) ? Number(base.ttlSec) : null,
+    fetchMs: Number.isFinite(base.fetchMs) ? Number(base.fetchMs) : null,
+    entityCount: Number.isFinite(base.entityCount) ? Number(base.entityCount) : null,
+    hadError: base.hadError === true,
+    error: base.error ? String(base.error) : null,
+    appliedToDeparturesCount,
+  };
+}
+
 export async function getStationboard({
   stopId,
   stationId,
@@ -442,6 +564,7 @@ export async function getStationboard({
   windowMinutes,
   includeAlerts,
   debug,
+  debugRt,
 } = {}) {
   void fromTs;
   void toTs;
@@ -450,6 +573,7 @@ export async function getStationboard({
   const includeAlertsApplied = alertsFeatureEnabled && includeAlertsRequested;
   const debugEnabled =
     debug === true || shouldEnableStationboardDebug(process.env.STATIONBOARD_DEBUG_JSON);
+  const rtDebugMode = debugEnabled ? String(debugRt || "").trim().toLowerCase() : "";
   const requestId = String(requestIdRaw || "").trim() || randomRequestId();
   const requestStartedMs = performance.now();
   const timing = {
@@ -480,8 +604,13 @@ export async function getStationboard({
     requestId,
     stopResolution: {},
     timeWindow: null,
+    rowSources: [],
     stageCounts: [],
     langPrefs: [],
+    flags: [],
+    warnings: [],
+    version: null,
+    rtTripUpdates: null,
   };
   const langPrefs = resolveLangPrefs({
     queryLang: lang,
@@ -505,14 +634,61 @@ export async function getStationboard({
       requestedIncludeAlerts: includeAlertsRequested,
       alertsFeatureEnabled,
       includeAlerts: includeAlertsApplied,
+      debugRtMode: rtDebugMode,
       langPrefs,
     },
   });
 
+  const requestedStopIdInput = String(stopId || stationId || "").trim();
+  let stopIdForResolve = String(stopId || "").trim();
+  const preValidation = {
+    requestedStopId: requestedStopIdInput || null,
+    existsInStaticDb: null,
+    fallbackApplied: null,
+  };
+
+  if (requestedStopIdInput) {
+    let requestedRows = [];
+    try {
+      requestedRows = await fetchStopRowsByIds([requestedStopIdInput]);
+    } catch (err) {
+      debugLog("stop_pre_validation_error", {
+        stopId: requestedStopIdInput,
+        message: String(err?.message || err),
+      });
+    }
+    preValidation.existsInStaticDb = requestedRows.length > 0;
+
+    if (requestedRows.length === 0) {
+      if (isParentIdLike(requestedStopIdInput)) {
+        const err = new Error("stop_not_found");
+        err.code = "stop_not_found";
+        err.status = 404;
+        err.tried = [requestedStopIdInput];
+        err.details = {
+          reason: "parent_stop_id_not_found_in_static_db",
+          requestedStopId: requestedStopIdInput,
+        };
+        throw err;
+      }
+
+      if (isPlatformLike(requestedStopIdInput)) {
+        const parentRow = await findParentRowForChildLikeInput(requestedStopIdInput).catch(
+          () => null
+        );
+        if (parentRow?.stop_id) {
+          stopIdForResolve = String(parentRow.stop_id).trim();
+          preValidation.fallbackApplied = "input_not_found_fallback_to_parent";
+          debugState.flags.push("resolution:fallback_to_parent_before_resolve");
+        }
+      }
+    }
+  }
+
   const resolveStartedMs = performance.now();
   const resolved = await resolveStop(
     {
-      stop_id: stopId,
+      stop_id: stopIdForResolve || stopId,
       stationId,
       stationName,
     },
@@ -530,6 +706,30 @@ export async function getStationboard({
     err.tried = Array.isArray(resolved?.tried) ? resolved.tried : [];
     logTiming({ outcome: "unknown_stop" });
     throw err;
+  }
+
+  const requestedInputIds = uniqueStopIds([stopId, stationId]);
+  let resolutionMatchedRows = [];
+  if (debugEnabled) {
+    const resolutionProbeIds = uniqueStopIds([
+      ...requestedInputIds,
+      locationId,
+      ...(resolved?.children || []).map((child) => child?.id),
+    ]);
+    try {
+      resolutionMatchedRows = await fetchStopRowsByIds(resolutionProbeIds);
+    } catch (err) {
+      debugLog("stop_resolution_probe_error", {
+        message: String(err?.message || err),
+      });
+    }
+    debugLog("stop_resolution_chain", {
+      requestedStopId: String(stopId || ""),
+      requestedStationId: String(stationId || ""),
+      canonicalStopId: locationId,
+      tried: Array.isArray(resolved?.tried) ? resolved.tried : [],
+      matchedRows: resolutionMatchedRows,
+    });
   }
 
   const boundedLimit = Math.max(1, Math.min(Number(limit) || 300, 500));
@@ -554,17 +754,19 @@ export async function getStationboard({
     childStops: Array.isArray(resolved?.children) ? resolved.children : [],
   };
   const alertsPromise = includeAlertsApplied ? getServiceAlertsCached() : null;
-  const buildStartedMs = performance.now();
-  let board = await buildStationboard(locationId, {
+  const buildOptionsBase = {
     limit: boundedLimit,
     windowMinutes: baseWindowMinutes,
     debug: debugEnabled,
+    rtDebugMode,
     requestId,
     resolvedScope,
     debugLog: (event, payload) => {
       debugLog(event, payload);
     },
-  });
+  };
+  const buildStartedMs = performance.now();
+  let board = await buildStationboard(locationId, buildOptionsBase);
   timing.buildStationboardMs = roundMs(performance.now() - buildStartedMs);
   if (
     sparseRetryMin > 0 &&
@@ -575,18 +777,43 @@ export async function getStationboard({
     timing.sparseRetryTriggered = true;
     const sparseRetryStartedMs = performance.now();
     const expanded = await buildStationboard(locationId, {
-      limit: boundedLimit,
+      ...buildOptionsBase,
       windowMinutes: sparseRetryWindowMinutes,
-      debug: debugEnabled,
-      requestId,
-      resolvedScope,
-      debugLog: (event, payload) => {
-        debugLog(event, payload);
-      },
     });
     timing.sparseRetryMs = roundMs(performance.now() - sparseRetryStartedMs);
     if ((expanded?.departures?.length || 0) > (board?.departures?.length || 0)) {
       board = expanded;
+    }
+  }
+
+  const initialScheduledRowCount = sumScheduledRows(board);
+  if ((board?.departures?.length || 0) === 0) {
+    const canonicalIsParent = String(resolved?.canonical?.kind || "").trim() === "parent";
+    const childIds = uniqueStopIds((resolved?.children || []).map((child) => child?.id));
+    if (canonicalIsParent && childIds.length > 0) {
+      const childrenScoped = await buildStationboard(locationId, {
+        ...buildOptionsBase,
+        scopeQueryMode: "children_only",
+      });
+      const childRowCount = sumScheduledRows(childrenScoped);
+      if ((childrenScoped?.departures?.length || 0) > 0 || childRowCount > 0) {
+        board = childrenScoped;
+        debugState.flags.push("resolution:fallback_to_children");
+      } else {
+        debugState.flags.push("resolution:children_fallback_empty");
+      }
+    } else if (!canonicalIsParent) {
+      const parentScoped = await buildStationboard(locationId, {
+        ...buildOptionsBase,
+        scopeQueryMode: "parent_only",
+      });
+      const parentRowCount = sumScheduledRows(parentScoped);
+      if ((parentScoped?.departures?.length || 0) > 0 || parentRowCount > 0) {
+        board = parentScoped;
+        debugState.flags.push("resolution:fallback_to_parent");
+      } else {
+        debugState.flags.push("resolution:parent_fallback_empty");
+      }
     }
   }
 
@@ -602,20 +829,60 @@ export async function getStationboard({
   const canonicalName =
     String(resolved?.displayName || resolved?.canonical?.name || stationName || "").trim() ||
     String(board?.station?.name || locationId).trim();
+  const rowSources = Array.isArray(board?.debugMeta?.rowSources) ? board.debugMeta.rowSources : [];
+  debugState.rowSources = rowSources;
+  debugState.rtTripUpdates = board?.debugMeta?.rtTripUpdates || null;
+  const scheduledRowCount = rowSources.reduce(
+    (acc, source) => acc + (Number(source?.rowCount) || 0),
+    0
+  );
+  const finalDeparturesForReason = Array.isArray(board?.departures) ? board.departures.length : 0;
+  if (finalDeparturesForReason === 0) {
+    if (initialScheduledRowCount === 0 && debugState.flags.includes("resolution:fallback_to_children")) {
+      debugState.flags.push("resolution:resolved_by_children_scope");
+    } else if (initialScheduledRowCount === 0 && debugState.flags.includes("resolution:fallback_to_parent")) {
+      debugState.flags.push("resolution:resolved_by_parent_scope");
+    } else {
+      debugState.flags.push("resolution:no_service_in_time_window");
+    }
+  }
+
   debugState.stopResolution = {
     requestedStopId: String(stopId || stationId || ""),
+    requestedInputIds,
     canonicalId: locationId,
+    preValidation,
+    tried: Array.isArray(resolved?.tried) ? resolved.tried : [],
+    matchedRows: resolutionMatchedRows,
     resolvedChildren: (resolved?.children || []).map((child) => child?.id).filter(Boolean),
     scopeStopIds,
     queryStopIds: Array.isArray(board?.debugMeta?.stops?.queryStopIds)
       ? board.debugMeta.stops.queryStopIds
       : [],
   };
+  if (debugEnabled) {
+    debugLog("stationboard_sql_scope", {
+      queryStopIds: debugState.stopResolution.queryStopIds,
+      rowSources,
+      scheduledRowCount,
+    });
+  }
   debugState.timeWindow = board?.debugMeta?.timeWindow || null;
   debugLog("resolved_scope", {
     stopResolution: debugState.stopResolution,
     timeWindow: debugState.timeWindow,
   });
+  if (debugEnabled) {
+    const versionInfo = await fetchVersionSkewDebugInfo().catch(() => null);
+    debugState.version = versionInfo;
+    if (versionInfo?.hasSkew) {
+      debugState.warnings.push({
+        code: "static_rt_version_skew",
+        staticVersion: versionInfo.staticVersion,
+        rtVersion: versionInfo.rtVersion,
+      });
+    }
+  }
 
   const boardStageCounts = Array.isArray(board?.debugMeta?.stageCounts)
     ? board.debugMeta.stageCounts
@@ -644,6 +911,17 @@ export async function getStationboard({
       })
     ),
   };
+  if (baseResponse.departures.length === 0) {
+    const noServiceReason = debugState.flags.includes("resolution:resolved_by_children_scope")
+      ? "parent_child_scope_mismatch"
+      : debugState.flags.includes("resolution:resolved_by_parent_scope")
+        ? "child_parent_scope_mismatch"
+        : "no_service_in_time_window";
+    baseResponse.noService = {
+      reason: noServiceReason,
+      window: debugState.timeWindow,
+    };
+  }
   delete baseResponse.debugMeta;
   debugState.stageCounts.push({
     stage: "after_base_stationboard",
@@ -664,18 +942,27 @@ export async function getStationboard({
       debugState,
     });
     if (debugEnabled) {
+      const departureAudit = buildDepartureAudit(baseResponse.departures);
       baseResponse.debug = {
         requestId,
+        instanceId: INSTANCE_ID,
         stopResolution: debugState.stopResolution,
         timeWindow: debugState.timeWindow,
+        rowSources: debugState.rowSources,
         stageCounts: debugState.stageCounts,
         langPrefs,
+        flags: debugState.flags,
+        warnings: debugState.warnings,
+        version: debugState.version,
         includeAlertsRequested,
         includeAlertsApplied,
         includeAlerts: includeAlertsApplied,
         requestedIncludeAlerts: includeAlertsRequested,
         alertsFeatureEnabled,
-        departureAudit: buildDepartureAudit(baseResponse.departures),
+        rt: {
+          tripUpdates: toRtTripUpdatesDebug(debugState.rtTripUpdates, departureAudit),
+        },
+        departureAudit,
       };
     }
     logTiming({
@@ -801,18 +1088,27 @@ export async function getStationboard({
       }),
     };
     if (debugEnabled) {
+      const departureAudit = buildDepartureAudit(response.departures);
       response.debug = {
         requestId,
+        instanceId: INSTANCE_ID,
         stopResolution: debugState.stopResolution,
         timeWindow: debugState.timeWindow,
+        rowSources: debugState.rowSources,
         stageCounts: debugState.stageCounts,
         langPrefs,
+        flags: debugState.flags,
+        warnings: debugState.warnings,
+        version: debugState.version,
         includeAlertsRequested,
         includeAlertsApplied,
         includeAlerts: includeAlertsApplied,
         requestedIncludeAlerts: includeAlertsRequested,
         alertsFeatureEnabled,
-        departureAudit: buildDepartureAudit(response.departures),
+        rt: {
+          tripUpdates: toRtTripUpdatesDebug(debugState.rtTripUpdates, departureAudit),
+        },
+        departureAudit,
       };
     }
     logTiming({
@@ -839,19 +1135,28 @@ export async function getStationboard({
       };
     }
     if (debugEnabled) {
+      const departureAudit = buildDepartureAudit(response.departures);
       response.debug = {
         ...(response.debug || {}),
         requestId,
+        instanceId: INSTANCE_ID,
         stopResolution: debugState.stopResolution,
         timeWindow: debugState.timeWindow,
+        rowSources: debugState.rowSources,
         stageCounts: debugState.stageCounts,
         langPrefs,
+        flags: debugState.flags,
+        warnings: debugState.warnings,
+        version: debugState.version,
         includeAlertsRequested,
         includeAlertsApplied,
         includeAlerts: includeAlertsApplied,
         requestedIncludeAlerts: includeAlertsRequested,
         alertsFeatureEnabled,
-        departureAudit: buildDepartureAudit(response.departures),
+        rt: {
+          tripUpdates: toRtTripUpdatesDebug(debugState.rtTripUpdates, departureAudit),
+        },
+        departureAudit,
       };
     }
     logTiming({

@@ -10,6 +10,15 @@ function makeUnknownStopError() {
   return err;
 }
 
+function makeStopNotFoundError(details = {}) {
+  const err = new Error("stop_not_found");
+  err.code = "stop_not_found";
+  err.status = 404;
+  err.tried = Array.isArray(details?.tried) ? details.tried : [];
+  err.details = details?.meta || { reason: "stop_id_not_found_in_static_db" };
+  return err;
+}
+
 function makeResolveStopStub(mapping) {
   return async (input) => {
     const key = input?.stop_id
@@ -292,4 +301,67 @@ test("stationboard route accepts include_alerts when M2 is enabled", async () =>
     assert.equal(calls.length, 1);
     assert.equal(calls[0].includeAlerts, true);
   });
+});
+
+test("stationboard route returns structured 404 stop_not_found with debug payload", async () => {
+  const handler = createStationboardRouteHandler({
+    getStationboardLike: async () => {
+      throw makeStopNotFoundError({
+        tried: ["Parent9999999"],
+        meta: {
+          reason: "parent_stop_id_not_found_in_static_db",
+          requestedStopId: "Parent9999999",
+        },
+      });
+    },
+    resolveStopLike: makeResolveStopStub({
+      "stop:Parent9999999": { resolvedStopId: "Parent9999999", resolvedRootId: "Parent9999999" },
+    }),
+    dbQueryLike: async () => ({ rows: [] }),
+    logger: { log() {}, error() {} },
+  });
+
+  const res = await invokeRoute(handler, {
+    query: {
+      stop_id: "Parent9999999",
+      debug: "1",
+    },
+  });
+
+  assert.equal(res.statusCode, 404);
+  assert.equal(res.body?.error, "stop_not_found");
+  assert.equal(res.body?.detail, "parent_stop_id_not_found_in_static_db");
+  assert.deepEqual(res.body?.tried, ["Parent9999999"]);
+  assert.equal(
+    res.body?.debug?.details?.requestedStopId,
+    "Parent9999999"
+  );
+});
+
+test("stationboard route preserves structured noService payload when departures are empty", async () => {
+  const handler = createStationboardRouteHandler({
+    getStationboardLike: async (input) => ({
+      station: { id: input.stopId || "Parent8501120", name: "Lausanne" },
+      departures: [],
+      noService: {
+        reason: "no_service_in_time_window",
+      },
+    }),
+    resolveStopLike: makeResolveStopStub({
+      "stop:Parent8501120": { resolvedStopId: "Parent8501120", resolvedRootId: "Parent8501120" },
+    }),
+    dbQueryLike: async () => ({ rows: [] }),
+    logger: { log() {}, error() {} },
+  });
+
+  const res = await invokeRoute(handler, {
+    query: {
+      stop_id: "Parent8501120",
+    },
+  });
+
+  assert.equal(res.statusCode, 200);
+  assert.ok(Array.isArray(res.body?.departures));
+  assert.equal(res.body.departures.length, 0);
+  assert.equal(res.body?.noService?.reason, "no_service_in_time_window");
 });

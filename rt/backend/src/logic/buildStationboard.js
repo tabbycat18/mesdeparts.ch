@@ -1,7 +1,7 @@
 // backend/src/logic/buildStationboard.js
 import { pool } from "../../db.js";
 import {
-  loadRealtimeDelayIndexOnce,
+  loadRealtimeDelayIndexOnceWithDebug,
 } from "../../loaders/loadRealtime.js";
 import { applyTripUpdates } from "../merge/applyTripUpdates.js";
 import { applyAddedTrips } from "../merge/applyAddedTrips.js";
@@ -251,6 +251,8 @@ export async function buildStationboard(locationId, options = {}) {
     debugLog,
     requestId = "",
     resolvedScope = null,
+    scopeQueryMode = "mixed",
+    rtDebugMode = "",
   } = options;
   const requestedLimit = Math.max(1, Number(limit) || 100);
   const debugEnabled = debug === true;
@@ -486,7 +488,15 @@ export async function buildStationboard(locationId, options = {}) {
   const onlyChildren = childStops.filter((s) => s.stop_id !== stationGroupId);
   let childStopIds = onlyChildren.map((r) => r.stop_id);
   if (childStopIds.length === 0) childStopIds = [stationGroupId];
-  const queryStopIds = Array.from(new Set([stationGroupId, ...childStopIds].filter(Boolean)));
+
+  let queryStopIds;
+  if (scopeQueryMode === "children_only") {
+    queryStopIds = Array.from(new Set(childStopIds.filter(Boolean)));
+  } else if (scopeQueryMode === "parent_only") {
+    queryStopIds = Array.from(new Set([stationGroupId].filter(Boolean)));
+  } else {
+    queryStopIds = Array.from(new Set([stationGroupId, ...childStopIds].filter(Boolean)));
+  }
 
   if (debugEnabled) {
     console.log("[buildStationboard] station group", {
@@ -501,6 +511,7 @@ export async function buildStationboard(locationId, options = {}) {
     stationGroupId,
     childStopIds,
     queryStopIds,
+    scopeQueryMode,
   };
   safeDebugLog(requestDebugLog, "build.stop_scope", {
     requestedStopId: locationId,
@@ -704,16 +715,47 @@ export async function buildStationboard(locationId, options = {}) {
 
   // 3) Realtime delay index
   const rtLoadStartedMs = performance.now();
-  const delayIndex = ENABLE_RT
-    ? await loadRealtimeDelayIndexOnce({
-        allowStale: true,
-        maxWaitMs: rtLoadTimeoutMs,
+  const debugRtMode = String(rtDebugMode || "").trim().toLowerCase();
+  const debugRtBlock = debugEnabled && debugRtMode === "block";
+  const rtLoadResult = ENABLE_RT
+    ? await loadRealtimeDelayIndexOnceWithDebug({
+        allowStale: !debugRtBlock,
+        maxWaitMs: debugRtBlock ? Math.max(1500, rtLoadTimeoutMs) : rtLoadTimeoutMs,
       }).catch((err) => {
         console.warn("[GTFS-RT] Failed to load delay index, continuing without RT:", err);
-        return { byKey: {} };
+        return {
+          index: { byKey: {} },
+          tripUpdates: {
+            cacheStatus: "MISS",
+            fetchedAtUtc: null,
+            ageSec: null,
+            ttlSec: null,
+            fetchMs: null,
+            entityCount: null,
+            hadError: true,
+            error: String(err?.message || err),
+          },
+        };
       })
-    : { byKey: {} };
+    : {
+        index: { byKey: {} },
+        tripUpdates: {
+          cacheStatus: "BYPASS",
+          fetchedAtUtc: null,
+          ageSec: null,
+          ttlSec: null,
+          fetchMs: null,
+          entityCount: null,
+          hadError: false,
+          error: null,
+        },
+      };
+  const delayIndex = rtLoadResult?.index || { byKey: {} };
   timings.rtLoadMs = Number((performance.now() - rtLoadStartedMs).toFixed(1));
+  debugMeta.rtTripUpdates = {
+    ...(rtLoadResult?.tripUpdates || null),
+    debugRtMode: debugRtBlock ? "block" : "",
+  };
 
   const baseRows = [];
 

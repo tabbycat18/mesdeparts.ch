@@ -78,7 +78,12 @@ async function resolveIdentityForInput({ stop_id, stationId, stationName }, deps
     );
     return deriveResolvedIdentity(resolved);
   } catch (err) {
-    if (err?.code === "unknown_stop" || Number(err?.status) === 400) {
+    if (
+      err?.code === "unknown_stop" ||
+      err?.code === "stop_not_found" ||
+      Number(err?.status) === 400 ||
+      Number(err?.status) === 404
+    ) {
       return null;
     }
     throw err;
@@ -129,7 +134,9 @@ export function createStationboardRouteHandler({
       text(req.headers["x-md-request-id"]) ||
       text(req.headers["x-request-id"]) ||
       randomRequestId();
+    let debug = false;
     setResponseHeader(res, "x-md-request-id", requestId);
+    setResponseHeader(res, "Cache-Control", "no-store, max-age=0");
     try {
       const stopIdRaw = text(req.query.stop_id);
       const stationIdCamelRaw = text(req.query.stationId);
@@ -140,7 +147,8 @@ export function createStationboardRouteHandler({
       const lang = text(req.query.lang);
       const limit = Number(req.query.limit || "300");
       const windowMinutes = Number(req.query.window_minutes || "0");
-      const debug = parseBooleanish(req.query.debug) === true;
+      debug = parseBooleanish(req.query.debug) === true;
+      const debugRt = text(req.query.debug_rt).toLowerCase();
       const includeAlertsParsed = parseBooleanish(
         req.query.include_alerts ?? req.query.includeAlerts
       );
@@ -154,6 +162,7 @@ export function createStationboardRouteHandler({
         limit,
         windowMinutes,
         debug,
+        debugRt,
         includeAlerts: includeAlertsParsed,
       });
 
@@ -218,6 +227,7 @@ export function createStationboardRouteHandler({
         windowMinutes,
         includeAlerts: includeAlertsParsed == null ? undefined : includeAlertsParsed,
         debug,
+        debugRt: debug ? debugRt : "",
       });
       setResponseHeader(
         res,
@@ -233,6 +243,20 @@ export function createStationboardRouteHandler({
         backendTotalMs,
         error: String(err?.message || err),
       });
+      if (err?.code === "stop_not_found" || Number(err?.status) === 404) {
+        const payload = {
+          error: "stop_not_found",
+          detail: String(err?.details?.reason || "stop_id_not_found_in_static_db"),
+          tried: Array.isArray(err?.tried) ? err.tried : [],
+        };
+        if (debug) {
+          payload.debug = {
+            requestId,
+            details: err?.details || null,
+          };
+        }
+        return res.status(404).json(payload);
+      }
       if (err?.code === "unknown_stop" || Number(err?.status) === 400) {
         return res.status(400).json({
           error: "unknown_stop",

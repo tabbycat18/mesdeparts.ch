@@ -170,6 +170,9 @@ function extractAddedStopUpdates(tripUpdates) {
     const trip = pick(update, "trip") || null;
     const tripId = normalizeText(pick(trip, "trip_id", "tripId"));
     if (!tripId) continue;
+    const tripStartDate = normalizeText(
+      pick(trip, "start_date", "startDate")
+    ).replace(/[^0-9]/g, "");
     if (normalizeScheduleRelationship(pick(trip, "schedule_relationship", "scheduleRelationship")) !== "ADDED") {
       continue;
     }
@@ -211,6 +214,7 @@ function extractAddedStopUpdates(tripUpdates) {
           Math.round(
             (asNumber(pick(dep, "delay")) ?? asNumber(pick(arr, "delay")) ?? 0) / 60
           ) || 0,
+        tripStartDate: tripStartDate.length === 8 ? tripStartDate : "",
         tripShortName,
         tripHeadsign,
       });

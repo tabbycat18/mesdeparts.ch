@@ -40,7 +40,11 @@ export async function fetchFeedMeta(url, apiKey) {
 
   const buffer = Buffer.from(await response.arrayBuffer());
   const feedMessage = GtfsRealtimeBindings.transit_realtime.FeedMessage.decode(buffer);
-  const feedVersion = feedMessage?.header?.gtfsRealtimeVersion || "";
+  const feedVersion =
+    String(feedMessage?.header?.feedVersion || "").trim() ||
+    String(feedMessage?.feedVersion || "").trim() ||
+    String(feedMessage?.header?.gtfsRealtimeVersion || "").trim() ||
+    "";
   const headerTimestamp = toHeaderTimestamp(feedMessage?.header);
 
   return { feedVersion, headerTimestamp };

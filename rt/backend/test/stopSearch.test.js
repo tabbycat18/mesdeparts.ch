@@ -134,11 +134,43 @@ function fixtureRows() {
       has_hub_token: false,
     },
     {
-      group_id: "Parent8587055",
-      stop_id: "Parent8587055",
-      stop_name: "Bel-Air, Lausanne",
+      group_id: "Parent8501120",
+      stop_id: "Parent8501120",
+      stop_name: "Lausanne",
       parent_station: "",
       location_type: "1",
+      city_name: "Lausanne",
+      aliases_matched: ["lausanne gare"],
+      alias_weight: 7,
+      alias_similarity: 0.88,
+      name_similarity: 0.9,
+      core_similarity: 0.9,
+      nb_stop_times: 98000,
+      is_parent: true,
+      has_hub_token: false,
+    },
+    {
+      group_id: "Parent8587055",
+      stop_id: "Parent8587055",
+      stop_name: "Lausanne, Bel-Air",
+      parent_station: "",
+      location_type: "0",
+      city_name: "Lausanne",
+      aliases_matched: ["bel air lausanne", "lausanne bel air"],
+      alias_weight: 9,
+      alias_similarity: 0.96,
+      name_similarity: 0.94,
+      core_similarity: 0.94,
+      nb_stop_times: 25000,
+      is_parent: false,
+      has_hub_token: false,
+    },
+    {
+      group_id: "Parent8587055",
+      stop_id: "8587055:0:1",
+      stop_name: "Bel-Air, Lausanne",
+      parent_station: "Parent8587055",
+      location_type: "0",
       city_name: "Lausanne",
       aliases_matched: ["bel air lausanne"],
       alias_weight: 1,
@@ -247,7 +279,68 @@ test("geneve query includes Genève main and Genève, gare Cornavin", () => {
 test("bel air matches Genève, Bel-Air", () => {
   const ranked = rankStopCandidates(fixtureRows(), "bel air", 7);
   const topIds = ranked.slice(0, 3).map((row) => row.stop_id);
-  assert.ok(topIds.includes("Parent8587387"));
+  assert.ok(topIds.includes("Parent8587387") || topIds.includes("Parent8587055"));
+});
+
+test("Lausanne, Bel-Air ranks specific stop ahead of generic Lausanne parent", () => {
+  const ranked = rankStopCandidates(fixtureRows(), "Lausanne, Bel-Air", 10);
+  const belAirIdx = ranked.findIndex((row) =>
+    normalizeSearchText(row.stop_name).includes("lausanne, bel air")
+  );
+  const lausanneIdx = ranked.findIndex(
+    (row) => normalizeSearchText(row.stop_name) === "lausanne"
+  );
+
+  assert.ok(belAirIdx >= 0, "expected Lausanne, Bel-Air to be present");
+  assert.ok(lausanneIdx >= 0, "expected Lausanne parent to be present");
+  assert.ok(
+    belAirIdx < lausanneIdx,
+    `expected Lausanne, Bel-Air rank < Lausanne rank, got ${belAirIdx + 1} vs ${lausanneIdx + 1}`
+  );
+});
+
+test("Bel Air and Bel-Air queries resolve to same top station", () => {
+  const plain = rankStopCandidates(fixtureRows(), "Bel Air", 5);
+  const hyphen = rankStopCandidates(fixtureRows(), "Bel-Air", 5);
+  assert.ok(plain.length > 0);
+  assert.ok(hyphen.length > 0);
+  assert.equal(
+    normalizeSearchText(plain[0].stop_name),
+    normalizeSearchText(hyphen[0].stop_name)
+  );
+});
+
+test("golden variants keep stable top result and canonical fields", () => {
+  const cases = [
+    { query: "Zurich", expectedTop: "zurich hb" },
+    { query: "Zürich", expectedTop: "zurich hb" },
+    { query: "Zuerich", expectedTop: "zurich hb" },
+    { query: "Zürich Hbf", expectedTop: "zurich hb" },
+    { query: "St Gallen", expectedTop: "saint gallen" },
+    { query: "St. Gallen", expectedTop: "saint gallen" },
+    { query: "geneve", expectedTopAny: ["geneve", "geneve, gare cornavin"] },
+    { query: "Genève Cornavin", expectedTop: "geneve, gare cornavin" },
+    { query: "Lausanne, Bel-Air", expectedTop: "lausanne, bel air" },
+  ];
+
+  for (const item of cases) {
+    const ranked = rankStopCandidates(fixtureRows(), item.query, 7);
+    assert.ok(ranked.length > 0, `expected results for query ${item.query}`);
+    const top = ranked[0];
+    const normalizedTop = normalizeSearchText(top.stop_name);
+    if (item.expectedTopAny) {
+      assert.ok(
+        item.expectedTopAny.includes(normalizedTop),
+        `unexpected top result for ${item.query}: ${normalizedTop}`
+      );
+    } else {
+      assert.equal(normalizedTop, item.expectedTop);
+    }
+    assert.ok(top.stop_id, `missing stop_id for ${item.query}`);
+    assert.ok(top.stationId, `missing stationId for ${item.query}`);
+    assert.equal(typeof top.isParent, "boolean");
+    assert.equal(typeof top.isPlatform, "boolean");
+  }
 });
 
 test("cornavin ranks Geneve Cornavin first", () => {

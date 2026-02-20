@@ -55,7 +55,7 @@ import cors from "cors";
 const { pool } = await import("./db.js");
 const { getStationboard } = await import("./src/api/stationboard.js");
 const { resolveStop } = await import("./src/resolve/resolveStop.js");
-const { searchStops } = await import("./src/search/stopsSearch.js");
+const { searchStops, searchStopsWithDebug } = await import("./src/search/stopsSearch.js");
 const { createStationboardRouteHandler } = await import("./src/api/stationboardRoute.js");
 const { fetchServiceAlerts } = await import("./src/loaders/fetchServiceAlerts.js");
 const { fetchTripUpdates } = await import("./src/loaders/fetchTripUpdates.js");
@@ -274,6 +274,12 @@ async function searchStopsPrefix(query, limit) {
   return searchStops(pool, query, limit);
 }
 
+function parseBooleanish(value) {
+  const raw = String(value || "").trim().toLowerCase();
+  if (!raw) return false;
+  return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
+}
+
 async function searchStopsNearby(lat, lon, limit) {
   const latNum = Number(lat);
   const lonNum = Number(lon);
@@ -399,8 +405,27 @@ app.get("/api/stops/search", async (req, res) => {
   try {
     const q = String(req.query.q || req.query.query || "").trim();
     const limit = Number(req.query.limit || "20");
-    console.log("[API] /api/stops/search params", { q, limit });
-    const stops = await searchStopsPrefix(q, limit);
+    const debug = parseBooleanish(req.query.debug);
+    console.log("[API] /api/stops/search params", { q, limit, debug });
+
+    const searchResult = debug
+      ? await searchStopsWithDebug(pool, q, limit)
+      : await searchStopsPrefix(q, limit);
+    const stops = Array.isArray(searchResult) ? searchResult : searchResult?.stops || [];
+
+    if (debug && searchResult?.debug) {
+      const rankedTop = Array.isArray(searchResult.debug.rankedTop)
+        ? searchResult.debug.rankedTop
+        : [];
+      console.log("[API] /api/stops/search debug top_candidates", {
+        query: searchResult.debug.query || q,
+        queryNorm: searchResult.debug.queryNorm || null,
+        candidateLimit: searchResult.debug.candidateLimit || null,
+        rawRows: searchResult.debug.rawRows || 0,
+        top: rankedTop.slice(0, 10),
+      });
+    }
+
     return res.json({ stops });
   } catch (err) {
     console.error("[API] /api/stops/search failed:", err);

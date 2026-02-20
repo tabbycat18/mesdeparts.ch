@@ -2,6 +2,44 @@
 
 This `rt/` folder contains the real-time (GTFS static + GTFS-RT) implementation.
 
+## Swiss GTFS Context (Operational Model)
+
+This project follows the opentransportdata.swiss model:
+
+- `GTFS Static` is the timetable baseline ("ground truth") for stops/trips/stop_times/routes/calendar.
+- `GTFS-RT TripUpdates` enrich static trips with realtime changes (delay, cancellation, skipped stops, added trips).
+- `GTFS-RT Service Alerts` is a separate feed for disruption/event messaging (stop/route/network impact), including multilingual texts.
+
+### 1) GTFS Static is versioned and can change IDs
+
+- Static feeds are regenerated on a recurring cadence (typically twice weekly in Swiss operations).
+- `trip_id` and `service_id` can change between static versions.
+- Import/cutover must therefore be staged and atomic (stage -> live), not best-effort ad hoc updates.
+
+### 2) TripUpdates are incremental, not a full "state dump"
+
+- TripUpdates can be emitted on change, so missing entities are **not** a reliable "on-time" signal.
+- `delay = 0` is meaningful: it indicates realtime-confirmed on-time, not "no realtime".
+- Realtime merge logic must tolerate partial/incremental updates and keep state stable across polls.
+
+### 3) Feed version alignment is critical
+
+- GTFS-RT is tied to a specific static version.
+- The Swiss `feed_version` value is the key alignment signal and must be tracked.
+- If RT feed version and currently active static version diverge, treat it as version skew and avoid assuming identifiers still match cleanly.
+
+### 4) Operating day vs calendar day caveat
+
+- Static GTFS can use times beyond 24:00 (`24:xx`, `25:xx`) to represent the same operating day.
+- RT `start_date` semantics are calendar-day based; merges must avoid cross-day collisions.
+- This repo treats service-day handling and cross-midnight windows explicitly in stationboard build logic.
+
+### 5) API/runtime constraints to respect
+
+- Use protobuf feed format for production integrations; JSON is mainly for diagnostics/testing.
+- Respect upstream rate limits (Swiss guidance: hard cap 2 req/min per key).
+- Cache/refresh policy should smooth polling and prevent UI-driven overfetch.
+
 ## What Is Source Of Truth
 
 - **Backend (`rt/backend`) is the source of truth** for RT departures.
@@ -82,6 +120,12 @@ It:
 5. validates stage data
 6. swaps stage -> live tables
 7. updates metadata tables (`meta_kv`, `rt_feed_meta`)
+
+Alignment expectation:
+
+- `meta_kv.gtfs_current_feed_version` represents the active static alignment marker.
+- GTFS-RT poll metadata (`feed_version`, header timestamp) should be recorded and compared against static alignment.
+- Realtime identifiers (`trip_id`, `service_id`) must always be interpreted in the context of the aligned static version.
 
 Related scripts/sql:
 
