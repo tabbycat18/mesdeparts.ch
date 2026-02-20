@@ -940,11 +940,13 @@ export function buildDeparturesGrouped(data, viewMode = VIEW_MODE_LINE) {
       });
     }
 
-    const platformRaw = stop.platform || "";
-    const platformChanged = String(platformRaw).includes("!");
-    const platform = String(platformRaw).replace("!", "");
-    const previousPlatform =
-      journeyId && lastPlatforms[journeyId] && lastPlatforms[journeyId] !== platform
+    const plannedPlatform = String(stop.platform || "").replace("!", "");
+    const realtimePlatform = String(prog.platform || "").replace("!", "");
+    const platform = realtimePlatform || plannedPlatform;
+    const platformChanged = !!(realtimePlatform && realtimePlatform !== plannedPlatform);
+    const previousPlatform = platformChanged
+      ? plannedPlatform
+      : journeyId && lastPlatforms[journeyId] && lastPlatforms[journeyId] !== platform
         ? lastPlatforms[journeyId]
         : null;
     const didChange = platformChanged || !!previousPlatform;
