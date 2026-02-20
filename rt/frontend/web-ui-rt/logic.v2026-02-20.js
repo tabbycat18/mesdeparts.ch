@@ -940,7 +940,8 @@ export function buildDeparturesGrouped(data, viewMode = VIEW_MODE_LINE) {
       });
     }
 
-    const platformRaw = stop.platform || "";
+    // Use prognosis platform if available (actual), fall back to stop platform (planned)
+    const platformRaw = prog.platform || stop.platform || "";
     const platformChanged = String(platformRaw).includes("!");
     const platform = String(platformRaw).replace("!", "");
     const previousPlatform =
