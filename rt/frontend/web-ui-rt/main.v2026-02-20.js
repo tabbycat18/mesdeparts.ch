@@ -40,9 +40,17 @@ import { setupInfoButton } from "./infoBTN.v2026-02-20.js";
 import { initI18n, applyStaticTranslations } from "./i18n.v2026-02-20.js";
 import { loadFavorites } from "./favourites.v2026-02-20.js";
 import {
+  getHomeStop,
+  setHomeStop,
+  clearHomeStop,
+  shouldShowHomeStopModal,
+} from "./homeStop.v2026-02-20.js";
+import { openHomeStopOnboardingModal } from "./ui/homeStopOnboarding.v2026-02-20.js";
+import {
   initHeaderControls2,
   updateHeaderControls2,
   setBoardLoadingHint,
+  maybeShowThreeDotsTip,
 } from "./ui/headerControls2.js";
 
 // Persist station between reloads
@@ -286,6 +294,25 @@ function getStationFromUrl() {
   return null;
 }
 
+function consumeResetHomeStopFlagFromUrl() {
+  try {
+    const params = new URLSearchParams(window.location.search || "");
+    const shouldReset =
+      params.get("resetHomeStop") === "1" || params.get("resetDepartureStop") === "1";
+    if (!shouldReset) return false;
+
+    clearHomeStop();
+    params.delete("resetHomeStop");
+    params.delete("resetDepartureStop");
+    const next = params.toString();
+    const nextUrl = next ? `${window.location.pathname}?${next}` : window.location.pathname;
+    window.history.replaceState({}, "", nextUrl);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function applyUrlPreferences() {
   try {
     const params = new URLSearchParams(window.location.search || "");
@@ -445,6 +472,7 @@ async function refreshDepartures({ retried, showLoadingHint = true } = {}) {
           updateHeaderControls2();
           renderServiceBanners(retryData?.banners || []);
           renderDepartures(retryRows);
+          markMainBoardReadyForHints();
           return;
         }
       } catch (e) {
@@ -474,6 +502,7 @@ async function refreshDepartures({ retried, showLoadingHint = true } = {}) {
           updateHeaderControls2();
           renderServiceBanners(freshData?.banners || []);
           renderDepartures(freshRows);
+          markMainBoardReadyForHints();
           updateDebugPanel(freshRows);
           publishEmbedState();
           return;
@@ -501,6 +530,7 @@ async function refreshDepartures({ retried, showLoadingHint = true } = {}) {
         updateHeaderControls2();
         renderServiceBanners(directData?.banners || []);
         renderDepartures(directRows);
+        markMainBoardReadyForHints();
         updateDebugPanel(directRows);
         publishEmbedState();
         return;
@@ -528,6 +558,7 @@ async function refreshDepartures({ retried, showLoadingHint = true } = {}) {
         updateHeaderControls2();
         renderServiceBanners(directData?.banners || []);
         renderDepartures(directRows);
+        markMainBoardReadyForHints();
         updateDebugPanel(directRows);
         publishEmbedState();
         return;
@@ -548,6 +579,7 @@ async function refreshDepartures({ retried, showLoadingHint = true } = {}) {
 
     renderServiceBanners(data?.banners || []);
     renderDepartures(rows);
+    markMainBoardReadyForHints();
     const tAfterRender = DEBUG_PERF ? performance.now() : 0;
     if (DEBUG_PERF) {
       logPerf("refresh", {
@@ -608,6 +640,53 @@ function refreshDeparturesFromCache({ allowFetch = true, skipFilters = false, sk
   }
 }
 
+let homeStopOnboardingOpen = false;
+let onboardingSettled = false;
+let firstSuccessfulBoardRender = false;
+
+function maybeShowThreeDotsTipWhenReady() {
+  if (!onboardingSettled || !firstSuccessfulBoardRender) return;
+  maybeShowThreeDotsTip();
+}
+
+function markMainBoardReadyForHints() {
+  firstSuccessfulBoardRender = true;
+  maybeShowThreeDotsTipWhenReady();
+}
+
+async function runHomeStopOnboardingIfNeeded() {
+  if (homeStopOnboardingOpen) return;
+  if (!shouldShowHomeStopModal()) {
+    onboardingSettled = true;
+    maybeShowThreeDotsTipWhenReady();
+    return;
+  }
+
+  homeStopOnboardingOpen = true;
+  try {
+    const result = await openHomeStopOnboardingModal({
+      initialStop: {
+        id: appState.stationId || null,
+        name: appState.STATION || "",
+      },
+    });
+
+    if (!result || result.confirmed !== true || !result.stop?.name) return;
+
+    setHomeStop({
+      id: result.stop.id || null,
+      name: result.stop.name,
+      dontAskAgain: !!result.dontAskAgain,
+    });
+    applyStation(result.stop.name, result.stop.id || null, { syncUrl: true });
+    refreshDepartures();
+  } finally {
+    homeStopOnboardingOpen = false;
+    onboardingSettled = true;
+    maybeShowThreeDotsTipWhenReady();
+  }
+}
+
 // --------------------------------------------------------
 // Boot
 // --------------------------------------------------------
@@ -661,6 +740,8 @@ function refreshDeparturesFromCache({ allowFetch = true, skipFilters = false, sk
   applyStaticTranslations();
   ensureBoardFitsViewport();
 
+  consumeResetHomeStopFlagFromUrl();
+  const savedHomeStop = getHomeStop();
   const urlStation = getStationFromUrl();
   // Station from storage
   const storedRaw = localStorage.getItem(STORAGE_KEY);
@@ -669,7 +750,11 @@ function refreshDeparturesFromCache({ allowFetch = true, skipFilters = false, sk
     !!stored && stored.toLowerCase() === LEGACY_DEFAULT_STATION_NAME.toLowerCase();
   const initialStored = storedIsLegacyDefault ? null : stored;
   if (urlStation) {
-    applyStation(urlStation.name || initialStored || DEFAULT_STATION, urlStation.id || null);
+    const fallbackName = savedHomeStop?.name || initialStored || DEFAULT_STATION;
+    const fallbackId = savedHomeStop?.id || null;
+    applyStation(urlStation.name || fallbackName, urlStation.id || fallbackId);
+  } else if (savedHomeStop?.name) {
+    applyStation(savedHomeStop.name, savedHomeStop.id || null);
   } else {
     applyStation(initialStored || DEFAULT_STATION);
   }
@@ -683,6 +768,9 @@ function refreshDeparturesFromCache({ allowFetch = true, skipFilters = false, sk
 
   // Initial load
   refreshDepartures();
+  defer(() => {
+    runHomeStopOnboardingIfNeeded();
+  });
 
   // Periodic refresh
   startRefreshLoop();

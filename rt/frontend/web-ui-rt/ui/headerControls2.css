@@ -672,6 +672,69 @@
     0 0 0 4px rgba(1, 21, 127, 0.6);
 }
 
+.hc2__menuTip {
+  position: fixed;
+  z-index: 1702;
+  max-width: min(88vw, 320px);
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background:
+    linear-gradient(180deg, rgba(2, 22, 102, 0.98), rgba(0, 17, 78, 0.98)),
+    radial-gradient(120% 120% at 100% 0%, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.02) 60%);
+  color: #f7f9ff;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.46);
+  padding: 10px 34px 10px 12px;
+}
+
+.hc2__menuTip::after {
+  content: "";
+  position: absolute;
+  right: 16px;
+  width: 10px;
+  height: 10px;
+  border-right: 1px solid rgba(255, 255, 255, 0.2);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(1, 20, 96, 0.98);
+  rotate: 45deg;
+}
+
+.hc2__menuTip--bottom::after {
+  top: -6px;
+}
+
+.hc2__menuTip--top::after {
+  bottom: -6px;
+}
+
+.hc2__menuTip--toast::after {
+  display: none;
+}
+
+.hc2__menuTipText {
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.35;
+}
+
+.hc2__menuTipClose {
+  position: absolute;
+  top: 5px;
+  right: 4px;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: rgba(247, 249, 255, 0.92);
+  font-size: 1.05rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.hc2__menuTipClose:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
 
 .hc2__backdrop {
   position: fixed;
@@ -711,6 +774,140 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+.home-stop-onboarding {
+  position: fixed;
+  inset: 0;
+  z-index: 1800;
+}
+
+.home-stop-modal__backdrop {
+  z-index: 1800;
+}
+
+.home-stop-modal {
+  z-index: 1801;
+  top: 50%;
+  left: 50%;
+  /* Use transform for broad browser compatibility; override base .hc2__sheet translate */
+  translate: none;
+  transform: translate(-50%, -50%);
+  width: min(calc(100vw - 24px), 520px);
+  max-height: min(calc(100dvh - 24px), 720px);
+  overflow: visible;
+}
+
+.home-stop-modal__header {
+  margin-bottom: 4px;
+}
+
+.home-stop-modal__desc {
+  margin: 0 0 12px;
+  color: rgba(246, 249, 255, 0.92);
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.home-stop-modal__picker {
+  margin-bottom: 10px;
+}
+
+.home-stop-modal__suggestions {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 2;
+  margin: 0;
+  padding: 0;
+  max-height: min(40vh, 260px);
+  list-style: none;
+  overflow-y: auto;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(0, 18, 82, 0.96);
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.45);
+}
+
+.home-stop-modal__suggestionItem {
+  margin: 0;
+}
+
+.home-stop-modal__suggestionItem--status {
+  padding: 10px 12px;
+  color: rgba(245, 248, 255, 0.88);
+  font-size: 0.88rem;
+}
+
+.home-stop-modal__suggestionBtn {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: #f5f8ff;
+  padding: 11px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.home-stop-modal__suggestionBtn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.home-stop-modal__suggestionName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-stop-modal__suggestionDistance {
+  flex-shrink: 0;
+  color: rgba(245, 248, 255, 0.7);
+  font-size: 0.84rem;
+}
+
+.home-stop-modal__error {
+  margin: 0 0 10px;
+  min-height: 1.2em;
+  color: #ffe8a8;
+  font-size: 0.86rem;
+}
+
+.home-stop-modal__checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+  margin-bottom: 12px;
+  font-size: 0.92rem;
+}
+
+.home-stop-modal__checkbox input {
+  margin: 0;
+}
+
+.home-stop-modal__actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.home-stop-modal__btn.hc2__primary,
+.home-stop-modal__btn.hc2__secondary {
+  width: auto;
+  margin: 0;
+  flex: 1 1 0;
+  min-height: 40px;
+}
+
+.home-stop-modal__btn.hc2__primary:disabled {
+  opacity: 0.65;
+  cursor: progress;
 }
 
 .hc2 .is-hidden,

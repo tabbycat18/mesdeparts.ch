@@ -8,6 +8,7 @@ import {
 } from "../state.v2026-02-20.js";
 import { fetchStationSuggestions, fetchStationsNearby, isAbortError } from "../logic.v2026-02-20.js";
 import { loadFavorites, saveFavorites } from "../favourites.v2026-02-20.js";
+import { getHasSeenThreeDotsTip, setHasSeenThreeDotsTip } from "../threeDotsTip.v2026-02-20.js";
 import { t, setLanguage, LANGUAGE_OPTIONS, applyStaticTranslations } from "../i18n.v2026-02-20.js";
 
 const STORAGE_COLLAPSED_KEY = "mesdeparts.headerControls2.collapsed";
@@ -108,6 +109,12 @@ const state = {
   // Board loading state tracking
   isSuggestionFetching: false,
   isBoardLoading: false,
+  threeDotsTipEl: null,
+  threeDotsTipVisible: false,
+  threeDotsTipShownInSession: false,
+  threeDotsTipOutsideHandler: null,
+  threeDotsTipKeydownHandler: null,
+  threeDotsTipRepositionRaf: null,
 };
 
 // Search resiliency constants
@@ -583,6 +590,162 @@ function trapFocusInFavoritesSheet(event) {
     event.preventDefault();
     first.focus({ preventScroll: true });
   }
+}
+
+function isElementVisible(el) {
+  if (!el || el.hidden) return false;
+  if (el.getAttribute("aria-hidden") === "true") return false;
+  const rect = el.getBoundingClientRect();
+  return rect.width > 0 && rect.height > 0;
+}
+
+function scheduleThreeDotsTipReposition() {
+  if (!state.threeDotsTipVisible || !state.threeDotsTipEl || !state.refs.menuToggle) return;
+  if (state.threeDotsTipRepositionRaf) {
+    cancelAnimationFrame(state.threeDotsTipRepositionRaf);
+    state.threeDotsTipRepositionRaf = null;
+  }
+  state.threeDotsTipRepositionRaf = requestAnimationFrame(() => {
+    state.threeDotsTipRepositionRaf = null;
+    positionThreeDotsTip();
+  });
+}
+
+function positionThreeDotsTip() {
+  const tip = state.threeDotsTipEl;
+  const anchor = state.refs.menuToggle;
+  if (!tip || !anchor) return;
+  if (!isElementVisible(anchor)) return;
+
+  const anchorRect = anchor.getBoundingClientRect();
+  const vw = window.innerWidth || document.documentElement.clientWidth || 0;
+  const vh = window.innerHeight || document.documentElement.clientHeight || 0;
+  const gap = 10;
+  const edgeGap = 12;
+
+  tip.classList.remove("hc2__menuTip--top", "hc2__menuTip--bottom", "hc2__menuTip--toast");
+  tip.style.left = "0px";
+  tip.style.top = "0px";
+
+  const tipRect = tip.getBoundingClientRect();
+  const tipHeight = Math.ceil(tipRect.height || 0);
+  const tipWidth = Math.ceil(tipRect.width || 0);
+
+  const spaceAbove = anchorRect.top - gap;
+  const spaceBelow = vh - anchorRect.bottom - gap;
+
+  const canPlaceAbove = spaceAbove >= tipHeight;
+  const canPlaceBelow = spaceBelow >= tipHeight;
+  const useToast = !canPlaceAbove && !canPlaceBelow;
+
+  if (useToast) {
+    tip.classList.add("hc2__menuTip--toast");
+    const toastLeft = Math.max(edgeGap, Math.round((vw - tipWidth) / 2));
+    const toastTop = Math.max(edgeGap, vh - tipHeight - edgeGap);
+    tip.style.left = `${toastLeft}px`;
+    tip.style.top = `${toastTop}px`;
+    return;
+  }
+
+  const placeBelow = canPlaceBelow || spaceBelow >= spaceAbove;
+  tip.classList.add(placeBelow ? "hc2__menuTip--bottom" : "hc2__menuTip--top");
+
+  const top = placeBelow
+    ? Math.round(anchorRect.bottom + gap)
+    : Math.round(anchorRect.top - tipHeight - gap);
+  let left = Math.round(anchorRect.right - tipWidth);
+  left = Math.max(edgeGap, Math.min(left, vw - tipWidth - edgeGap));
+
+  tip.style.left = `${left}px`;
+  tip.style.top = `${Math.max(edgeGap, top)}px`;
+}
+
+function dismissThreeDotsTip({ markSeen = true } = {}) {
+  if (markSeen) {
+    setHasSeenThreeDotsTip(true);
+  }
+
+  if (state.threeDotsTipRepositionRaf) {
+    cancelAnimationFrame(state.threeDotsTipRepositionRaf);
+    state.threeDotsTipRepositionRaf = null;
+  }
+
+  if (state.threeDotsTipOutsideHandler) {
+    document.removeEventListener("mousedown", state.threeDotsTipOutsideHandler, true);
+    state.threeDotsTipOutsideHandler = null;
+  }
+  if (state.threeDotsTipKeydownHandler) {
+    document.removeEventListener("keydown", state.threeDotsTipKeydownHandler, true);
+    state.threeDotsTipKeydownHandler = null;
+  }
+
+  const tip = state.threeDotsTipEl;
+  if (tip && tip.parentNode) {
+    tip.parentNode.removeChild(tip);
+  }
+  state.threeDotsTipEl = null;
+  state.threeDotsTipVisible = false;
+  state.threeDotsTipShownInSession = markSeen || getHasSeenThreeDotsTip();
+
+  const anchor = state.refs.menuToggle;
+  if (anchor) {
+    anchor.removeAttribute("aria-describedby");
+  }
+}
+
+function showThreeDotsTip() {
+  if (state.threeDotsTipVisible) return true;
+  const anchor = state.refs.menuToggle;
+  if (!isElementVisible(anchor)) return false;
+
+  const tip = document.createElement("div");
+  tip.id = "hc2-three-dots-tip";
+  tip.className = "hc2__menuTip";
+  tip.setAttribute("role", "dialog");
+  tip.setAttribute("aria-live", "polite");
+  tip.innerHTML = `
+    <p class="hc2__menuTipText">${t("threeDotsTipBody")}</p>
+    <button
+      type="button"
+      class="hc2__menuTipClose"
+      aria-label="${t("threeDotsTipClose")}"
+      title="${t("threeDotsTipClose")}"
+    >
+      ×
+    </button>
+  `;
+
+  document.body.appendChild(tip);
+  state.threeDotsTipEl = tip;
+  state.threeDotsTipVisible = true;
+  anchor?.setAttribute("aria-describedby", tip.id);
+
+  const closeBtn = tip.querySelector(".hc2__menuTipClose");
+  closeBtn?.addEventListener("click", () => {
+    dismissThreeDotsTip({ markSeen: true });
+  });
+
+  state.threeDotsTipOutsideHandler = (event) => {
+    const target = event.target;
+    if (!target) return;
+    if (tip.contains(target)) return;
+    if (anchor && anchor.contains(target)) return;
+    dismissThreeDotsTip({ markSeen: true });
+  };
+  document.addEventListener("mousedown", state.threeDotsTipOutsideHandler, true);
+
+  state.threeDotsTipKeydownHandler = (event) => {
+    if (event.key === "Escape" || event.key === "Tab") {
+      dismissThreeDotsTip({ markSeen: true });
+    }
+  };
+  document.addEventListener("keydown", state.threeDotsTipKeydownHandler, true);
+
+  scheduleThreeDotsTipReposition();
+  requestAnimationFrame(() => {
+    scheduleThreeDotsTipReposition();
+  });
+  return true;
 }
 
 function setStatus(message) {
@@ -1762,6 +1925,8 @@ function bindEvents() {
   const r = state.refs;
 
   r.menuToggle?.addEventListener("click", () => {
+    setHasSeenThreeDotsTip(true);
+    dismissThreeDotsTip({ markSeen: false });
     toggleControls();
   });
 
@@ -1930,6 +2095,9 @@ function bindEvents() {
       if (state.refs.stationSuggestions?.classList.contains("is-visible")) {
         repositionSuggestionsPortal();
       }
+      if (state.threeDotsTipVisible) {
+        scheduleThreeDotsTipReposition();
+      }
     });
   };
   if (state.windowResizeHandler) {
@@ -1970,6 +2138,8 @@ export function initHeaderControls2({
   state.callbacks.onOpenInfo = typeof onOpenInfo === "function" ? onOpenInfo : null;
   state.callbacks.onControlsChange = typeof onControlsChange === "function" ? onControlsChange : null;
   state.callbacks.onLanguageChange = typeof onLanguageChange === "function" ? onLanguageChange : null;
+  state.threeDotsTipShownInSession = getHasSeenThreeDotsTip();
+  dismissThreeDotsTip({ markSeen: false });
 
   state.currentStop = getStopFromCallback();
   mountMarkup();
@@ -2054,6 +2224,17 @@ export function updateHeaderControls2({ currentStop, language } = {}) {
     state.refs.filtersOpen.disabled = !filtersAvailable;
     state.refs.filtersOpen.classList.toggle("is-disabled", !filtersAvailable);
   }
+}
+
+export function maybeShowThreeDotsTip() {
+  if (!state.initialized) return false;
+  if (state.threeDotsTipVisible) return true;
+  if (state.threeDotsTipShownInSession) return false;
+  if (getHasSeenThreeDotsTip()) {
+    state.threeDotsTipShownInSession = true;
+    return false;
+  }
+  return showThreeDotsTip();
 }
 
 export function setBoardLoadingHint(isLoading) {
