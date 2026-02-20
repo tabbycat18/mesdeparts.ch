@@ -29,7 +29,7 @@ function createPickerTemplate(side) {
         <div class="dual-picker-icons">
           <button
             id="favorites-only-toggle-${suffix}"
-            class="dual-picker-icon-btn"
+            class="dual-picker-icon-btn hc2__pillControl"
             type="button"
             aria-label="${t("filterFavoritesTitle")}"
             aria-pressed="false"
@@ -41,7 +41,7 @@ function createPickerTemplate(side) {
           </button>
           <button
             id="station-search-${suffix}"
-            class="dual-picker-icon-btn"
+            class="dual-picker-icon-btn hc2__pillControl"
             data-action="geo"
             type="button"
             aria-label="${t("nearbyButton")}"

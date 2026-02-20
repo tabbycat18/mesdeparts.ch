@@ -256,7 +256,7 @@ function createTemplate() {
           <div class="hc2__searchActions">
             <button
               id="station-input-clear"
-              class="hc2__actionBtn is-hidden"
+              class="hc2__actionBtn hc2__pillControl is-hidden"
               data-action="clear"
               type="button"
               aria-label="Clear"
@@ -273,7 +273,7 @@ function createTemplate() {
             </button>
             <button
               id="station-search-btn"
-              class="hc2__actionBtn"
+              class="hc2__actionBtn hc2__pillControl"
               data-action="geo"
               type="button"
               aria-label="${t("nearbyButton")}"
@@ -293,7 +293,7 @@ function createTemplate() {
             </button>
             <button
               id="favorites-only-toggle"
-              class="hc2__actionBtn"
+              class="hc2__actionBtn hc2__pillControl"
               data-action="favorites"
               type="button"
               aria-label="${t("filterFavoritesTitle")}"
