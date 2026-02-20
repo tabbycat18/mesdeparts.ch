@@ -14,83 +14,85 @@ function createPickerTemplate(side) {
   const sideLabel = side === "right" ? t("dualSideRight") : t("dualSideLeft");
 
   return `
-    <div class="hc2__pickerHeader">
-      <span class="dual-picker-side-label" id="side-label-${suffix}">${sideLabel}</span>
+    <div class="dual-picker-input-card">
+      <div class="dual-picker-side-label" id="side-label-${suffix}">${sideLabel}</div>
+
+      <label for="station-input-${suffix}" class="sr-only">${t("searchStop")}</label>
+      <div class="dual-picker-search">
+        <input
+          id="station-input-${suffix}"
+          type="text"
+          class="dual-picker-input"
+          placeholder="${t("searchAction")}..."
+          autocomplete="off"
+        />
+        <div class="dual-picker-icons">
+          <button
+            id="favorites-only-toggle-${suffix}"
+            class="dual-picker-icon-btn"
+            type="button"
+            aria-label="${t("filterFavoritesTitle")}"
+            aria-pressed="false"
+            aria-expanded="false"
+            aria-controls="favorites-popover-${suffix}"
+            title="${t("filterFavoritesTitle")}"
+          >
+            <span aria-hidden="true">★</span>
+          </button>
+          <button
+            id="station-search-${suffix}"
+            class="dual-picker-icon-btn"
+            data-action="geo"
+            type="button"
+            aria-label="${t("nearbyButton")}"
+            title="${t("nearbyButton")}"
+          >
+            <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+              <path
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M12 21s-6-5.94-6-11a6 6 0 1 1 12 0c0 5.06-6 11-6 11Z"
+              />
+              <circle cx="12" cy="10" r="2.4" fill="currentColor" />
+            </svg>
+          </button>
+        </div>
+      </div>
+      <ul id="station-suggestions-${suffix}" class="dual-picker-suggestions"></ul>
     </div>
 
-    <label for="station-input-${suffix}" class="sr-only">${t("searchStop")}</label>
-    <div class="hc2__search">
-      <input
-        id="station-input-${suffix}"
-        type="text"
-        class="hc2__searchInput"
-        placeholder="${t("searchAction")}..."
-        autocomplete="off"
-      />
-      <div class="hc2__searchActions">
+    <div class="dual-picker-filters">
+      <div class="hc2__row hc2__displayRow">
+        <div class="hc2__rowLabel hc2__displayLabel">${t("filterDisplay")}</div>
+        <div id="view-segment-${suffix}" class="hc2__segment"></div>
+      </div>
+
+      <div class="hc2__row">
         <button
-          id="station-search-${suffix}"
-          class="hc2__actionBtn"
-          data-action="geo"
-          type="button"
-          aria-label="${t("nearbyButton")}"
-          title="${t("nearbyButton")}"
-        >
-          <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-            <path
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.8"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              d="M12 21s-6-5.94-6-11a6 6 0 1 1 12 0c0 5.06-6 11-6 11Z"
-            />
-            <circle cx="12" cy="10" r="2.4" fill="currentColor" />
-          </svg>
-        </button>
-        <button
-          id="favorites-only-toggle-${suffix}"
+          id="filters-open-${suffix}"
           class="hc2__pill"
           type="button"
-          aria-label="${t("filterFavoritesTitle")}"
-          aria-pressed="false"
           aria-expanded="false"
-          aria-controls="favorites-popover-${suffix}"
+          aria-controls="filters-popover-${suffix}"
         >
-          <span aria-hidden="true">★</span>
-          <span>${t("filterFavoritesOnlyShort")}</span>
+          <span class="hc2__pillIcon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" focusable="false">
+              <path
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M4 6h16l-6.4 7.1v4.9l-3.2 1.8v-6.7z"
+              />
+            </svg>
+          </span>
+          <span>${t("filterButton")}</span>
         </button>
       </div>
-      <ul id="station-suggestions-${suffix}" class="station-suggestions"></ul>
-    </div>
-
-    <div class="hc2__row hc2__displayRow">
-      <div class="hc2__rowLabel hc2__displayLabel">${t("filterDisplay")}</div>
-      <div id="view-segment-${suffix}" class="hc2__segment"></div>
-    </div>
-
-    <div class="hc2__row">
-      <button
-        id="filters-open-${suffix}"
-        class="hc2__pill"
-        type="button"
-        aria-expanded="false"
-        aria-controls="filters-popover-${suffix}"
-      >
-        <span class="hc2__pillIcon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" focusable="false">
-            <path
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              d="M4 6h16l-6.4 7.1v4.9l-3.2 1.8v-6.7z"
-            />
-          </svg>
-        </span>
-        <span>${t("filterButton")}</span>
-      </button>
     </div>
   `;
 }
@@ -149,6 +151,12 @@ function createPickerSheetsTemplate(side) {
       </header>
 
       <div class="hc2__sheetBody">
+        <section class="hc2__filterSection" id="filters-section-lines-${suffix}">
+          <div class="hc2__sectionTitle" id="filters-lines-title-${suffix}">${t("filterLines")}</div>
+          <div id="line-chip-list-${suffix}" class="hc2__chipRow"></div>
+          <div id="lines-empty-${suffix}" class="hc2__empty is-hidden">${t("filterNoLines")}</div>
+        </section>
+
         <section class="hc2__filterSection">
           <div class="hc2__sectionTitle">${t("filterDisplay")}</div>
           <label class="hc2__switch hc2__switch--clickable" for="filters-hide-departure-${suffix}">
@@ -183,6 +191,7 @@ export class DualPicker {
     this.busView = initialState.busView || VIEW_MODE_LINE;
     this.trainView = initialState.trainView || TRAIN_FILTER_ALL;
     this.pendingHideDeparture = initialState.hideDeparture || false;
+    this.pendingLineFilter = initialState.lineFilter ? new Set(initialState.lineFilter) : new Set();
     this.onChange = onChange;
     this.suggestToken = 0;
 
@@ -213,18 +222,23 @@ export class DualPicker {
       filtersOpen: document.getElementById(`filters-open-${suffix}`),
       filtersPopover: document.getElementById(`filters-popover-${suffix}`),
       filtersHide: document.getElementById(`filters-hide-departure-${suffix}`),
+      lineChipList: document.getElementById(`line-chip-list-${suffix}`),
+      linesEmpty: document.getElementById(`lines-empty-${suffix}`),
+      linesSection: document.getElementById(`filters-section-lines-${suffix}`),
       filtersReset: document.querySelector(`[data-filter-reset='${suffix}']`),
       filtersApply: document.querySelector(`[data-filter-apply='${suffix}']`),
       filtersClose: document.querySelector(`[data-filter-close='${suffix}']`),
       favClose: document.querySelector(`[data-fav-close='${suffix}']`),
       filtersBackdrop: document.getElementById(`filters-backdrop-${suffix}`),
       favBackdrop: document.getElementById(`favorites-backdrop-${suffix}`),
+      sideLabel: document.getElementById(`side-label-${suffix}`),
     };
   }
 
   syncAll() {
     this.syncInputValue();
     this.renderViewControls();
+    this.renderLineChips();
     this.syncHideToggle();
     this.renderFavoritesList();
   }
@@ -267,6 +281,67 @@ export class DualPicker {
         this.setView(opt.v);
       });
       segment.appendChild(b);
+    });
+  }
+
+  renderLineChips() {
+    if (!this.els.lineChipList || !this.els.linesEmpty || !this.els.linesSection) return;
+
+    const lines = this.sortedLineOptions();
+    const isTrain = this.isTrainBoard;
+    const shouldHide = lines.length === 0 || isTrain;
+
+    this.els.linesSection.hidden = shouldHide;
+    if (shouldHide) {
+      this.els.linesSection.style.display = "none";
+    } else {
+      this.els.linesSection.style.display = "";
+    }
+
+    this.els.lineChipList.innerHTML = "";
+    if (shouldHide) {
+      this.els.linesEmpty.classList.add("is-hidden");
+      return;
+    }
+
+    if (lines.length === 0) {
+      this.els.linesEmpty.classList.remove("is-hidden");
+      return;
+    }
+
+    this.els.linesEmpty.classList.add("is-hidden");
+
+    lines.forEach((lineId) => {
+      const isActive = this.pendingLineFilter.has(lineId);
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "hc2__chip";
+      btn.classList.toggle("is-active", isActive);
+      btn.setAttribute("aria-pressed", isActive ? "true" : "false");
+      btn.textContent = lineId;
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (this.pendingLineFilter.has(lineId)) {
+          this.pendingLineFilter.delete(lineId);
+        } else {
+          this.pendingLineFilter.add(lineId);
+        }
+        this.renderLineChips();
+      });
+      this.els.lineChipList.appendChild(btn);
+    });
+  }
+
+  sortedLineOptions() {
+    const lines = (window.appState?.lineOptions || [])
+      .map((v) => String(v || "").trim())
+      .filter(Boolean);
+
+    return lines.sort((a, b) => {
+      const na = parseInt(String(a).replace(/\D/g, ""), 10) || 0;
+      const nb = parseInt(String(b).replace(/\D/g, ""), 10) || 0;
+      if (na !== nb) return na - nb;
+      return String(a).localeCompare(String(b), "fr-CH");
     });
   }
 
@@ -378,7 +453,9 @@ export class DualPicker {
   openFilters() {
     if (!this.els.filtersPopover || !this.els.filtersOpen) return;
     this.pendingHideDeparture = !!this.state.hideDeparture;
+    this.pendingLineFilter = new Set(this.state.lineFilter || []);
     this.syncHideToggle();
+    this.renderLineChips();
     this.els.filtersPopover.hidden = false;
     if (this.els.filtersBackdrop) this.els.filtersBackdrop.hidden = false;
     this.els.filtersOpen.setAttribute("aria-expanded", "true");
@@ -401,15 +478,20 @@ export class DualPicker {
 
   applyFilters() {
     this.state.hideDeparture = !!this.pendingHideDeparture;
+    this.state.lineFilter = this.pendingLineFilter.size > 0 ? Array.from(this.pendingLineFilter) : null;
     this.syncHideToggle();
+    this.renderLineChips();
     this.closeFilters();
     this.triggerChange();
   }
 
   resetFilters() {
     this.pendingHideDeparture = false;
+    this.pendingLineFilter.clear();
     this.state.hideDeparture = false;
+    this.state.lineFilter = null;
     this.syncHideToggle();
+    this.renderLineChips();
     this.closeFilters();
     this.triggerChange();
   }
@@ -418,6 +500,7 @@ export class DualPicker {
     if (this.els.suggestions) {
       this.els.suggestions.innerHTML = "";
       this.els.suggestions.style.display = "none";
+      this.els.suggestions.classList.remove("is-visible");
     }
   }
 
@@ -426,6 +509,7 @@ export class DualPicker {
     this.els.suggestions.innerHTML = "";
     if (!list || !list.length) {
       this.els.suggestions.style.display = "none";
+      this.els.suggestions.classList.remove("is-visible");
       return;
     }
     const frag = document.createDocumentFragment();
@@ -434,11 +518,22 @@ export class DualPicker {
       li.className = "station-suggestion-item";
       li.dataset.id = item.id;
       li.dataset.name = item.name;
-      li.textContent = item.name;
+
+      // Show station name + distance if available
+      if (item.distance !== undefined && item.distance !== null) {
+        const distanceText = item.distance < 1000
+          ? `${Math.round(item.distance)}m`
+          : `${(item.distance / 1000).toFixed(1)}km`;
+        li.innerHTML = `<span class="station-name">${item.name}</span><span class="station-distance">${distanceText}</span>`;
+      } else {
+        li.textContent = item.name;
+      }
+
       frag.appendChild(li);
     });
     this.els.suggestions.appendChild(frag);
-    this.els.suggestions.style.display = "";
+    this.els.suggestions.style.display = "block";
+    this.els.suggestions.classList.add("is-visible");
   }
 
   debounce(fn, wait = 200) {
@@ -521,8 +616,15 @@ export class DualPicker {
         8
       );
       if (stations && stations.length > 0) {
-        const first = stations[0];
-        this.setStation(first.name, first.id);
+        // Clear input and show nearby stations in suggestions for user to choose (closest to least close)
+        if (this.els.input) {
+          this.els.input.value = "";
+        }
+        this.renderSuggestions(stations);
+        // Focus the input so user sees the suggestions and can interact
+        if (this.els.input) {
+          this.els.input.focus();
+        }
       }
     } catch {
       // ignore
@@ -718,6 +820,7 @@ export class DualPicker {
       busView: this.busView,
       trainView: this.trainView,
       hideDeparture: this.state.hideDeparture,
+      lineFilter: this.state.lineFilter || null,
       language: this.state.language,
       customUrl: this.state.customUrl || null,
     };
@@ -747,6 +850,7 @@ export class DualPicker {
 
     this.state.view = this.isTrainBoard ? this.trainView : this.busView;
     this.pendingHideDeparture = !!this.state.hideDeparture;
+    this.pendingLineFilter = new Set(next.lineFilter || []);
     this.syncAll();
     if (!silent) this.triggerChange();
   }
