@@ -2988,10 +2988,10 @@ body.dual-body {
 .dual-action {
   height: 44px;
   min-height: 44px;
-  padding: 0 16px;
+  padding: 0 12px;
   border-radius: 9999px;
   border: none;
-  background: #ffffff;
+  background: #ffffff !important;
   color: #0369a1;
   font-size: 0.81rem;
   font-weight: 600;
