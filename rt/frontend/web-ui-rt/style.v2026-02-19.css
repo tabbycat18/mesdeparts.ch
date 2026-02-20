@@ -3081,9 +3081,11 @@ body.dual-body {
   padding: 16px;
   margin: 0;
   box-shadow: none;
+  overflow: hidden;
+  max-height: 500px;
   transform: translateY(0);
   opacity: 1;
-  transition: transform 0.35s ease-out, opacity 0.35s ease-out;
+  transition: transform 0.35s ease-out, opacity 0.35s ease-out, max-height 0.35s ease-out;
   pointer-events: auto;
 }
 
@@ -3096,6 +3098,7 @@ body.dual-body {
 }
 
 .dual-controls.is-collapsed {
+  max-height: 0;
   transform: translateY(-100%);
   opacity: 0;
   pointer-events: none;
@@ -3103,6 +3106,7 @@ body.dual-body {
 
 /* Hide all controls (picker panels + floating badges) when collapsed */
 .dual-body.dual-controls-hidden .dual-controls {
+  max-height: 0;
   transform: translateY(-100%);
   opacity: 0;
   pointer-events: none;
