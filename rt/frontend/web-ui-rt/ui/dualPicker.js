@@ -431,7 +431,7 @@ export class DualPicker {
     const frag = document.createDocumentFragment();
     list.forEach((item) => {
       const li = document.createElement("li");
-      li.className = "station-suggestion-item";
+      li.className = "hc2__suggestionItem";
       li.dataset.id = item.id;
       li.dataset.name = item.name;
       li.textContent = item.name;
