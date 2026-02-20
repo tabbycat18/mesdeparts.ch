@@ -46,7 +46,8 @@ export const pool = new Pool({
     : {}),
 });
 
-// Optional: log when connected
-pool.on("connect", () => {
-  console.log("[DB] Connected to Neon PostgreSQL");
-});
+if (process.env.DEBUG_DB_CONNECT === "1") {
+  pool.on("connect", () => {
+    console.log("[DB] Connected to Neon PostgreSQL");
+  });
+}

@@ -631,7 +631,13 @@ export function buildDelayIndex(gtfsRtFeed) {
 
       for (const stopId of stopIdVariants(rawStopId)) {
         const key = buildStopRealtimeKey(tripId, stopId, seqPart, tripStartDate);
-        if (stopScheduleRelationship) {
+        // Keep stop-status index only for non-default relationships.
+        // "SCHEDULED" at stop level is the default and duplicates the delay index,
+        // inflating memory significantly without adding behavior.
+        if (
+          stopScheduleRelationship &&
+          stopScheduleRelationship !== "SCHEDULED"
+        ) {
           const nextStatus = {
             relationship: stopScheduleRelationship,
             updatedDepartureEpoch: updatedEpoch,
