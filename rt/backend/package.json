@@ -9,6 +9,7 @@
     "seed:aliases": "node scripts/seedStopAliases.js",
     "search:sync-aliases": "node scripts/syncStopSearchAliases.js",
     "search:verify": "node scripts/verifyStopSearchCases.js",
+    "poller": "TZ=Europe/Zurich node scripts/pollLaTripUpdates.js",
     "stops:debug": "node scripts/debugStop.js",
     "stops:verify": "node scripts/verifyStops.js",
     "search:bench": "node scripts/benchmarkStopSearch.js",

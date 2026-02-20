@@ -13,7 +13,67 @@ TODO: remove any remaining legacy static dataset directories after the first suc
 - Container file: `rt/backend/Dockerfile`.
 - Container listen port: `8080` (`ENV PORT=8080`).
 
-Unknown (not found in repo): committed `fly.toml` and Fly app-specific settings (app name, region, machine size, autoscaling).
+API Fly config is committed at `rt/backend/fly.toml`.
+
+## GTFS-RT Option A1 (Global Limit Guarantee)
+
+To guarantee the LA GTFS-RT upstream limit globally (5/min), run one dedicated poller app and let API instances read shared DB cache only.
+
+- API app stays: `mesdeparts-ch` (`https://mesdeparts-ch.fly.dev`)
+- Poller app: separate Fly app, single machine only
+- API `/api/stationboard` must not fetch upstream GTFS-RT directly
+
+### 1) Apply shared cache migration once (Neon)
+
+```bash
+cd rt/backend
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f sql/create_rt_cache.sql
+```
+
+### 2) Create poller app (one-time)
+
+```bash
+fly apps create mesdeparts-rt-poller
+```
+
+### 3) Set poller secrets (must share same Neon DB as API app)
+
+```bash
+fly secrets set -a mesdeparts-rt-poller \
+  DATABASE_URL="postgresql://...your-neon-url..." \
+  GTFS_RT_TOKEN="...your-la-gtfs-rt-token..."
+```
+
+If your API app uses a different token env name, set it too (`OPENDATA_SWISS_TOKEN` or `OPENTDATA_GTFS_RT_KEY`).
+
+### 4) Deploy poller app
+
+```bash
+fly deploy \
+  -a mesdeparts-rt-poller \
+  -c rt/backend/fly.poller.toml \
+  --dockerfile rt/backend/Dockerfile
+```
+
+Poller runtime command is `npm run poller`.
+
+### 5) Force exactly one poller machine
+
+```bash
+fly scale count 1 -a mesdeparts-rt-poller
+```
+
+Do not scale the poller above `1`. Do not enable autoscaling for the poller app.
+
+### 6) API app secrets (same DB)
+
+Ensure API app points to the same `DATABASE_URL`:
+
+```bash
+fly secrets set -a mesdeparts-ch DATABASE_URL="postgresql://...same-neon-url..."
+```
+
+This Option A1 layout guarantees all LA GTFS-RT upstream calls come from a single process (the poller), while API machines remain DB-cache readers.
 
 ## Stationboard Performance
 

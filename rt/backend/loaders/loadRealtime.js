@@ -1,29 +1,16 @@
 // backend/loaders/loadRealtime.js
 import { pool } from "../db.js";
-import { fetchTripUpdates } from "../src/loaders/fetchTripUpdates.js";
-import { insertRtPollLog, ensureAlignmentAuditTables } from "../src/audit/alignmentLogs.js";
+import GtfsRealtimeBindings from "gtfs-realtime-bindings";
+import {
+  getRtCache,
+  LA_TRIPUPDATES_FEED_KEY,
+} from "../src/db/rtCache.js";
 
 // Set DEBUG_RT=1 if you want logs
 const DEBUG_RT = process.env.DEBUG_RT === "1";
 
-// Default: refresh RT every 30s (tune with GTFS_RT_CACHE_MS).
-// opentransportdata.swiss GTFS-RT is documented with a hard cap of 2 req/min per key.
-// We enforce a minimum TTL so a single backend instance cannot exceed that.
-// even if the UI polls frequently.
-const MAX_CALLS_PER_MIN = Number(process.env.GTFS_RT_MAX_CALLS_PER_MIN || "2");
-const MIN_TTL_MS = Math.ceil(
-  60000 /
-    Math.max(
-      1,
-      Number.isFinite(MAX_CALLS_PER_MIN) ? MAX_CALLS_PER_MIN : 2
-    )
-);
-
 const rawTtl = Number(process.env.GTFS_RT_CACHE_MS || "30000");
-const CACHE_TTL_MS = Math.max(
-  Number.isFinite(rawTtl) ? rawTtl : 30000,
-  MIN_TTL_MS
-);
+const CACHE_TTL_MS = Math.max(Number.isFinite(rawTtl) ? rawTtl : 30000, 1000);
 
 const RT_RETENTION_HOURS = Number(process.env.RT_RETENTION_HOURS || "12");
 const RT_RETENTION_MS = Math.max(1, RT_RETENTION_HOURS) * 60 * 60 * 1000;
@@ -282,6 +269,114 @@ function asNumber(v) {
   return null;
 }
 
+function parsedTimestampMs(value) {
+  if (value == null) return null;
+  if (value instanceof Date) {
+    const ms = value.getTime();
+    return Number.isFinite(ms) ? ms : null;
+  }
+  const ms = new Date(value).getTime();
+  return Number.isFinite(ms) ? ms : null;
+}
+
+function normalizeTripUpdatesFeedFromJson(raw) {
+  const header = raw?.header || {};
+  const entities = Array.isArray(raw?.entity)
+    ? raw.entity
+    : Array.isArray(raw?.entities)
+      ? raw.entities
+      : [];
+  const feedVersion =
+    pick(header, "feed_version", "feedVersion") ||
+    pick(raw, "feed_version", "feedVersion") ||
+    pick(header, "gtfs_realtime_version", "gtfsRealtimeVersion") ||
+    "";
+
+  return {
+    feedVersion,
+    gtfsRealtimeVersion:
+      pick(header, "gtfs_realtime_version", "gtfsRealtimeVersion") || "",
+    headerTimestamp: asNumber(pick(header, "timestamp", "headerTimestamp")),
+    entities,
+    entity: entities,
+  };
+}
+
+function normalizeTripUpdatesFeedFromProtobuf(feedMessage) {
+  const header = feedMessage?.header || {};
+  const entities = Array.isArray(feedMessage?.entity) ? feedMessage.entity : [];
+  return {
+    feedVersion:
+      String(feedMessage?.header?.feedVersion || "").trim() ||
+      String(feedMessage?.feedVersion || "").trim() ||
+      String(feedMessage?.header?.gtfsRealtimeVersion || "").trim() ||
+      "",
+    gtfsRealtimeVersion: String(feedMessage?.header?.gtfsRealtimeVersion || "").trim(),
+    headerTimestamp: asNumber(feedMessage?.header?.timestamp),
+    header,
+    entities,
+    entity: entities,
+  };
+}
+
+export function decodeTripUpdatesFeedPayload(payloadBytes) {
+  const payloadBuffer = Buffer.isBuffer(payloadBytes)
+    ? payloadBytes
+    : Buffer.from(payloadBytes || []);
+  if (!payloadBuffer.length) {
+    return { feed: null, decodeError: new Error("rt_cache_payload_empty") };
+  }
+
+  try {
+    const feedMessage =
+      GtfsRealtimeBindings.transit_realtime.FeedMessage.decode(payloadBuffer);
+    return { feed: normalizeTripUpdatesFeedFromProtobuf(feedMessage), decodeError: null };
+  } catch (protobufErr) {
+    try {
+      const json = JSON.parse(payloadBuffer.toString("utf8"));
+      return { feed: normalizeTripUpdatesFeedFromJson(json), decodeError: null };
+    } catch (jsonErr) {
+      const error = new Error(
+        `rt_cache_payload_decode_failed: ${String(
+          protobufErr?.message || jsonErr?.message || "unknown_error"
+        )}`
+      );
+      return { feed: null, decodeError: error };
+    }
+  }
+}
+
+export async function readTripUpdatesFeedFromCache() {
+  const cacheRow = await getRtCache(LA_TRIPUPDATES_FEED_KEY);
+  const fetchedAtMs = parsedTimestampMs(cacheRow?.fetched_at);
+  if (!cacheRow?.payloadBytes) {
+    return {
+      feed: null,
+      fetchedAtMs,
+      lastStatus: Number.isFinite(Number(cacheRow?.last_status))
+        ? Number(cacheRow.last_status)
+        : null,
+      lastError: cacheRow?.last_error || null,
+      etag: cacheRow?.etag || null,
+      hasPayload: false,
+      decodeError: null,
+    };
+  }
+
+  const decoded = decodeTripUpdatesFeedPayload(cacheRow.payloadBytes);
+  return {
+    feed: decoded.feed,
+    fetchedAtMs,
+    lastStatus: Number.isFinite(Number(cacheRow?.last_status))
+      ? Number(cacheRow.last_status)
+      : null,
+    lastError: cacheRow?.last_error || null,
+    etag: cacheRow?.etag || null,
+    hasPayload: !!decoded.feed,
+    decodeError: decoded.decodeError || null,
+  };
+}
+
 function getTripUpdate(entity) {
   return pick(entity, "trip_update", "tripUpdate") || null;
 }
@@ -402,32 +497,18 @@ function getUpdatedEpoch(stu) {
   return null;
 }
 
-/**
- * Fetch the GTFS-RT trip-updates feed through the M1 wrapper.
- */
-export async function fetchGtfsRealtimeFeed() {
-  const polledAt = new Date();
-  const data = await fetchTripUpdates();
-
-  if (DEBUG_RT) {
-    const keys = Object.keys(data || {});
-    const entityCount = Array.isArray(data?.entities)
-      ? data.entities.length
-      : Array.isArray(data?.entity)
-        ? data.entity.length
-        : 0;
-    console.log("[GTFS-RT] feed keys:", keys);
-    console.log("[GTFS-RT] entity count:", entityCount);
+async function loadRealtimeDelayIndexFromSharedCache() {
+  const feedResult = await readTripUpdatesFeedFromCache();
+  if (!feedResult.feed) {
+    return {
+      index: emptyDelayIndex(),
+      feedResult,
+    };
   }
-
-  // Fire-and-forget: log RT poll + trip-update snapshot for alignment auditing.
-  void ensureAlignmentAuditTables(pool)
-    .then(() => insertRtPollLog(pool, { polledAt, feedName: "trip_updates", feed: data }))
-    .catch((err) => {
-      if (DEBUG_RT) console.warn("[GTFS-RT] insertRtPollLog failed", err?.message || err);
-    });
-
-  return data;
+  return {
+    index: buildDelayIndex(feedResult.feed),
+    feedResult,
+  };
 }
 
 /**
@@ -909,8 +990,8 @@ export function getDelayForStop(
 }
 
 export async function loadRealtimeDelayIndex() {
-  const feed = await fetchGtfsRealtimeFeed();
-  return buildDelayIndex(feed);
+  const { index } = await loadRealtimeDelayIndexFromSharedCache();
+  return index;
 }
 
 function emptyDelayIndex() {
@@ -939,6 +1020,8 @@ function defaultRefreshMeta() {
     hadError: false,
     error: null,
     lastAttemptAtMs: null,
+    lastStatus: null,
+    lastError: null,
   };
 }
 
@@ -966,8 +1049,11 @@ function buildTripUpdatesDebugSnapshot({ overrideStatus } = {}) {
     entityCount: Number.isFinite(refreshMeta.entityCount)
       ? Number(refreshMeta.entityCount)
       : null,
-    hadError: refreshMeta.hadError === true,
-    error: shortErrorText(refreshMeta.error),
+    hadError:
+      refreshMeta.hadError === true ||
+      (Number.isFinite(Number(refreshMeta.lastStatus)) &&
+        Number(refreshMeta.lastStatus) >= 400),
+    error: shortErrorText(refreshMeta.error || refreshMeta.lastError),
   };
 }
 
@@ -987,21 +1073,36 @@ function runRefresh() {
     hadError: false,
     error: null,
   };
-  const refreshPromise = loadRealtimeDelayIndex()
-    .then((next) => {
+  const refreshPromise = loadRealtimeDelayIndexFromSharedCache()
+    .then(({ index: next, feedResult }) => {
       const fetchMs = Date.now() - startedAt;
-      const merged = mergeDelayIndexes(cached.value, next, {
-        nowMs: Date.now(),
-        prevSeenAtMs: cached.ts || Date.now(),
-      });
+      const nextNowMs = Date.now();
+      const nextFetchedAtMs = Number.isFinite(feedResult?.fetchedAtMs)
+        ? Number(feedResult.fetchedAtMs)
+        : 0;
+      const hasFeedPayload = feedResult?.hasPayload === true;
+      const merged = hasFeedPayload
+        ? mergeDelayIndexes(cached.value, next, {
+            nowMs: nextNowMs,
+            prevSeenAtMs: cached.ts || nextNowMs,
+          })
+        : emptyDelayIndex();
       cached.value = merged;
-      cached.ts = Date.now();
+      cached.ts = nextFetchedAtMs;
       cached.refreshMeta = {
         fetchMs,
-        entityCount: Number.isFinite(next?.entityCount) ? Number(next.entityCount) : null,
-        hadError: false,
-        error: null,
+        entityCount: Number.isFinite(next?.entityCount)
+          ? Number(next.entityCount)
+          : hasFeedPayload
+            ? 0
+            : null,
+        hadError: !!feedResult?.decodeError,
+        error: shortErrorText(feedResult?.decodeError),
         lastAttemptAtMs: startedAt,
+        lastStatus: Number.isFinite(Number(feedResult?.lastStatus))
+          ? Number(feedResult.lastStatus)
+          : null,
+        lastError: shortErrorText(feedResult?.lastError),
       };
       return merged;
     })
@@ -1013,6 +1114,8 @@ function runRefresh() {
         hadError: true,
         error: shortErrorText(err),
         lastAttemptAtMs: startedAt,
+        lastStatus: null,
+        lastError: null,
       };
       if (DEBUG_RT) {
         console.warn("[GTFS-RT] refresh failed; serving stale/empty index", err?.message || err);
@@ -1074,7 +1177,7 @@ export function loadRealtimeDelayIndexOnce(options = {}) {
   if (!cached.refreshPromise) {
     if (DEBUG_RT) {
       console.log(
-        `[GTFS-RT] refresh (ttl=${CACHE_TTL_MS}ms, min=${MIN_TTL_MS}ms, age=${
+        `[GTFS-RT] refresh-from-db-cache (ttl=${CACHE_TTL_MS}ms, age=${
           age === null ? "n/a" : age + "ms"
         })`
       );
@@ -1091,6 +1194,21 @@ export function loadRealtimeDelayIndexOnce(options = {}) {
     return withTimeout(cached.refreshPromise, maxWaitMs, fallback);
   }
   return cached.refreshPromise;
+}
+
+export function __resetRealtimeDelayIndexCacheForTests() {
+  cached = {
+    value: null,
+    ts: 0,
+    refreshPromise: null,
+    refreshMeta: defaultRefreshMeta(),
+  };
+}
+
+export function __seedRealtimeDelayIndexCacheForTests(value, ts = Date.now()) {
+  cached.value = value;
+  cached.ts = Number.isFinite(ts) ? Number(ts) : Date.now();
+  cached.refreshPromise = null;
 }
 
 export async function loadRealtimeDelayIndexOnceWithDebug(options = {}) {

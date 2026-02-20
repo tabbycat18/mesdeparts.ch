@@ -60,6 +60,7 @@ const { createStationboardRouteHandler } = await import("./src/api/stationboardR
 const { fetchServiceAlerts } = await import("./src/loaders/fetchServiceAlerts.js");
 const { fetchTripUpdates } = await import("./src/loaders/fetchTripUpdates.js");
 const { summarizeTripUpdates } = await import("./src/loaders/tripUpdatesSummary.js");
+const { readTripUpdatesFeedFromCache } = await import("./loaders/loadRealtime.js");
 
 const app = express();
 const PORT = Number(process.env.PORT || 3001);
@@ -640,11 +641,43 @@ app.get("/api/_debug/tripupdates_summary", async (req, res) => {
 
   try {
     const sampleLimit = Math.max(1, Math.min(Number(req.query.sample || "5"), 20));
-    const feed = await fetchTripUpdates();
+    const wantsForceUpstream = String(req.query.force_upstream || "").trim() === "1";
+    const allowForceUpstream = process.env.NODE_ENV === "development";
+    const shouldForceUpstream = allowForceUpstream && wantsForceUpstream;
+
+    let feed;
+    let cacheInfo = null;
+    let source = "db_cache";
+
+    if (shouldForceUpstream) {
+      feed = await fetchTripUpdates();
+      source = "upstream_forced";
+    } else {
+      const cached = await readTripUpdatesFeedFromCache();
+      cacheInfo = {
+        hasPayload: cached?.hasPayload === true,
+        fetchedAt: Number.isFinite(cached?.fetchedAtMs)
+          ? new Date(cached.fetchedAtMs).toISOString()
+          : null,
+        lastStatus: Number.isFinite(Number(cached?.lastStatus))
+          ? Number(cached.lastStatus)
+          : null,
+        lastError: cached?.lastError || null,
+        decodeError: cached?.decodeError ? String(cached.decodeError.message || cached.decodeError) : null,
+      };
+      feed = cached?.feed || { entities: [], entity: [] };
+    }
+
     const summary = summarizeTripUpdates(feed, { sampleLimit });
     return res.json({
       ok: true,
       fetchedAt: new Date().toISOString(),
+      source,
+      forceUpstream: {
+        requested: wantsForceUpstream,
+        applied: shouldForceUpstream,
+      },
+      cache: cacheInfo,
       headerTimestamp: summary.headerTimestamp,
       counts: {
         totalEntities: summary.totalEntities,

@@ -1,0 +1,106 @@
+import { query } from "./query.js";
+
+export const LA_TRIPUPDATES_FEED_KEY = "la_tripupdates";
+
+function normalizeFeedKey(feedKey) {
+  const value = String(feedKey || "").trim();
+  if (!value) {
+    throw new Error("rt_cache_invalid_feed_key");
+  }
+  return value;
+}
+
+function normalizePayloadBytes(payloadBytes) {
+  if (Buffer.isBuffer(payloadBytes)) return payloadBytes;
+  if (payloadBytes instanceof Uint8Array) return Buffer.from(payloadBytes);
+  throw new Error("rt_cache_invalid_payload_bytes");
+}
+
+function normalizeFetchedAt(value) {
+  const out = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(out.getTime())) {
+    throw new Error("rt_cache_invalid_fetched_at");
+  }
+  return out;
+}
+
+function toNullableText(value) {
+  if (value == null) return null;
+  const out = String(value).trim();
+  return out || null;
+}
+
+function toNullableInt(value) {
+  if (value == null) return null;
+  const out = Number(value);
+  return Number.isFinite(out) ? Math.trunc(out) : null;
+}
+
+function rowToCacheRecord(row) {
+  if (!row) return null;
+  return {
+    payloadBytes: Buffer.isBuffer(row.payload) ? row.payload : Buffer.from(row.payload || []),
+    fetched_at: row.fetched_at,
+    etag: row.etag,
+    last_status: row.last_status,
+    last_error: row.last_error,
+  };
+}
+
+export async function upsertRtCache(
+  feed_key,
+  payloadBytes,
+  fetchedAt,
+  etag,
+  last_status,
+  last_error
+) {
+  const feedKey = normalizeFeedKey(feed_key);
+  const payload = normalizePayloadBytes(payloadBytes);
+  const fetchedAtDate = normalizeFetchedAt(fetchedAt || new Date());
+  const result = await query(
+    `
+      INSERT INTO public.rt_cache (
+        feed_key,
+        fetched_at,
+        payload,
+        etag,
+        last_status,
+        last_error
+      )
+      VALUES ($1, $2, $3, $4, $5, $6)
+      ON CONFLICT (feed_key)
+      DO UPDATE SET
+        fetched_at = EXCLUDED.fetched_at,
+        payload = EXCLUDED.payload,
+        etag = EXCLUDED.etag,
+        last_status = EXCLUDED.last_status,
+        last_error = EXCLUDED.last_error
+      RETURNING payload, fetched_at, etag, last_status, last_error
+    `,
+    [
+      feedKey,
+      fetchedAtDate,
+      payload,
+      toNullableText(etag),
+      toNullableInt(last_status),
+      toNullableText(last_error),
+    ]
+  );
+
+  return rowToCacheRecord(result.rows[0] || null);
+}
+
+export async function getRtCache(feed_key) {
+  const feedKey = normalizeFeedKey(feed_key);
+  const result = await query(
+    `
+      SELECT payload, fetched_at, etag, last_status, last_error
+      FROM public.rt_cache
+      WHERE feed_key = $1
+      LIMIT 1
+    `,
+    [feedKey]
+  );
+  return rowToCacheRecord(result.rows[0] || null);
+}

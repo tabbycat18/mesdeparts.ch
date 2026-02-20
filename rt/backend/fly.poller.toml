@@ -1,0 +1,10 @@
+app = "mesdeparts-rt-poller"
+primary_region = "ams"
+
+[processes]
+  app = "npm run poller"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 256
