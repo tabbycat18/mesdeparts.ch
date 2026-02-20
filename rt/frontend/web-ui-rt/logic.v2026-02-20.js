@@ -222,8 +222,18 @@ function resolveRealtimeDelta({
   const apiDelayMin = toFiniteMinutesOrNull(authoritativeDelayMin);
   const computedDeltaMin = computeDeltaMinutes(plannedTime, realtimeTime);
 
-  // Prefer authoritative numeric delay from API when present; fallback to timestamps.
-  const deltaMin = apiDelayMin != null ? apiDelayMin : computedDeltaMin;
+  // Prefer authoritative API delay, except when API reports 0 while timestamps show
+  // an actual early departure; keep that early signal for bus cosmetics/countdown.
+  const shouldTrustTimestampEarly =
+    apiDelayMin === 0 &&
+    computedDeltaMin != null &&
+    computedDeltaMin < 0;
+  const deltaMin =
+    shouldTrustTimestampEarly
+      ? computedDeltaMin
+      : apiDelayMin != null
+        ? apiDelayMin
+        : computedDeltaMin;
   const delayMin = deltaMin != null ? Math.max(0, deltaMin) : 0;
   const earlyMin = deltaMin != null ? Math.max(0, -deltaMin) : 0;
 
@@ -1168,6 +1178,7 @@ export function buildDeparturesGrouped(data, viewMode = VIEW_MODE_LINE) {
   // - Heure view: simply sort by baseTime (realtime)
   if (chronoBuses) {
     const nowMs = Date.now();
+    const chronoMinRows = Math.ceil(MIN_ROWS * 4 / 3);
     const sortedBuses = allDeps
       .filter((d) => d.mode === "bus")
       .slice()
@@ -1176,11 +1187,11 @@ export function buildDeparturesGrouped(data, viewMode = VIEW_MODE_LINE) {
     const horizonMs = CHRONO_VIEW_MIN_MINUTES * 60 * 1000;
     const withinHorizon = sortedBuses.filter((d) => (d.baseTime || 0) - nowMs <= horizonMs);
 
-    if (withinHorizon.length >= MIN_ROWS) {
+    if (withinHorizon.length >= chronoMinRows) {
       return withinHorizon;
     }
 
-    return sortedBuses.slice(0, Math.max(MIN_ROWS, withinHorizon.length));
+    return sortedBuses.slice(0, Math.max(chronoMinRows, withinHorizon.length));
   }
 
   // Group-by-line view (default)
@@ -1194,10 +1205,7 @@ export function buildDeparturesGrouped(data, viewMode = VIEW_MODE_LINE) {
     return a.localeCompare(b, "fr-CH");
   });
 
-  const perLineQuota = Math.max(
-    DEPS_PER_LINE,
-    Math.ceil(MIN_ROWS / Math.max(lineKeys.length, 1))
-  );
+  const perLineCap = Math.max(1, DEPS_PER_LINE);
 
   const balancedByDest = (deps, limit) => {
     const buckets = new Map();
@@ -1234,35 +1242,51 @@ export function buildDeparturesGrouped(data, viewMode = VIEW_MODE_LINE) {
     return out;
   };
 
+  const isDelayedDeparture = (dep) =>
+    dep?.status === "delay" && typeof dep?.delayMin === "number" && dep.delayMin > 0;
+
+  const preserveLineDelayVisibility = (selected, deps, limit) => {
+    const out = Array.isArray(selected) ? selected.slice() : [];
+    if (!deps?.length || out.some(isDelayedDeparture)) return out;
+
+    const delayedCandidates = deps.filter(isDelayedDeparture);
+    if (!delayedCandidates.length) return out;
+
+    const keyOf = (dep) =>
+      `${dep?.journeyId || ""}|${dep?.line || ""}|${dep?.dest || ""}|${dep?.scheduledTime || ""}`;
+    const selectedKeys = new Set(out.map((dep) => keyOf(dep)));
+    const candidate = delayedCandidates.find((dep) => !selectedKeys.has(keyOf(dep))) || delayedCandidates[0];
+    if (!candidate) return out;
+
+    if (out.length < limit) {
+      out.push(candidate);
+    } else {
+      let replaceIdx = -1;
+      for (let i = out.length - 1; i >= 0; i -= 1) {
+        if (!isDelayedDeparture(out[i])) {
+          replaceIdx = i;
+          break;
+        }
+      }
+      if (replaceIdx === -1) return out;
+      out[replaceIdx] = candidate;
+    }
+
+    out.sort((a, b) => (a.baseTime || 0) - (b.baseTime || 0));
+    return out;
+  };
+
   for (const key of lineKeys) {
     const deps = (byLine.get(key) || []).slice().sort((a, b) => a.baseTime - b.baseTime);
-    const selected = balancedByDest(deps, perLineQuota);
+    const selected = preserveLineDelayVisibility(
+      balancedByDest(deps, perLineCap),
+      deps,
+      perLineCap
+    );
     for (const d of selected) flat.push(d);
   }
 
-  flat.sort(lineDestComparator);
-
-  // Fallback: if too few rows, fill with soonest buses (keeps active filters)
-  if (flat.length < MIN_ROWS) {
-    const sortedAll = allDeps
-      .filter((d) => d.mode === "bus")
-      .slice()
-      .sort(lineDestComparator);
-    const keyOf = (d) =>
-      d && (d.journeyId || `${d.line || ""}|${d.dest || ""}|${d.scheduledTime || ""}`);
-    const seen = new Set(flat.map((d) => keyOf(d)));
-    for (const dep of sortedAll) {
-      if (flat.length >= MIN_ROWS) break;
-      const key = keyOf(dep);
-      if (seen.has(key)) continue;
-      seen.add(key);
-      flat.push(dep);
-    }
-    flat.sort(lineDestComparator);
-    return flat;
-  }
-
-  return flat;
+  return flat.sort(lineDestComparator);
 }
 
 export async function fetchDeparturesGrouped(viewMode = VIEW_MODE_LINE) {

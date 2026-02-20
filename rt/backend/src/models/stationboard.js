@@ -137,6 +137,8 @@ export function computeDisplayFields(dep, options = {}) {
   const includeDelayDebug = options?.includeDelayDebug === true;
   const delayMeta =
     options?.delayMeta && typeof options.delayMeta === "object" ? options.delayMeta : null;
+  const rtMatched = delayMeta?.rtMatched === true;
+  const rtMatchReason = normalizeText(delayMeta?.rtMatchReason).toLowerCase() || null;
 
   const out = {
     ...dep,
@@ -233,6 +235,10 @@ export function computeDisplayFields(dep, options = {}) {
       computedDelayMinAfterClamp,
       roundingMethodUsed,
       sourceUsed,
+      delaySourceUsed: sourceUsed,
+      rtMatched,
+      rtMatchReason,
+      matchReason: rtMatchReason,
     };
   }
 
@@ -319,6 +325,8 @@ export function normalizeDeparture(raw, ctx = {}) {
     delayMeta: {
       sourceUsed: raw?._delaySourceUsed,
       rawRtDelaySecUsed: raw?._rawRtDelaySecUsed,
+      rtMatched: raw?._rtMatched === true,
+      rtMatchReason: raw?._rtMatchReason,
     },
   });
 }

@@ -264,6 +264,168 @@ assert.equal(detectNetworkFromStation("Zurich HB"), "vbz");
   }
 }
 
+// When backend clamps delayMin to 0 but timestamps show early departure,
+// keep early signal from timestamps for bus cosmetics.
+{
+  const previous = {
+    station: appState.STATION,
+    stationId: appState.stationId,
+    trainFilter: appState.trainServiceFilter,
+    platformFilter: appState.platformFilter,
+    lineFilter: appState.lineFilter,
+    favoritesOnly: appState.favoritesOnly,
+    lastPlatforms: appState.lastPlatforms,
+  };
+
+  const nowBase = Date.now() + 8 * 60 * 1000;
+  const mkIso = (ms) => new Date(ms).toISOString();
+  const makeBusEntry = ({ line, earlyMin }) => {
+    const scheduledMs = nowBase + Number(line) * 60 * 1000;
+    const realtimeMs = scheduledMs - earlyMin * 60 * 1000;
+    return {
+      category: "B",
+      number: String(line),
+      name: String(line),
+      operator: "TL",
+      to: `Destination ${line}`,
+      source: "tripupdate",
+      tags: [],
+      stop: {
+        departure: mkIso(scheduledMs),
+        platform: "A",
+        delay: 0, // backend-clamped API field
+        prognosis: {
+          departure: mkIso(realtimeMs),
+          delay: 0,
+          status: "ON_TIME",
+          cancelled: false,
+        },
+        cancelled: false,
+      },
+      cancelled: false,
+    };
+  };
+
+  try {
+    appState.STATION = "Lausanne, Bel-Air";
+    appState.stationId = "Parent8591988";
+    appState.trainServiceFilter = "train_all";
+    appState.platformFilter = null;
+    appState.lineFilter = null;
+    appState.favoritesOnly = false;
+    appState.lastPlatforms = {};
+
+    const stationboard = [
+      makeBusEntry({ line: 8, earlyMin: 2 }),
+      makeBusEntry({ line: 9, earlyMin: 1 }),
+    ];
+
+    const rows = buildDeparturesGrouped({ stationboard }, VIEW_MODE_TIME);
+    const line8 = rows.find((row) => String(row.simpleLineId || "") === "8");
+    const line9 = rows.find((row) => String(row.simpleLineId || "") === "9");
+
+    assert.ok(line8);
+    assert.equal(line8.status, "early");
+    assert.ok(String(line8.remark || "").toLowerCase().includes("avance"));
+    assert.equal(line8.delayMin, -2);
+
+    assert.ok(line9);
+    assert.equal(line9.status, null);
+    assert.equal(line9.delayMin, -1);
+  } finally {
+    appState.STATION = previous.station;
+    appState.stationId = previous.stationId;
+    appState.trainServiceFilter = previous.trainFilter;
+    appState.platformFilter = previous.platformFilter;
+    appState.lineFilter = previous.lineFilter;
+    appState.favoritesOnly = previous.favoritesOnly;
+    appState.lastPlatforms = previous.lastPlatforms;
+  }
+}
+
+// line view should keep at least one delayed departure visible for a line
+// even when the per-line quota would otherwise pick only on-time rows.
+{
+  const previous = {
+    station: appState.STATION,
+    stationId: appState.stationId,
+    trainFilter: appState.trainServiceFilter,
+    platformFilter: appState.platformFilter,
+    lineFilter: appState.lineFilter,
+    favoritesOnly: appState.favoritesOnly,
+    lastPlatforms: appState.lastPlatforms,
+  };
+
+  const nowBase = Date.now() + 8 * 60 * 1000;
+  const mkIso = (ms) => new Date(ms).toISOString();
+  const makeBusEntry = ({ line, offsetMin, delayMin = 0, to }) => {
+    const scheduledMs = nowBase + offsetMin * 60 * 1000;
+    const realtimeMs = scheduledMs + delayMin * 60 * 1000;
+    return {
+      category: "B",
+      number: String(line),
+      name: String(line),
+      operator: "TL",
+      to: to || `Destination ${line}`,
+      source: "scheduled",
+      tags: [],
+      stop: {
+        departure: mkIso(scheduledMs),
+        platform: "A",
+        delay: delayMin,
+        prognosis: {
+          departure: mkIso(realtimeMs),
+          delay: delayMin,
+          status: "ON_TIME",
+          cancelled: false,
+        },
+        cancelled: false,
+      },
+      cancelled: false,
+    };
+  };
+
+  try {
+    appState.STATION = "Lausanne, Bel-Air";
+    appState.stationId = "Parent8591988";
+    appState.trainServiceFilter = "train_all";
+    appState.platformFilter = null;
+    appState.lineFilter = null;
+    appState.favoritesOnly = false;
+    appState.lastPlatforms = {};
+
+    const stationboard = [
+      // Line 8 has three departures; delayed one is third chronologically.
+      makeBusEntry({ line: 8, offsetMin: 2, delayMin: 0, to: "Pully, gare" }),
+      makeBusEntry({ line: 8, offsetMin: 4, delayMin: 0, to: "Pully, gare" }),
+      makeBusEntry({ line: 8, offsetMin: 6, delayMin: 4, to: "Pully, gare" }),
+      // Additional lines keep per-line quota at 2.
+      makeBusEntry({ line: 1, offsetMin: 3, delayMin: 0 }),
+      makeBusEntry({ line: 2, offsetMin: 3, delayMin: 0 }),
+      makeBusEntry({ line: 3, offsetMin: 3, delayMin: 0 }),
+      makeBusEntry({ line: 6, offsetMin: 3, delayMin: 0 }),
+      makeBusEntry({ line: 7, offsetMin: 3, delayMin: 0 }),
+      makeBusEntry({ line: 9, offsetMin: 3, delayMin: 0 }),
+    ];
+
+    const rows = buildDeparturesGrouped({ stationboard }, VIEW_MODE_LINE);
+    const line8Rows = rows.filter((row) => String(row.simpleLineId || "") === "8");
+
+    assert.ok(line8Rows.length > 0);
+    assert.ok(
+      line8Rows.some((row) => row.status === "delay" && typeof row.delayMin === "number" && row.delayMin >= 2)
+    );
+  } finally {
+    appState.STATION = previous.station;
+    appState.stationId = previous.stationId;
+    appState.trainServiceFilter = previous.trainFilter;
+    appState.platformFilter = previous.platformFilter;
+    appState.lineFilter = previous.lineFilter;
+    appState.favoritesOnly = previous.favoritesOnly;
+    appState.lastPlatforms = previous.lastPlatforms;
+  }
+}
+
 // fetchStationboardRaw should forward selected UI language to backend (?lang=..)
 {
   const originalFetch = globalThis.fetch;

@@ -153,6 +153,9 @@ test("normalizeDeparture includes delay computation debug fields only when reque
   assert.equal(depWithDebug.debug?.delayComputation?.computedDelayMinBeforeClamp, 3);
   assert.equal(depWithDebug.debug?.delayComputation?.computedDelayMinAfterClamp, 3);
   assert.equal(depWithDebug.debug?.delayComputation?.roundingMethodUsed, "ceil");
+  assert.equal(depWithDebug.debug?.delayComputation?.rtMatched, true);
+  assert.equal(depWithDebug.debug?.delayComputation?.rtMatchReason, null);
+  assert.equal(depWithDebug.debug?.delayComputation?.delaySourceUsed, "rt_time_diff");
 
   const depWithDelayFieldDebug = normalizeDeparture(
     {
@@ -164,12 +167,15 @@ test("normalizeDeparture includes delay computation debug fields only when reque
       _rtMatched: true,
       _delaySourceUsed: "rt_delay_field",
       _rawRtDelaySecUsed: 181,
+      _rtMatchReason: "stop_noseq",
     },
     { includeDelayDebug: true }
   );
   assert.equal(depWithDelayFieldDebug.delayMin, 4);
   assert.equal(depWithDelayFieldDebug.debug?.delayComputation?.sourceUsed, "rt_delay_field");
   assert.equal(depWithDelayFieldDebug.debug?.delayComputation?.rawRtDelaySecUsed, 181);
+  assert.equal(depWithDelayFieldDebug.debug?.delayComputation?.rtMatched, true);
+  assert.equal(depWithDelayFieldDebug.debug?.delayComputation?.rtMatchReason, "stop_noseq");
 
   const depWithTripFallbackDebug = normalizeDeparture(
     {
@@ -181,6 +187,7 @@ test("normalizeDeparture includes delay computation debug fields only when reque
       _rtMatched: true,
       _delaySourceUsed: "rt_trip_fallback_delay_field",
       _rawRtDelaySecUsed: 90,
+      _rtMatchReason: "trip_fallback",
     },
     { includeDelayDebug: true }
   );
@@ -190,4 +197,6 @@ test("normalizeDeparture includes delay computation debug fields only when reque
     "rt_trip_fallback_delay_field"
   );
   assert.equal(depWithTripFallbackDebug.debug?.delayComputation?.rawRtDelaySecUsed, 90);
+  assert.equal(depWithTripFallbackDebug.debug?.delayComputation?.rtMatched, true);
+  assert.equal(depWithTripFallbackDebug.debug?.delayComputation?.rtMatchReason, "trip_fallback");
 });

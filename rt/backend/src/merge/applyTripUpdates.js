@@ -559,30 +559,43 @@ function matchesTripStartDate(candidate, rowTripStartDate) {
   return candidateStart === rowStart;
 }
 
-function getDelayForRow(delayByKey, tripId, stopId, stopSequence, tripStartDate = "") {
+function getDelayMatchForRow(delayByKey, tripId, stopId, stopSequence, tripStartDate = "") {
   if (!delayByKey || !tripId || !stopId) return null;
 
   const seqPart = seqKeyPart(stopSequence);
+  const hasStopSequence = seqPart !== "";
   const start = normalizeTripStartDate(tripStartDate);
   for (const sid of stopIdVariants(stopId)) {
     const keyWithSeq = buildStopKey(tripId, sid, seqPart, start);
     if (delayByKey[keyWithSeq] && matchesTripStartDate(delayByKey[keyWithSeq], start)) {
-      return delayByKey[keyWithSeq];
+      return {
+        delay: delayByKey[keyWithSeq],
+        matchReason: hasStopSequence ? "stop_exact" : "stop_noseq",
+      };
     }
 
     const keyNoSeq = buildStopKey(tripId, sid, "", start);
     if (delayByKey[keyNoSeq] && matchesTripStartDate(delayByKey[keyNoSeq], start)) {
-      return delayByKey[keyNoSeq];
+      return {
+        delay: delayByKey[keyNoSeq],
+        matchReason: "stop_noseq",
+      };
     }
 
     // Backward-compatible fallback for legacy indexes that had no start-date in key.
     const legacyWithSeq = `${tripId}|${sid}|${seqPart}`;
     if (delayByKey[legacyWithSeq] && matchesTripStartDate(delayByKey[legacyWithSeq], start)) {
-      return delayByKey[legacyWithSeq];
+      return {
+        delay: delayByKey[legacyWithSeq],
+        matchReason: hasStopSequence ? "stop_exact" : "stop_noseq",
+      };
     }
     const legacyNoSeq = `${tripId}|${sid}|`;
     if (delayByKey[legacyNoSeq] && matchesTripStartDate(delayByKey[legacyNoSeq], start)) {
-      return delayByKey[legacyNoSeq];
+      return {
+        delay: delayByKey[legacyNoSeq],
+        matchReason: "stop_noseq",
+      };
     }
   }
 
@@ -710,19 +723,24 @@ export function applyTripUpdates(baseRows, tripUpdates) {
       tags: Array.isArray(row?.tags) ? [...row.tags] : [],
       suppressedStop: false,
       _rtMatched: row?._rtMatched === true,
+      _rtMatchReason: typeof row?._rtMatchReason === "string" ? row._rtMatchReason : null,
     };
     if (merged.cancelled) addCancelReason(merged, "preexisting_cancelled_flag");
 
     const scheduledMs = Date.parse(row.scheduledDeparture || "");
     const rowTripStartDate =
       ymdZurichFromIso(row.scheduledDeparture || row.realtimeDeparture || "");
-    const delay = getDelayForRow(
+    const delayMatch = getDelayMatchForRow(
       delayByKey,
       row.trip_id,
       row.stop_id,
       row.stop_sequence,
       rowTripStartDate
     );
+    const delay = delayMatch?.delay || null;
+    if (delayMatch?.matchReason) {
+      merged._rtMatchReason = delayMatch.matchReason;
+    }
     const tripFallbackDelay = delay
       ? null
       : getTripFallbackDelayForRow(
@@ -745,11 +763,9 @@ export function applyTripUpdates(baseRows, tripUpdates) {
       const delayDisplay = computeDepartureDelayDisplayFromSeconds(delaySecCandidate);
       delayMin = delayDisplay.delayMinAfterClamp;
       if (Number.isFinite(scheduledMs)) {
-        // Keep departure timestamps aligned with display rules (no-early + jitter clamp).
-        realtimeMs =
-          delayDisplay.delayMinAfterClamp === 0
-            ? scheduledMs
-            : scheduledMs + delaySecCandidate * 1000;
+        // Preserve raw realtime timestamp so clients can keep countdowns accurate
+        // even when display delay is clamped (early/jitter cosmetic suppression).
+        realtimeMs = scheduledMs + delaySecCandidate * 1000;
       }
       delayComputationMeta = {
         sourceUsed,
@@ -778,9 +794,6 @@ export function applyTripUpdates(baseRows, tripUpdates) {
             const delayDisplay =
               computeDepartureDelayDisplayFromSeconds(computedDelaySec);
             delayMin = delayDisplay.delayMinAfterClamp;
-            if (delayDisplay.delayMinAfterClamp === 0) {
-              realtimeMs = scheduledMs;
-            }
             delayComputationMeta = {
               sourceUsed: "rt_time_diff",
               rawRtDelaySecUsed: null,
@@ -829,6 +842,7 @@ export function applyTripUpdates(baseRows, tripUpdates) {
         )
       ) {
         merged._rtMatched = true;
+        merged._rtMatchReason = "trip_fallback";
       }
     }
 

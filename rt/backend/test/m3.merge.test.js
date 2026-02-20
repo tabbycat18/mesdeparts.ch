@@ -210,6 +210,7 @@ test("applyTripUpdates matches RT even when stop_sequence drifts (trip+stop fall
   const merged = applyTripUpdates(baseRows, tripUpdates);
   assert.equal(merged.length, 1);
   assert.equal(merged[0]._rtMatched, true);
+  assert.equal(merged[0]._rtMatchReason, "stop_noseq");
   assert.equal(merged[0].source, "tripupdate");
   assert.equal(merged[0].realtimeDeparture, "2026-02-20T10:02:59.000Z");
   assert.equal(merged[0].delayMin, 3);
@@ -257,6 +258,7 @@ test("applyTripUpdates falls back to nearest trip stop delay when stop-level upd
   const merged = applyTripUpdates(baseRows, tripUpdates);
   assert.equal(merged.length, 1);
   assert.equal(merged[0]._rtMatched, true);
+  assert.equal(merged[0]._rtMatchReason, "trip_fallback");
   assert.equal(merged[0].source, "tripupdate");
   assert.equal(merged[0].delayMin, 2);
   assert.equal(merged[0].realtimeDeparture, "2026-02-20T10:01:30.000Z");
@@ -264,7 +266,50 @@ test("applyTripUpdates falls back to nearest trip stop delay when stop-level upd
   assert.equal(merged[0]._rawRtDelaySecUsed, 90);
 });
 
-test("applyTripUpdates keeps realtimeDeparture at schedule for early/jitter delays", () => {
+test("applyTripUpdates matches stop variant without sequence as stop_noseq", () => {
+  const baseRows = [
+    {
+      trip_id: "trip-stop-variant-noseq",
+      stop_id: "8591988:0:C",
+      stop_sequence: 11,
+      scheduledDeparture: "2026-02-20T10:00:00.000Z",
+      realtimeDeparture: "2026-02-20T10:00:00.000Z",
+      delayMin: 0,
+      source: "scheduled",
+    },
+  ];
+
+  const tripUpdates = {
+    entities: [
+      {
+        tripUpdate: {
+          trip: {
+            tripId: "trip-stop-variant-noseq",
+            scheduleRelationship: "SCHEDULED",
+            startDate: "20260220",
+          },
+          stopTimeUpdate: [
+            {
+              stopId: "8591988:0",
+              departure: { delay: 126 },
+            },
+          ],
+        },
+      },
+    ],
+  };
+
+  const merged = applyTripUpdates(baseRows, tripUpdates);
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0]._rtMatched, true);
+  assert.equal(merged[0]._rtMatchReason, "stop_noseq");
+  assert.equal(merged[0].source, "tripupdate");
+  assert.equal(merged[0].delayMin, 3);
+  assert.equal(merged[0]._delaySourceUsed, "rt_delay_field");
+  assert.equal(merged[0]._rawRtDelaySecUsed, 126);
+});
+
+test("applyTripUpdates preserves realtimeDeparture for early/jitter while keeping display delay clamped", () => {
   const baseRows = [
     {
       trip_id: "trip-early-clamp",
@@ -328,9 +373,9 @@ test("applyTripUpdates keeps realtimeDeparture at schedule for early/jitter dela
   const jitter = merged.find((row) => row.trip_id === "trip-jitter-clamp");
 
   assert.equal(early.delayMin, 0);
-  assert.equal(early.realtimeDeparture, "2026-02-20T10:00:00.000Z");
+  assert.equal(early.realtimeDeparture, "2026-02-20T09:58:59.000Z");
   assert.equal(jitter.delayMin, 0);
-  assert.equal(jitter.realtimeDeparture, "2026-02-20T10:01:00.000Z");
+  assert.equal(jitter.realtimeDeparture, "2026-02-20T10:01:20.000Z");
 });
 
 test("applyAddedTrips emits only ADDED stop_time_updates matching station scope", () => {
