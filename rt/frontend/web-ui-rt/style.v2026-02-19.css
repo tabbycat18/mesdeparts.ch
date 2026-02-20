@@ -2986,7 +2986,7 @@ body.dual-body {
 .dual-action {
   height: 44px;
   min-height: 44px;
-  padding: 0 12px;
+  padding: 0 8px;
   border-radius: 14px;
   border: 1px solid rgba(255, 255, 255, 0.10);
   background: rgba(255, 255, 255, 0.08);
