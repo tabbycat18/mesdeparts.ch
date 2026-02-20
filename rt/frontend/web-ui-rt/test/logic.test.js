@@ -232,14 +232,14 @@ assert.equal(detectNetworkFromStation("Zurich HB"), "vbz");
           assert.equal(String(row.remark || "").toLowerCase().includes("retard"), true);
           continue;
         }
-        // Bus: early shown when earlyMin > 1 (delayMin < -1)
-        if (typeof row.delayMin === "number" && row.delayMin < -1) {
+        // Bus: early shown for any negative signed delay
+        if (typeof row.delayMin === "number" && row.delayMin < 0) {
           assert.equal(row.status, "early");
           assert.equal(String(row.remark || "").toLowerCase().includes("avance"), true);
           continue;
         }
-        // Tiny drift (|delayMin| <= 1) — suppressed for buses too
-        if (typeof row.delayMin === "number" && Math.abs(row.delayMin) <= 1) {
+        // Tiny late drift (+1) is still suppressed for buses.
+        if (typeof row.delayMin === "number" && row.delayMin >= 0 && row.delayMin <= 1) {
           assert.equal(row.status, null);
           assert.equal(String(row.remark || ""), "");
           continue;
@@ -279,9 +279,11 @@ assert.equal(detectNetworkFromStation("Zurich HB"), "vbz");
 
   const nowBase = Date.now() + 8 * 60 * 1000;
   const mkIso = (ms) => new Date(ms).toISOString();
-  const makeBusEntry = ({ line, earlyMin }) => {
+  const makeBusEntry = ({ line, earlyMin, earlySeconds }) => {
     const scheduledMs = nowBase + Number(line) * 60 * 1000;
-    const realtimeMs = scheduledMs - earlyMin * 60 * 1000;
+    const earlyOffsetSec =
+      typeof earlySeconds === "number" ? earlySeconds : earlyMin * 60;
+    const realtimeMs = scheduledMs - earlyOffsetSec * 1000;
     return {
       category: "B",
       number: String(line),
@@ -318,11 +320,14 @@ assert.equal(detectNetworkFromStation("Zurich HB"), "vbz");
     const stationboard = [
       makeBusEntry({ line: 8, earlyMin: 2 }),
       makeBusEntry({ line: 9, earlyMin: 1 }),
+      // Rounded minutes can be -2 around ~1m35s early.
+      makeBusEntry({ line: 10, earlySeconds: 96 }),
     ];
 
     const rows = buildDeparturesGrouped({ stationboard }, VIEW_MODE_TIME);
     const line8 = rows.find((row) => String(row.simpleLineId || "") === "8");
     const line9 = rows.find((row) => String(row.simpleLineId || "") === "9");
+    const line10 = rows.find((row) => String(row.simpleLineId || "") === "10");
 
     assert.ok(line8);
     assert.equal(line8.status, "early");
@@ -330,8 +335,14 @@ assert.equal(detectNetworkFromStation("Zurich HB"), "vbz");
     assert.equal(line8.delayMin, -2);
 
     assert.ok(line9);
-    assert.equal(line9.status, null);
+    assert.equal(line9.status, "early");
     assert.equal(line9.delayMin, -1);
+    assert.ok(String(line9.remark || "").toLowerCase().includes("avance"));
+
+    assert.ok(line10);
+    assert.equal(line10.status, "early");
+    assert.equal(line10.delayMin, -2);
+    assert.ok(String(line10.remark || "").toLowerCase().includes("avance"));
   } finally {
     appState.STATION = previous.station;
     appState.stationId = previous.stationId;

@@ -329,6 +329,15 @@ test("applyTripUpdates preserves realtimeDeparture for early/jitter while keepin
       delayMin: 0,
       source: "scheduled",
     },
+    {
+      trip_id: "trip-early-subminute-clamp",
+      stop_id: "8591988:0:C",
+      stop_sequence: 9,
+      scheduledDeparture: "2026-02-20T10:02:00.000Z",
+      realtimeDeparture: "2026-02-20T10:02:00.000Z",
+      delayMin: 0,
+      source: "scheduled",
+    },
   ];
 
   const tripUpdates = {
@@ -365,17 +374,36 @@ test("applyTripUpdates preserves realtimeDeparture for early/jitter while keepin
           ],
         },
       },
+      {
+        tripUpdate: {
+          trip: {
+            tripId: "trip-early-subminute-clamp",
+            scheduleRelationship: "SCHEDULED",
+            startDate: "20260220",
+          },
+          stopTimeUpdate: [
+            {
+              stopId: "8591988:0:C",
+              stopSequence: 9,
+              departure: { delay: -30 },
+            },
+          ],
+        },
+      },
     ],
   };
 
   const merged = applyTripUpdates(baseRows, tripUpdates);
   const early = merged.find((row) => row.trip_id === "trip-early-clamp");
   const jitter = merged.find((row) => row.trip_id === "trip-jitter-clamp");
+  const earlySubMinute = merged.find((row) => row.trip_id === "trip-early-subminute-clamp");
 
   assert.equal(early.delayMin, 0);
   assert.equal(early.realtimeDeparture, "2026-02-20T09:58:59.000Z");
   assert.equal(jitter.delayMin, 0);
   assert.equal(jitter.realtimeDeparture, "2026-02-20T10:01:20.000Z");
+  assert.equal(earlySubMinute.delayMin, 0);
+  assert.equal(earlySubMinute.realtimeDeparture, "2026-02-20T10:01:30.000Z");
 });
 
 test("applyAddedTrips emits only ADDED stop_time_updates matching station scope", () => {

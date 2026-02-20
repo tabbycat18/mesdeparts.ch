@@ -219,8 +219,17 @@ function resolveRealtimeDelta({
   realtimeTime,
   authoritativeDelayMin,
 }) {
+  const planned = parseDateLike(plannedTime);
+  const realtime = parseDateLike(realtimeTime);
+  const computedDeltaSec =
+    planned && realtime
+      ? (realtime.getTime() - planned.getTime()) / 1000
+      : null;
   const apiDelayMin = toFiniteMinutesOrNull(authoritativeDelayMin);
-  const computedDeltaMin = computeDeltaMinutes(plannedTime, realtimeTime);
+  const computedDeltaMin =
+    computedDeltaSec != null
+      ? Math.round(computedDeltaSec / 60)
+      : null;
 
   // Prefer authoritative API delay, except when API reports 0 while timestamps show
   // an actual early departure; keep that early signal for bus cosmetics/countdown.
@@ -234,53 +243,67 @@ function resolveRealtimeDelta({
       : apiDelayMin != null
         ? apiDelayMin
         : computedDeltaMin;
+  const effectiveDeltaSec =
+    shouldTrustTimestampEarly
+      ? computedDeltaSec
+      : apiDelayMin != null
+        ? apiDelayMin * 60
+        : computedDeltaSec;
   const delayMin = deltaMin != null ? Math.max(0, deltaMin) : 0;
   const earlyMin = deltaMin != null ? Math.max(0, -deltaMin) : 0;
 
   return {
     deltaMin,
+    effectiveDeltaSec,
     delayMin,
     earlyMin,
     apiDelayMin,
+    computedDeltaSec,
     computedDeltaMin,
-    source: apiDelayMin != null ? "api_delay" : computedDeltaMin != null ? "timestamps" : "none",
+    source:
+      shouldTrustTimestampEarly
+        ? "timestamps"
+        : apiDelayMin != null
+          ? "api_delay"
+          : computedDeltaMin != null
+            ? "timestamps"
+            : "none",
   };
 }
 
-function deriveRealtimeRemark({ cancelled, delayMin, earlyMin, mode }) {
+function deriveRealtimeRemark({ cancelled, delayMin, earlyMin, effectiveDeltaSec, mode }) {
   if (cancelled) {
     const msg = t("remarkCancelled");
     return { status: "cancelled", remarkWide: msg, remarkNarrow: msg, remark: msg };
   }
 
   // Bus/tram/metro board rule:
-  // suppress tiny +/-1 minute realtime drift from remarks.
-  // Format stays plain (no minute count for buses).
+  // keep delay format plain (no minute count for buses).
   if (mode === "bus") {
-    if (delayMin <= 1 && earlyMin <= 1) {
-      return { status: null, remarkWide: "", remarkNarrow: "", remark: "" };
-    }
     if (delayMin > 1) {
       const msg = t("remarkDelayShort"); // plain "Retard" — no minutes for buses
       return { status: "delay", remarkWide: msg, remarkNarrow: msg, remark: msg };
     }
-    if (earlyMin > 1) {
+    if (earlyMin > 0 || (Number.isFinite(effectiveDeltaSec) && effectiveDeltaSec < 0)) {
       const msg = t("remarkEarly");
       return { status: "early", remarkWide: msg, remarkNarrow: msg, remark: msg };
     }
     return { status: null, remarkWide: "", remarkNarrow: "", remark: "" };
   }
 
-  // Train/rail rules:
-  // 1. Never early — trains are never "en avance"; clamp negative delta to 0.
-  // 2. Noise gate: suppress +1 min jitter; only show when delayMin >= 2.
+  if (earlyMin > 0 || (Number.isFinite(effectiveDeltaSec) && effectiveDeltaSec < 0)) {
+    const msg = t("remarkEarly");
+    return { status: "early", remarkWide: msg, remarkNarrow: msg, remark: msg };
+  }
+
+  // Train/rail delay rule: suppress +1 min jitter; show from +2 min.
   if (delayMin >= 2) {
     // WIDE: "Retard env. X min" / NARROW: "+X min" (numeric-only, no word prefix)
     const wide = t("remarkDelayTrainApprox").replace("{min}", String(delayMin));
     const narrow = `+${delayMin} min`;
     return { status: "delay", remarkWide: wide, remarkNarrow: narrow, remark: wide };
   }
-  // delayMin < 2 (includes 0, 1, or any negative early value) — suppress for trains
+  // delayMin < 2 — suppress for trains
   return { status: null, remarkWide: "", remarkNarrow: "", remark: "" };
 }
 
@@ -994,6 +1017,7 @@ export function buildDeparturesGrouped(data, viewMode = VIEW_MODE_LINE) {
       cancelled: isCancelled,
       delayMin,
       earlyMin,
+      effectiveDeltaSec: delta.effectiveDeltaSec,
       mode,
     });
     const status = rtView.status;
