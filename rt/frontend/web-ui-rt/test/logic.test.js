@@ -9,8 +9,8 @@ import {
   detectNetworkFromStation,
   fetchJourneyDetails,
   parseApiDate,
-} from "../logic.v2026-02-20.js";
-import { appState, VIEW_MODE_LINE, VIEW_MODE_TIME } from "../state.v2026-02-20.js";
+} from "../logic.v2026-02-20-1.js";
+import { appState, VIEW_MODE_LINE, VIEW_MODE_TIME } from "../state.v2026-02-20-1.js";
 
 // classifyMode should categorize common transport codes
 assert.equal(classifyMode("IC"), "train");

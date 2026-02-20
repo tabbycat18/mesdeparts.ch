@@ -11,21 +11,21 @@ import {
   TRAIN_FILTER_REGIONAL,
   TRAIN_FILTER_LONG_DISTANCE,
   REMARK_NARROW_BREAKPOINT_PX,
-} from "./state.v2026-02-20.js";
+} from "./state.v2026-02-20-1.js";
 import {
   fetchStationSuggestions,
   fetchStationsNearby,
   fetchJourneyDetails,
   parseApiDate,
-} from "./logic.v2026-02-20.js";
+} from "./logic.v2026-02-20-1.js";
 import {
   loadFavorites,
   addFavorite,
   removeFavorite,
   isFavorite,
   clearFavorites,
-} from "./favourites.v2026-02-20.js";
-import { t } from "./i18n.v2026-02-20.js";
+} from "./favourites.v2026-02-20-1.js";
+import { t } from "./i18n.v2026-02-20-1.js";
 
 const QUICK_CONTROLS_STORAGE_KEY = "mesdeparts.quickControlsCollapsed";
 let quickControlsCollapsed = false;

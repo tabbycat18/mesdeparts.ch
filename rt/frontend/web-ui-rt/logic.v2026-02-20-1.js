@@ -22,8 +22,8 @@ import {
   TRAIN_FILTER_REGIONAL,
   TRAIN_FILTER_LONG_DISTANCE,
   STATION_ID_STORAGE_KEY,
-} from "./state.v2026-02-20.js";
-import { t } from "./i18n.v2026-02-20.js";
+} from "./state.v2026-02-20-1.js";
+import { t } from "./i18n.v2026-02-20-1.js";
 
 // API base can be overridden by setting window.__MD_API_BASE__ before scripts load.
 // Frontend now targets rt/backend endpoints only.

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { renderServiceBanners } from "../ui.v2026-02-20.js";
+import { renderServiceBanners } from "../ui.v2026-02-20-1.js";
 
 class FakeClassList {
   constructor() {
