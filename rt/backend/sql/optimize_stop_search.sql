@@ -340,6 +340,88 @@ DO UPDATE SET
 
 BEGIN;
 
+\echo '[stop-search] Normalizing legacy stop_search_index index names...'
+
+DO $$
+DECLARE
+  live_rel_oid OID;
+  row_rec RECORD;
+  legacy_idx_oid OID;
+  legacy_idx_rel_oid OID;
+  canonical_idx_oid OID;
+  canonical_idx_rel_oid OID;
+BEGIN
+  SELECT c.oid
+  INTO live_rel_oid
+  FROM pg_class c
+  JOIN pg_namespace n ON n.oid = c.relnamespace
+  WHERE n.nspname = 'public'
+    AND c.relname = 'stop_search_index'
+    AND c.relkind = 'm';
+
+  IF live_rel_oid IS NULL THEN
+    RAISE NOTICE '[stop-search] stop_search_index does not exist yet; skip legacy index normalization';
+    RETURN;
+  END IF;
+
+  FOR row_rec IN
+    SELECT *
+    FROM (
+      VALUES
+        ('idx_stop_search_index_new_stop_id', 'idx_stop_search_index_stop_id'),
+        ('idx_stop_search_index_new_group_id', 'idx_stop_search_index_group_id'),
+        ('idx_stop_search_index_new_is_parent', 'idx_stop_search_index_is_parent'),
+        ('idx_stop_search_index_new_name_norm_prefix', 'idx_stop_search_index_name_norm_prefix'),
+        ('idx_stop_search_index_new_search_text_trgm', 'idx_stop_search_index_search_text_trgm'),
+        ('idx_stop_search_index_new_name_norm_trgm', 'idx_stop_search_index_name_norm_trgm'),
+        ('idx_stop_search_index_new_name_core_trgm', 'idx_stop_search_index_name_core_trgm'),
+        ('idx_stop_search_index_new_parent_name_norm_trgm', 'idx_stop_search_index_parent_name_norm_trgm')
+    ) AS idx_map(new_name, canonical_name)
+  LOOP
+    SELECT c.oid, i.indrelid
+    INTO legacy_idx_oid, legacy_idx_rel_oid
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    JOIN pg_index i ON i.indexrelid = c.oid
+    WHERE c.relkind = 'i'
+      AND n.nspname = 'public'
+      AND c.relname = row_rec.new_name;
+
+    IF legacy_idx_oid IS NULL THEN
+      CONTINUE;
+    END IF;
+
+    IF legacy_idx_rel_oid IS DISTINCT FROM live_rel_oid THEN
+      RAISE NOTICE '[stop-search] dropping stale legacy index % (not on stop_search_index)', row_rec.new_name;
+      EXECUTE format('DROP INDEX IF EXISTS public.%I', row_rec.new_name);
+      CONTINUE;
+    END IF;
+
+    SELECT c.oid, i.indrelid
+    INTO canonical_idx_oid, canonical_idx_rel_oid
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    JOIN pg_index i ON i.indexrelid = c.oid
+    WHERE c.relkind = 'i'
+      AND n.nspname = 'public'
+      AND c.relname = row_rec.canonical_name;
+
+    IF canonical_idx_oid IS NULL THEN
+      RAISE NOTICE '[stop-search] renaming legacy index % -> %', row_rec.new_name, row_rec.canonical_name;
+      EXECUTE format('ALTER INDEX public.%I RENAME TO %I', row_rec.new_name, row_rec.canonical_name);
+    ELSIF canonical_idx_rel_oid = live_rel_oid THEN
+      RAISE NOTICE '[stop-search] dropping duplicate legacy index % (canonical % already exists)', row_rec.new_name, row_rec.canonical_name;
+      EXECUTE format('DROP INDEX IF EXISTS public.%I', row_rec.new_name);
+    ELSE
+      RAISE NOTICE '[stop-search] dropping stale canonical index % (belongs to another relation)', row_rec.canonical_name;
+      EXECUTE format('DROP INDEX IF EXISTS public.%I', row_rec.canonical_name);
+      RAISE NOTICE '[stop-search] renaming legacy index % -> %', row_rec.new_name, row_rec.canonical_name;
+      EXECUTE format('ALTER INDEX public.%I RENAME TO %I', row_rec.new_name, row_rec.canonical_name);
+    END IF;
+  END LOOP;
+END
+$$;
+
 \echo '[stop-search] Building stop_search_index_new (non-blocking)...'
 
 -- Build the new index with same structure
@@ -413,34 +495,116 @@ WITH DATA;
 -- Create indexes on the new materialized view
 \echo '[stop-search] Creating indexes on stop_search_index_new...'
 
-CREATE UNIQUE INDEX idx_stop_search_index_new_stop_id
-  ON public.stop_search_index_new (stop_id);
-
-CREATE INDEX idx_stop_search_index_new_group_id
-  ON public.stop_search_index_new (group_id);
-
-CREATE INDEX idx_stop_search_index_new_is_parent
-  ON public.stop_search_index_new (is_parent);
-
-CREATE INDEX idx_stop_search_index_new_name_norm_prefix
-  ON public.stop_search_index_new (name_norm text_pattern_ops);
-
-\echo '[stop-search] Created standard indexes on stop_search_index_new'
-
--- Conditional trigram indexes (pg_trgm may not be available)
 DO $$
+DECLARE
+  mv_oid OID;
+  row_rec RECORD;
+  idx_oid OID;
+  idx_rel_oid OID;
+  idx_is_valid BOOLEAN;
+  has_pg_trgm BOOLEAN;
+  should_create BOOLEAN;
 BEGIN
-  IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_trgm') THEN
-    EXECUTE 'CREATE INDEX idx_stop_search_index_new_search_text_trgm ON public.stop_search_index_new USING GIN (search_text gin_trgm_ops)';
-    EXECUTE 'CREATE INDEX idx_stop_search_index_new_name_norm_trgm ON public.stop_search_index_new USING GIN (name_norm gin_trgm_ops)';
-    EXECUTE 'CREATE INDEX idx_stop_search_index_new_name_core_trgm ON public.stop_search_index_new USING GIN (name_core gin_trgm_ops)';
-    EXECUTE 'CREATE INDEX idx_stop_search_index_new_parent_name_norm_trgm ON public.stop_search_index_new USING GIN (parent_name_norm gin_trgm_ops)';
-    RAISE NOTICE '[stop-search] Created trigram indexes on stop_search_index_new';
+  SELECT c.oid
+  INTO mv_oid
+  FROM pg_class c
+  JOIN pg_namespace n ON n.oid = c.relnamespace
+  WHERE n.nspname = 'public'
+    AND c.relname = 'stop_search_index_new'
+    AND c.relkind = 'm';
+
+  IF mv_oid IS NULL THEN
+    RAISE EXCEPTION '[stop-search] stop_search_index_new does not exist before index creation';
+  END IF;
+
+  FOR row_rec IN
+    SELECT *
+    FROM (
+      VALUES
+        ('idx_stop_search_index_new_stop_id', 'CREATE UNIQUE INDEX idx_stop_search_index_new_stop_id ON public.stop_search_index_new (stop_id)'),
+        ('idx_stop_search_index_new_group_id', 'CREATE INDEX idx_stop_search_index_new_group_id ON public.stop_search_index_new (group_id)'),
+        ('idx_stop_search_index_new_is_parent', 'CREATE INDEX idx_stop_search_index_new_is_parent ON public.stop_search_index_new (is_parent)'),
+        ('idx_stop_search_index_new_name_norm_prefix', 'CREATE INDEX idx_stop_search_index_new_name_norm_prefix ON public.stop_search_index_new (name_norm text_pattern_ops)')
+    ) AS idx_map(idx_name, create_sql)
+  LOOP
+    should_create := FALSE;
+
+    SELECT c.oid, i.indrelid, i.indisvalid
+    INTO idx_oid, idx_rel_oid, idx_is_valid
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    JOIN pg_index i ON i.indexrelid = c.oid
+    WHERE c.relkind = 'i'
+      AND n.nspname = 'public'
+      AND c.relname = row_rec.idx_name;
+
+    IF idx_oid IS NOT NULL THEN
+      IF idx_rel_oid = mv_oid AND idx_is_valid THEN
+        RAISE NOTICE '[stop-search] keeping existing index % on stop_search_index_new', row_rec.idx_name;
+      ELSE
+        RAISE NOTICE '[stop-search] dropping stale index % before recreate', row_rec.idx_name;
+        EXECUTE format('DROP INDEX IF EXISTS public.%I', row_rec.idx_name);
+        should_create := TRUE;
+      END IF;
+    ELSE
+      should_create := TRUE;
+    END IF;
+
+    IF should_create THEN
+      RAISE NOTICE '[stop-search] creating index % on stop_search_index_new', row_rec.idx_name;
+      EXECUTE row_rec.create_sql;
+    END IF;
+  END LOOP;
+
+  SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_trgm')
+  INTO has_pg_trgm;
+
+  IF has_pg_trgm THEN
+    FOR row_rec IN
+      SELECT *
+      FROM (
+        VALUES
+          ('idx_stop_search_index_new_search_text_trgm', 'CREATE INDEX idx_stop_search_index_new_search_text_trgm ON public.stop_search_index_new USING GIN (search_text gin_trgm_ops)'),
+          ('idx_stop_search_index_new_name_norm_trgm', 'CREATE INDEX idx_stop_search_index_new_name_norm_trgm ON public.stop_search_index_new USING GIN (name_norm gin_trgm_ops)'),
+          ('idx_stop_search_index_new_name_core_trgm', 'CREATE INDEX idx_stop_search_index_new_name_core_trgm ON public.stop_search_index_new USING GIN (name_core gin_trgm_ops)'),
+          ('idx_stop_search_index_new_parent_name_norm_trgm', 'CREATE INDEX idx_stop_search_index_new_parent_name_norm_trgm ON public.stop_search_index_new USING GIN (parent_name_norm gin_trgm_ops)')
+      ) AS idx_map(idx_name, create_sql)
+    LOOP
+      should_create := FALSE;
+
+      SELECT c.oid, i.indrelid, i.indisvalid
+      INTO idx_oid, idx_rel_oid, idx_is_valid
+      FROM pg_class c
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      JOIN pg_index i ON i.indexrelid = c.oid
+      WHERE c.relkind = 'i'
+        AND n.nspname = 'public'
+        AND c.relname = row_rec.idx_name;
+
+      IF idx_oid IS NOT NULL THEN
+        IF idx_rel_oid = mv_oid AND idx_is_valid THEN
+          RAISE NOTICE '[stop-search] keeping existing index % on stop_search_index_new', row_rec.idx_name;
+        ELSE
+          RAISE NOTICE '[stop-search] dropping stale index % before recreate', row_rec.idx_name;
+          EXECUTE format('DROP INDEX IF EXISTS public.%I', row_rec.idx_name);
+          should_create := TRUE;
+        END IF;
+      ELSE
+        should_create := TRUE;
+      END IF;
+
+      IF should_create THEN
+        RAISE NOTICE '[stop-search] creating index % on stop_search_index_new', row_rec.idx_name;
+        EXECUTE row_rec.create_sql;
+      END IF;
+    END LOOP;
   ELSE
     RAISE NOTICE '[stop-search] skip trigram indexes on stop_search_index_new (pg_trgm unavailable)';
   END IF;
 END
 $$;
+
+\echo '[stop-search] Created indexes on stop_search_index_new'
 
 -- ───────────────────────────────────────────────────────────────────────────────────
 -- ATOMIC SWAP: Promote _new to live
@@ -457,15 +621,291 @@ ALTER MATERIALIZED VIEW IF EXISTS public.stop_search_index RENAME TO stop_search
 -- Promote _new to live name
 ALTER MATERIALIZED VIEW public.stop_search_index_new RENAME TO stop_search_index;
 
+DO $$
+DECLARE
+  live_rel_oid OID;
+  old_rel_oid OID;
+  row_rec RECORD;
+  canonical_idx_oid OID;
+  canonical_idx_rel_oid OID;
+  canonical_idx_is_valid BOOLEAN;
+  new_idx_oid OID;
+  new_idx_rel_oid OID;
+  new_idx_is_valid BOOLEAN;
+  old_idx_oid OID;
+  old_idx_rel_oid OID;
+BEGIN
+  SELECT c.oid
+  INTO live_rel_oid
+  FROM pg_class c
+  JOIN pg_namespace n ON n.oid = c.relnamespace
+  WHERE n.nspname = 'public'
+    AND c.relname = 'stop_search_index'
+    AND c.relkind = 'm';
+
+  SELECT c.oid
+  INTO old_rel_oid
+  FROM pg_class c
+  JOIN pg_namespace n ON n.oid = c.relnamespace
+  WHERE n.nspname = 'public'
+    AND c.relname = 'stop_search_index_old'
+    AND c.relkind = 'm';
+
+  IF live_rel_oid IS NULL THEN
+    RAISE EXCEPTION '[stop-search] stop_search_index missing after swap';
+  END IF;
+
+  FOR row_rec IN
+    SELECT *
+    FROM (
+      VALUES
+        (
+          'idx_stop_search_index_stop_id',
+          'idx_stop_search_index_new_stop_id',
+          'idx_stop_search_index_old_stop_id',
+          'CREATE UNIQUE INDEX idx_stop_search_index_stop_id ON public.stop_search_index (stop_id)'
+        ),
+        (
+          'idx_stop_search_index_group_id',
+          'idx_stop_search_index_new_group_id',
+          'idx_stop_search_index_old_group_id',
+          'CREATE INDEX idx_stop_search_index_group_id ON public.stop_search_index (group_id)'
+        ),
+        (
+          'idx_stop_search_index_is_parent',
+          'idx_stop_search_index_new_is_parent',
+          'idx_stop_search_index_old_is_parent',
+          'CREATE INDEX idx_stop_search_index_is_parent ON public.stop_search_index (is_parent)'
+        ),
+        (
+          'idx_stop_search_index_name_norm_prefix',
+          'idx_stop_search_index_new_name_norm_prefix',
+          'idx_stop_search_index_old_name_norm_prefix',
+          'CREATE INDEX idx_stop_search_index_name_norm_prefix ON public.stop_search_index (name_norm text_pattern_ops)'
+        ),
+        (
+          'idx_stop_search_index_search_text_trgm',
+          'idx_stop_search_index_new_search_text_trgm',
+          'idx_stop_search_index_old_search_text_trgm',
+          'CREATE INDEX idx_stop_search_index_search_text_trgm ON public.stop_search_index USING GIN (search_text gin_trgm_ops)'
+        ),
+        (
+          'idx_stop_search_index_name_norm_trgm',
+          'idx_stop_search_index_new_name_norm_trgm',
+          'idx_stop_search_index_old_name_norm_trgm',
+          'CREATE INDEX idx_stop_search_index_name_norm_trgm ON public.stop_search_index USING GIN (name_norm gin_trgm_ops)'
+        ),
+        (
+          'idx_stop_search_index_name_core_trgm',
+          'idx_stop_search_index_new_name_core_trgm',
+          'idx_stop_search_index_old_name_core_trgm',
+          'CREATE INDEX idx_stop_search_index_name_core_trgm ON public.stop_search_index USING GIN (name_core gin_trgm_ops)'
+        ),
+        (
+          'idx_stop_search_index_parent_name_norm_trgm',
+          'idx_stop_search_index_new_parent_name_norm_trgm',
+          'idx_stop_search_index_old_parent_name_norm_trgm',
+          'CREATE INDEX idx_stop_search_index_parent_name_norm_trgm ON public.stop_search_index USING GIN (parent_name_norm gin_trgm_ops)'
+        )
+    ) AS idx_map(canonical_name, new_name, old_name, create_live_sql)
+  LOOP
+    IF row_rec.canonical_name LIKE '%_trgm'
+       AND NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_trgm') THEN
+      CONTINUE;
+    END IF;
+
+    SELECT c.oid, i.indrelid
+    INTO old_idx_oid, old_idx_rel_oid
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    JOIN pg_index i ON i.indexrelid = c.oid
+    WHERE c.relkind = 'i'
+      AND n.nspname = 'public'
+      AND c.relname = row_rec.old_name;
+
+    IF old_idx_oid IS NOT NULL THEN
+      RAISE NOTICE '[stop-search] dropping old-name index % before swap-rename reconciliation', row_rec.old_name;
+      EXECUTE format('DROP INDEX IF EXISTS public.%I', row_rec.old_name);
+    END IF;
+
+    IF old_rel_oid IS NOT NULL THEN
+      SELECT c.oid, i.indrelid
+      INTO canonical_idx_oid, canonical_idx_rel_oid
+      FROM pg_class c
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      JOIN pg_index i ON i.indexrelid = c.oid
+      WHERE c.relkind = 'i'
+        AND n.nspname = 'public'
+        AND c.relname = row_rec.canonical_name;
+
+      IF canonical_idx_oid IS NOT NULL AND canonical_idx_rel_oid = old_rel_oid THEN
+        RAISE NOTICE '[stop-search] renaming old live index % -> %', row_rec.canonical_name, row_rec.old_name;
+        EXECUTE format('ALTER INDEX public.%I RENAME TO %I', row_rec.canonical_name, row_rec.old_name);
+      END IF;
+    END IF;
+
+    SELECT c.oid, i.indrelid, i.indisvalid
+    INTO canonical_idx_oid, canonical_idx_rel_oid, canonical_idx_is_valid
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    JOIN pg_index i ON i.indexrelid = c.oid
+    WHERE c.relkind = 'i'
+      AND n.nspname = 'public'
+      AND c.relname = row_rec.canonical_name;
+
+    IF canonical_idx_oid IS NOT NULL AND canonical_idx_rel_oid IS DISTINCT FROM live_rel_oid THEN
+      RAISE NOTICE '[stop-search] dropping stale canonical index %', row_rec.canonical_name;
+      EXECUTE format('DROP INDEX IF EXISTS public.%I', row_rec.canonical_name);
+      canonical_idx_oid := NULL;
+      canonical_idx_rel_oid := NULL;
+      canonical_idx_is_valid := NULL;
+    END IF;
+
+    SELECT c.oid, i.indrelid, i.indisvalid
+    INTO new_idx_oid, new_idx_rel_oid, new_idx_is_valid
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    JOIN pg_index i ON i.indexrelid = c.oid
+    WHERE c.relkind = 'i'
+      AND n.nspname = 'public'
+      AND c.relname = row_rec.new_name;
+
+    IF new_idx_oid IS NOT NULL AND new_idx_rel_oid IS DISTINCT FROM live_rel_oid THEN
+      RAISE NOTICE '[stop-search] dropping stale new-name index %', row_rec.new_name;
+      EXECUTE format('DROP INDEX IF EXISTS public.%I', row_rec.new_name);
+      new_idx_oid := NULL;
+      new_idx_rel_oid := NULL;
+      new_idx_is_valid := NULL;
+    END IF;
+
+    IF canonical_idx_oid IS NOT NULL AND canonical_idx_rel_oid = live_rel_oid AND canonical_idx_is_valid IS DISTINCT FROM TRUE THEN
+      RAISE NOTICE '[stop-search] dropping invalid canonical index %', row_rec.canonical_name;
+      EXECUTE format('DROP INDEX IF EXISTS public.%I', row_rec.canonical_name);
+      canonical_idx_oid := NULL;
+      canonical_idx_rel_oid := NULL;
+      canonical_idx_is_valid := NULL;
+    END IF;
+
+    IF canonical_idx_oid IS NULL THEN
+      IF new_idx_oid IS NOT NULL AND new_idx_rel_oid = live_rel_oid AND new_idx_is_valid THEN
+        RAISE NOTICE '[stop-search] renaming % -> % on stop_search_index', row_rec.new_name, row_rec.canonical_name;
+        EXECUTE format('ALTER INDEX public.%I RENAME TO %I', row_rec.new_name, row_rec.canonical_name);
+      ELSE
+        IF new_idx_oid IS NOT NULL THEN
+          RAISE NOTICE '[stop-search] dropping invalid new-name index % before rebuild', row_rec.new_name;
+          EXECUTE format('DROP INDEX IF EXISTS public.%I', row_rec.new_name);
+        END IF;
+        RAISE NOTICE '[stop-search] creating missing canonical index % on stop_search_index', row_rec.canonical_name;
+        EXECUTE row_rec.create_live_sql;
+      END IF;
+    ELSE
+      IF new_idx_oid IS NOT NULL AND new_idx_rel_oid = live_rel_oid THEN
+        RAISE NOTICE '[stop-search] dropping duplicate new-name index % after canonical rename', row_rec.new_name;
+        EXECUTE format('DROP INDEX IF EXISTS public.%I', row_rec.new_name);
+      END IF;
+    END IF;
+  END LOOP;
+END
+$$;
+
 \echo '[stop-search] Swapped stop_search_index (old->old, new->live)'
 
 -- ───────────────────────────────────────────────────────────────────────────────────
 -- CLEANUP: Drop old view (indexes dropped by CASCADE)
--- Indexes retain _new suffix — no renames needed
 -- ───────────────────────────────────────────────────────────────────────────────────
 
 DROP MATERIALIZED VIEW IF EXISTS public.stop_search_index_old CASCADE;
 \echo '[stop-search] Dropped old stop_search_index and its indexes'
+
+DO $$
+DECLARE
+  live_rel_oid OID;
+  row_rec RECORD;
+  idx_rel_oid OID;
+  idx_is_valid BOOLEAN;
+BEGIN
+  IF to_regclass('public.stop_search_index') IS NULL THEN
+    RAISE EXCEPTION '[stop-search] verification failed: public.stop_search_index is missing';
+  END IF;
+
+  IF to_regclass('public.stop_search_index_new') IS NOT NULL THEN
+    RAISE EXCEPTION '[stop-search] verification failed: public.stop_search_index_new still exists';
+  END IF;
+
+  SELECT c.oid
+  INTO live_rel_oid
+  FROM pg_class c
+  JOIN pg_namespace n ON n.oid = c.relnamespace
+  WHERE n.nspname = 'public'
+    AND c.relname = 'stop_search_index'
+    AND c.relkind = 'm';
+
+  FOR row_rec IN
+    SELECT *
+    FROM (
+      VALUES
+        ('idx_stop_search_index_stop_id'),
+        ('idx_stop_search_index_group_id'),
+        ('idx_stop_search_index_is_parent'),
+        ('idx_stop_search_index_name_norm_prefix')
+    ) AS idx_names(idx_name)
+  LOOP
+    SELECT i.indrelid, i.indisvalid
+    INTO idx_rel_oid, idx_is_valid
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    JOIN pg_index i ON i.indexrelid = c.oid
+    WHERE c.relkind = 'i'
+      AND n.nspname = 'public'
+      AND c.relname = row_rec.idx_name;
+
+    IF idx_rel_oid IS DISTINCT FROM live_rel_oid OR idx_is_valid IS DISTINCT FROM TRUE THEN
+      RAISE EXCEPTION '[stop-search] verification failed: % missing/invalid on stop_search_index', row_rec.idx_name;
+    END IF;
+  END LOOP;
+
+  IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_trgm') THEN
+    FOR row_rec IN
+      SELECT *
+      FROM (
+        VALUES
+          ('idx_stop_search_index_search_text_trgm'),
+          ('idx_stop_search_index_name_norm_trgm'),
+          ('idx_stop_search_index_name_core_trgm'),
+          ('idx_stop_search_index_parent_name_norm_trgm')
+      ) AS idx_names(idx_name)
+    LOOP
+      SELECT i.indrelid, i.indisvalid
+      INTO idx_rel_oid, idx_is_valid
+      FROM pg_class c
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      JOIN pg_index i ON i.indexrelid = c.oid
+      WHERE c.relkind = 'i'
+        AND n.nspname = 'public'
+        AND c.relname = row_rec.idx_name;
+
+      IF idx_rel_oid IS DISTINCT FROM live_rel_oid OR idx_is_valid IS DISTINCT FROM TRUE THEN
+        RAISE EXCEPTION '[stop-search] verification failed: % missing/invalid on stop_search_index', row_rec.idx_name;
+      END IF;
+    END LOOP;
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    JOIN pg_index i ON i.indexrelid = c.oid
+    WHERE c.relkind = 'i'
+      AND n.nspname = 'public'
+      AND c.relname LIKE 'idx_stop_search_index_new_%'
+      AND i.indrelid = live_rel_oid
+  ) THEN
+    RAISE EXCEPTION '[stop-search] verification failed: _new indexes still attached to stop_search_index';
+  END IF;
+
+  RAISE NOTICE '[stop-search] verification passed: canonical stop_search_index and indexes are healthy';
+END
+$$;
 
 -- Create index on gtfs_stops for reference (idempotent)
 CREATE INDEX IF NOT EXISTS idx_gtfs_stops_stop_name_lower_prefix
