@@ -3090,8 +3090,8 @@ body.dual-body {
   background: transparent;
   border: none;
   border-radius: 0;
-  padding: 16px 14px;
-  margin: 0 14px;
+  padding: 16px;
+  margin: 0;
   box-shadow: none;
 }
 
