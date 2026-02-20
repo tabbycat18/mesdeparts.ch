@@ -3138,7 +3138,7 @@ body.dual-body {
   font-weight: 600;
   font-size: 0.81rem;
   letter-spacing: 0.015em;
-  display: none;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
@@ -3146,8 +3146,8 @@ body.dual-body {
   z-index: 60;
   opacity: 0;
   visibility: hidden;
-  transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, opacity 0.3s ease, visibility 0.3s ease;
-  animation: fadeOutButton 0.3s ease;
+  pointer-events: none;
+  transition: opacity 0.3s ease, visibility 0.3s ease, background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .show-controls-button:hover {
@@ -3168,10 +3168,9 @@ body.dual-body {
 }
 
 .dual-body.dual-controls-hidden .show-controls-button {
-  display: inline-flex;
   opacity: 1;
   visibility: visible;
-  animation: fadeInButton 0.3s ease;
+  pointer-events: auto;
 }
 
 @media (max-width: 1024px) {
