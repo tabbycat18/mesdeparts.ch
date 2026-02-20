@@ -552,7 +552,7 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 3px 8px;
+  padding: 4px 8px;
   font-size: 0.81rem;
   font-weight: 600;
   cursor: pointer;
@@ -753,7 +753,7 @@
   color: #ffffff;
   border: 1px solid rgba(255, 255, 255, 0.10);
   margin-bottom: 10px;
-  padding: 3px 8px;
+  padding: 4px 8px;
   border-radius: 19px;
   font-weight: 600;
   font-size: 0.81rem;
