@@ -2955,21 +2955,19 @@ body.dual-body {
 
 .dual-lang-switcher .language-select {
   min-width: 72px;
-  height: 44px;
-  min-height: 44px;
-  border-radius: 16px;
+  border-radius: 22px;
   border: 1px solid rgba(255, 255, 255, 0.10);
   background-color: rgba(255, 255, 255, 0.08);
   color: #ffffff;
   font-weight: 600;
   font-size: 0.81rem;
   letter-spacing: 0.035em;
-  padding: 0 16px 0 16px;
+  padding: 4px 16px 4px 12px;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='7' viewBox='0 0 10 7'%3E%3Cpath fill='%23ffffff' d='M1 1l4 4 4-4'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
-  background-position: right 14px center;
+  background-position: right 10px center;
   background-size: 10px 7px;
-  padding-right: 40px;
+  padding-right: 36px;
   transition: background-color 0.2s ease;
   cursor: pointer;
 }
@@ -2984,10 +2982,8 @@ body.dual-body {
 }
 
 .dual-action {
-  height: 44px;
-  min-height: 44px;
   padding: 4px 8px;
-  border-radius: 16px;
+  border-radius: 22px;
   border: 1px solid rgba(255, 255, 255, 0.10);
   background: rgba(255, 255, 255, 0.08);
   color: #ffffff;
@@ -3751,7 +3747,7 @@ iframe.dual-pane {
 .journey-panel {
   background: #021a8f;
   color: var(--fg);
-  border-radius: 16px;
+  border-radius: 22px;
   max-width: 720px;
   width: 92%;
   padding: 16px 18px 14px;
@@ -4825,7 +4821,7 @@ body.dual-embed .board-header {
 
 .control-bar-v2.station-card-inline {
   padding: 10px;
-  border-radius: 16px;
+  border-radius: 22px;
   gap: 6px;
 }
 
@@ -5408,7 +5404,7 @@ body.dual-embed .board-header {
   display: grid;
   gap: 10px;
   padding: 12px;
-  border-radius: 16px;
+  border-radius: 22px;
   border: 1px solid rgba(255, 255, 255, 0.18);
   background:
     radial-gradient(140% 140% at 0% 0%, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.02) 56%),

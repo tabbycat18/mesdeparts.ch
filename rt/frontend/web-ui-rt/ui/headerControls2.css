@@ -468,7 +468,6 @@
 
 .hc2__segmentBtn {
   border: none;
-  min-height: 36px;
   border-radius: 14px;
   padding: 4px 10px;
   background: transparent;
@@ -508,7 +507,6 @@
 .hc2__segment.hc2__segment--train .hc2__segmentBtn {
   flex: 1 1 calc(33.333% - 4px);
   min-width: 0;
-  min-height: 36px;
   padding: 4px 6px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 14px;
@@ -545,10 +543,8 @@
 }
 
 .hc2__pill {
-  height: 38px;
-  min-height: 38px;
   border: 1px solid rgba(255, 255, 255, 0.10);
-  border-radius: 16px;
+  border-radius: 19px;
   background: rgba(255, 255, 255, 0.08);
   color: #ffffff;
   text-decoration: none;
@@ -744,7 +740,7 @@
 .hc2__secondary,
 .hc2__danger {
   min-height: 38px;
-  border-radius: 16px;
+  border-radius: 19px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   padding: 8px 16px;
   font-weight: 600;
@@ -758,9 +754,7 @@
   border: 1px solid rgba(255, 255, 255, 0.10);
   margin-bottom: 10px;
   padding: 3px 8px;
-  height: 38px;
-  min-height: 38px;
-  border-radius: 16px;
+  border-radius: 19px;
   font-weight: 600;
   font-size: 0.81rem;
   display: inline-flex;
@@ -815,7 +809,6 @@
 
 .hc2__favItemBtn {
   flex: 1;
-  min-height: 38px;
   border: 1px solid rgba(255, 255, 255, 0.10);
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.08);
