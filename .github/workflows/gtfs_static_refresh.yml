@@ -33,9 +33,74 @@ jobs:
           OPENTDATA_GTFS_RT_KEY: ${{ secrets.OPENTDATA_GTFS_RT_KEY }}
           OPENTDATA_GTFS_SA_KEY: ${{ secrets.OPENTDATA_GTFS_SA_KEY }}
 
-      - name: Smoke-test optimize_stop_search.sql (workflow_dispatch only)
-        if: github.event_name == 'workflow_dispatch'
+      - name: Verify canonical stop_search_index state
         working-directory: rt/backend
-        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f sql/optimize_stop_search.sql
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          DO $$
+          DECLARE
+            live_rel_oid OID;
+            missing_idx TEXT[];
+          BEGIN
+            SELECT c.oid
+            INTO live_rel_oid
+            FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname = 'public'
+              AND c.relname = 'stop_search_index'
+              AND c.relkind = 'm';
+
+            IF live_rel_oid IS NULL THEN
+              RAISE EXCEPTION '[workflow] verification failed: public.stop_search_index is missing';
+            END IF;
+
+            IF to_regclass('public.stop_search_index_new') IS NOT NULL THEN
+              RAISE EXCEPTION '[workflow] verification failed: public.stop_search_index_new still exists';
+            END IF;
+
+            WITH required(idx_name) AS (
+              VALUES
+                ('idx_stop_search_index_stop_id'),
+                ('idx_stop_search_index_group_id'),
+                ('idx_stop_search_index_is_parent'),
+                ('idx_stop_search_index_name_norm_prefix')
+            )
+            SELECT array_agg(r.idx_name ORDER BY r.idx_name)
+            INTO missing_idx
+            FROM required r
+            LEFT JOIN pg_class c
+              ON c.relkind = 'i'
+             AND c.relname = r.idx_name
+            LEFT JOIN pg_namespace n
+              ON n.oid = c.relnamespace
+             AND n.nspname = 'public'
+            LEFT JOIN pg_index i
+              ON i.indexrelid = c.oid
+            WHERE c.oid IS NULL
+              OR n.oid IS NULL
+              OR i.indrelid IS DISTINCT FROM live_rel_oid
+              OR i.indisvalid IS DISTINCT FROM TRUE;
+
+            IF missing_idx IS NOT NULL THEN
+              RAISE EXCEPTION '[workflow] verification failed: missing/invalid canonical indexes: %', array_to_string(missing_idx, ', ');
+            END IF;
+
+            IF EXISTS (
+              SELECT 1
+              FROM pg_class c
+              JOIN pg_namespace n ON n.oid = c.relnamespace
+              JOIN pg_index i ON i.indexrelid = c.oid
+              WHERE c.relkind = 'i'
+                AND n.nspname = 'public'
+                AND c.relname LIKE 'idx_stop_search_index_new_%'
+                AND i.indrelid = live_rel_oid
+            ) THEN
+              RAISE EXCEPTION '[workflow] verification failed: _new indexes still attached to stop_search_index';
+            END IF;
+
+            RAISE NOTICE '[workflow] stop_search_index verification passed';
+          END
+          $$;
+          SQL
         env:
           DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
