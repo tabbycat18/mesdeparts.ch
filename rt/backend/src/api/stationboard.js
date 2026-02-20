@@ -193,7 +193,10 @@ function filterLocalizedAlertsByScope(alerts, { stopId, scopeStopIds, routeIds, 
   };
 }
 
-function canonicalizeDepartures(departures, { stopId, debugLog, debugState } = {}) {
+function canonicalizeDepartures(
+  departures,
+  { stopId, debugLog, debugState, includeDelayDebug = false } = {}
+) {
   const rows = Array.isArray(departures) ? departures : [];
   const { kept, dropped } = filterRenderableDepartures(rows);
 
@@ -211,7 +214,12 @@ function canonicalizeDepartures(departures, { stopId, debugLog, debugState } = {
     }
   }
 
-  return kept.map((dep) => normalizeDeparture(dep, { stopId }));
+  return kept.map((dep) =>
+    normalizeDeparture(dep, {
+      stopId,
+      includeDelayDebug: includeDelayDebug === true,
+    })
+  );
 }
 
 function resolveOtdApiKey() {
@@ -1003,6 +1011,7 @@ export async function getStationboard({
       stopId: locationId,
       debugLog,
       debugState,
+      includeDelayDebug: debugEnabled,
     });
     if (debugEnabled) {
       const departureAudit = buildDepartureAudit(baseResponse.departures);
@@ -1154,6 +1163,7 @@ export async function getStationboard({
         stopId: locationId,
         debugLog,
         debugState,
+        includeDelayDebug: debugEnabled,
       }),
     };
     if (debugEnabled) {
@@ -1195,6 +1205,7 @@ export async function getStationboard({
         stopId: locationId,
         debugLog,
         debugState,
+        includeDelayDebug: debugEnabled,
       }),
     };
     if (process.env.NODE_ENV !== "production") {

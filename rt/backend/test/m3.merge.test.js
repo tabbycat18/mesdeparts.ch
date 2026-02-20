@@ -107,6 +107,70 @@ test("applyTripUpdates marks skipped stop suppression and short-turn tags", () =
   assert.equal(noData.tags.includes("skipped_stop"), false);
 });
 
+test("applyTripUpdates delay source preference: departure.time first, then departure.delay fallback", () => {
+  const baseRows = [
+    {
+      trip_id: "trip-delay-source",
+      stop_id: "8501120:0:3",
+      stop_sequence: 5,
+      scheduledDeparture: "2026-02-20T10:00:00.000Z",
+      realtimeDeparture: "2026-02-20T10:00:00.000Z",
+      delayMin: 0,
+      source: "scheduled",
+    },
+  ];
+
+  const byKeyTimePreferred = {
+    byKey: {
+      "trip-delay-source|8501120:0:3|5": {
+        updatedDepartureEpoch: Math.floor(
+          Date.parse("2026-02-20T10:02:59.000Z") / 1000
+        ),
+        delaySec: 300,
+        delayMin: 5,
+      },
+    },
+    cancelledTripIds: new Set(),
+    cancelledTripStartDatesByTripId: Object.create(null),
+    stopStatusByKey: Object.create(null),
+    tripFlagsByTripId: Object.create(null),
+    tripFlagsByTripStartKey: Object.create(null),
+  };
+
+  const mergedTimePreferred = applyTripUpdates(baseRows, byKeyTimePreferred);
+  assert.equal(mergedTimePreferred[0].delayMin, 3);
+  assert.equal(
+    mergedTimePreferred[0].realtimeDeparture,
+    "2026-02-20T10:02:59.000Z"
+  );
+  assert.equal(mergedTimePreferred[0]._delaySourceUsed, "rt_time_diff");
+
+  const byKeyDelayFallback = {
+    byKey: {
+      "trip-delay-source|8501120:0:3|5": {
+        updatedDepartureEpoch: Math.floor(
+          Date.parse("2026-02-20T18:00:00.000Z") / 1000
+        ),
+        delaySec: 181,
+        delayMin: 4,
+      },
+    },
+    cancelledTripIds: new Set(),
+    cancelledTripStartDatesByTripId: Object.create(null),
+    stopStatusByKey: Object.create(null),
+    tripFlagsByTripId: Object.create(null),
+    tripFlagsByTripStartKey: Object.create(null),
+  };
+
+  const mergedDelayFallback = applyTripUpdates(baseRows, byKeyDelayFallback);
+  assert.equal(
+    mergedDelayFallback[0].realtimeDeparture,
+    "2026-02-20T10:03:01.000Z"
+  );
+  assert.equal(mergedDelayFallback[0].delayMin, 4);
+  assert.equal(mergedDelayFallback[0]._delaySourceUsed, "rt_delay_field");
+});
+
 test("applyAddedTrips emits only ADDED stop_time_updates matching station scope", () => {
   const now = new Date("2026-02-16T23:55:00.000Z");
   const depEpoch = Math.floor(now.getTime() / 1000) + 4 * 60;

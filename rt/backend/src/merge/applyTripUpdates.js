@@ -1,3 +1,8 @@
+import {
+  computeDelaySecondsFromTimestamps,
+  computeDepartureDelayDisplayFromSeconds,
+} from "../util/departureDelay.js";
+
 function pick(obj, ...keys) {
   if (!obj) return undefined;
   for (const key of keys) {
@@ -148,25 +153,15 @@ function getStopScheduleRelationship(stu) {
 
 function getDelaySeconds(stu) {
   const dep = pick(stu, "departure") || null;
-  const arr = pick(stu, "arrival") || null;
-
   const depDelay = dep ? asNumber(pick(dep, "delay")) : null;
-  const arrDelay = arr ? asNumber(pick(arr, "delay")) : null;
-
   if (depDelay !== null) return depDelay;
-  if (arrDelay !== null) return arrDelay;
-  return 0;
+  return null;
 }
 
 function getUpdatedEpoch(stu) {
   const dep = pick(stu, "departure") || null;
-  const arr = pick(stu, "arrival") || null;
-
   const depTime = dep ? asNumber(pick(dep, "time")) : null;
-  const arrTime = arr ? asNumber(pick(arr, "time")) : null;
-
   if (depTime !== null) return depTime;
-  if (arrTime !== null) return arrTime;
   return null;
 }
 
@@ -224,6 +219,7 @@ function buildRealtimeIndex(tripUpdates) {
       const seqPart = seqKeyPart(stopSequence);
       const delaySec = getDelaySeconds(stu);
       const updatedEpoch = getUpdatedEpoch(stu);
+      const delayDisplay = computeDepartureDelayDisplayFromSeconds(delaySec);
 
       for (const stopId of stopIdVariants(rawStopId)) {
         const key = buildStopKey(tripId, stopId, seqPart, tripStartDate);
@@ -244,7 +240,7 @@ function buildRealtimeIndex(tripUpdates) {
           stopId,
           stopSequence: seqPart === "" ? null : Number(seqPart),
           delaySec,
-          delayMin: Math.round(delaySec / 60),
+          delayMin: delayDisplay.delayMinAfterClamp,
           updatedDepartureEpoch: updatedEpoch,
           tripStartDate,
         };
@@ -580,24 +576,54 @@ export function applyTripUpdates(baseRows, tripUpdates) {
 
     let realtimeMs = Number.isFinite(scheduledMs) ? scheduledMs : null;
     let delayMin = typeof row.delayMin === "number" ? row.delayMin : null;
+    let delayComputationMeta = null;
 
     if (delay) {
       merged._rtMatched = true;
+      const delayFieldSec = Number.isFinite(delay?.delaySec)
+        ? Number(delay.delaySec)
+        : Number.isFinite(delay?.delayMin)
+          ? Number(delay.delayMin) * 60
+          : null;
+
+      const applyDelayFieldFallback = () => {
+        if (!Number.isFinite(delayFieldSec)) return false;
+        const delayDisplay = computeDepartureDelayDisplayFromSeconds(delayFieldSec);
+        delayMin = delayDisplay.delayMinAfterClamp;
+        if (Number.isFinite(scheduledMs)) {
+          realtimeMs = scheduledMs + delayFieldSec * 1000;
+        }
+        delayComputationMeta = {
+          sourceUsed: "rt_delay_field",
+          rawRtDelaySecUsed: Number.isFinite(delay?.delaySec) ? Number(delay.delaySec) : null,
+        };
+        return true;
+      };
+
       if (typeof delay.updatedDepartureEpoch === "number") {
         const candidateRealtimeMs = delay.updatedDepartureEpoch * 1000;
         if (shouldApplyRealtimeEpoch(scheduledMs, candidateRealtimeMs)) {
           realtimeMs = candidateRealtimeMs;
           if (Number.isFinite(scheduledMs)) {
-            delayMin = Math.round((realtimeMs - scheduledMs) / 60000);
-          } else if (typeof delay.delayMin === "number") {
-            delayMin = delay.delayMin;
+            const computedDelaySec = computeDelaySecondsFromTimestamps(
+              scheduledMs,
+              realtimeMs
+            );
+            const delayDisplay =
+              computeDepartureDelayDisplayFromSeconds(computedDelaySec);
+            delayMin = delayDisplay.delayMinAfterClamp;
+            delayComputationMeta = {
+              sourceUsed: "rt_time_diff",
+              rawRtDelaySecUsed: null,
+            };
+          } else if (!applyDelayFieldFallback()) {
+            delayMin = null;
           }
+        } else if (!applyDelayFieldFallback()) {
+          delayMin = null;
         }
-      } else if (typeof delay.delayMin === "number") {
-        delayMin = delay.delayMin;
-        if (Number.isFinite(scheduledMs)) {
-          realtimeMs = scheduledMs + delayMin * 60 * 1000;
-        }
+      } else if (!applyDelayFieldFallback()) {
+        delayMin = null;
       }
     }
 
@@ -606,6 +632,10 @@ export function applyTripUpdates(baseRows, tripUpdates) {
     }
 
     merged.delayMin = delayMin;
+    if (delayComputationMeta) {
+      merged._delaySourceUsed = delayComputationMeta.sourceUsed;
+      merged._rawRtDelaySecUsed = delayComputationMeta.rawRtDelaySecUsed;
+    }
     const tripIdKey = String(row.trip_id || "");
     const cancelledStartSet = cancelledTripStartDatesByTripId[tripIdKey];
     const hasStartSpecificCancellation = cancelledStartSet instanceof Set && cancelledStartSet.size > 0;

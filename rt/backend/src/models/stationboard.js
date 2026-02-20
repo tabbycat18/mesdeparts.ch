@@ -1,4 +1,8 @@
 import { normalizeText, toArray, uniqueStrings } from "../util/text.js";
+import {
+  computeDelaySecondsFromTimestamps,
+  computeDepartureDelayDisplayFromSeconds,
+} from "../util/departureDelay.js";
 
 function asNullableText(value) {
   const text = normalizeText(value);
@@ -124,7 +128,16 @@ function normalizeDebugFlags(raw, flags, cancelReasonCode, skippedStopSignal, tr
   return uniqueStrings(out);
 }
 
-export function computeDisplayFields(dep) {
+function asFiniteNumber(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+export function computeDisplayFields(dep, options = {}) {
+  const includeDelayDebug = options?.includeDelayDebug === true;
+  const delayMeta =
+    options?.delayMeta && typeof options.delayMeta === "object" ? options.delayMeta : null;
+
   const out = {
     ...dep,
     debug: {
@@ -136,6 +149,13 @@ export function computeDisplayFields(dep) {
   const scheduledMs = Date.parse(out.scheduledDeparture || "");
   const realtimeMs = Date.parse(out.realtimeDeparture || "");
   const rtConfirmed = out.flags.includes("RT_CONFIRMED") || out.debug.flags.includes("rt:confirmed");
+  const sourceHint = normalizeText(delayMeta?.sourceUsed).toLowerCase();
+  let sourceUsed = "scheduled_fallback";
+  let rawRtDelaySecUsed = null;
+  let computedDelaySec = null;
+  let computedDelayMinBeforeClamp = null;
+  let computedDelayMinAfterClamp = null;
+  let roundingMethodUsed = "ceil";
 
   if (!Number.isFinite(realtimeMs)) {
     out.delayMin = null;
@@ -144,14 +164,64 @@ export function computeDisplayFields(dep) {
     out.delayMin = null;
     out.debug.flags = uniqueStrings([...out.debug.flags, "delay:unknown_no_schedule"]);
   } else if (realtimeMs !== scheduledMs) {
-    out.delayMin = Math.round((realtimeMs - scheduledMs) / 60000);
-    out.debug.flags = uniqueStrings([...out.debug.flags, "delay:from_rt_diff"]);
+    sourceUsed = sourceHint === "rt_delay_field" ? "rt_delay_field" : "rt_time_diff";
+    rawRtDelaySecUsed =
+      sourceUsed === "rt_delay_field" ? asFiniteNumber(delayMeta?.rawRtDelaySecUsed) : null;
+    computedDelaySec =
+      sourceUsed === "rt_delay_field" && Number.isFinite(rawRtDelaySecUsed)
+        ? rawRtDelaySecUsed
+        : computeDelaySecondsFromTimestamps(scheduledMs, realtimeMs);
+
+    const delayDisplay =
+      computeDepartureDelayDisplayFromSeconds(computedDelaySec);
+    out.delayMin = delayDisplay.delayMinAfterClamp;
+    computedDelayMinBeforeClamp = delayDisplay.delayMinBeforeClamp;
+    computedDelayMinAfterClamp = delayDisplay.delayMinAfterClamp;
+    roundingMethodUsed = delayDisplay.roundingMethodUsed;
+    out.debug.flags = uniqueStrings([
+      ...out.debug.flags,
+      sourceUsed === "rt_delay_field" ? "delay:from_rt_delay_field" : "delay:from_rt_diff",
+    ]);
   } else if (rtConfirmed) {
     out.delayMin = 0;
+    sourceUsed = sourceHint === "rt_delay_field" ? "rt_delay_field" : "rt_time_diff";
+    rawRtDelaySecUsed =
+      sourceUsed === "rt_delay_field" ? asFiniteNumber(delayMeta?.rawRtDelaySecUsed) : null;
+    computedDelaySec = 0;
+    const delayDisplay = computeDepartureDelayDisplayFromSeconds(computedDelaySec);
+    computedDelayMinBeforeClamp = delayDisplay.delayMinBeforeClamp;
+    computedDelayMinAfterClamp = delayDisplay.delayMinAfterClamp;
+    roundingMethodUsed = delayDisplay.roundingMethodUsed;
     out.debug.flags = uniqueStrings([...out.debug.flags, "delay:rt_equal_confirmed_zero"]);
   } else {
     out.delayMin = null;
     out.debug.flags = uniqueStrings([...out.debug.flags, "delay:unknown_scheduled_fallback"]);
+  }
+
+  if (includeDelayDebug) {
+    const rawScheduledEpochSec = Number.isFinite(scheduledMs)
+      ? Math.trunc(scheduledMs / 1000)
+      : null;
+    const rawRealtimeEpochSec = Number.isFinite(realtimeMs)
+      ? Math.trunc(realtimeMs / 1000)
+      : null;
+    const fallbackComputedDelaySec =
+      Number.isFinite(scheduledMs) && Number.isFinite(realtimeMs)
+        ? computeDelaySecondsFromTimestamps(scheduledMs, realtimeMs)
+        : null;
+
+    out.debug.delayComputation = {
+      rawScheduledISO: out.scheduledDeparture || null,
+      rawRealtimeISO: out.realtimeDeparture || null,
+      rawScheduledEpochSec,
+      rawRealtimeEpochSec,
+      rawRtDelaySecUsed,
+      computedDelaySec: computedDelaySec ?? fallbackComputedDelaySec,
+      computedDelayMinBeforeClamp,
+      computedDelayMinAfterClamp,
+      roundingMethodUsed,
+      sourceUsed,
+    };
   }
 
   const hasTripCancel = out.flags.includes("TRIP_CANCELLED");
@@ -232,5 +302,11 @@ export function normalizeDeparture(raw, ctx = {}) {
     },
   };
 
-  return computeDisplayFields(dep);
+  return computeDisplayFields(dep, {
+    includeDelayDebug: ctx?.includeDelayDebug === true,
+    delayMeta: {
+      sourceUsed: raw?._delaySourceUsed,
+      rawRtDelaySecUsed: raw?._rawRtDelaySecUsed,
+    },
+  });
 }

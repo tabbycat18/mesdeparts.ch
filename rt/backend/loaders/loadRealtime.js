@@ -5,6 +5,7 @@ import {
   getRtCache,
   LA_TRIPUPDATES_FEED_KEY,
 } from "../src/db/rtCache.js";
+import { computeDepartureDelayDisplayFromSeconds } from "../src/util/departureDelay.js";
 
 // Set DEBUG_RT=1 if you want logs
 const DEBUG_RT = process.env.DEBUG_RT === "1";
@@ -475,25 +476,15 @@ function shouldReplaceRelationship(prev, next) {
 
 function getDelaySeconds(stu) {
   const dep = pick(stu, "departure", "departure") || null;
-  const arr = pick(stu, "arrival", "arrival") || null;
-
   const depDelay = dep ? asNumber(pick(dep, "delay", "delay")) : null;
-  const arrDelay = arr ? asNumber(pick(arr, "delay", "delay")) : null;
-
   if (depDelay !== null) return depDelay;
-  if (arrDelay !== null) return arrDelay;
-  return 0;
+  return null;
 }
 
 function getUpdatedEpoch(stu) {
   const dep = pick(stu, "departure", "departure") || null;
-  const arr = pick(stu, "arrival", "arrival") || null;
-
   const depTime = dep ? asNumber(pick(dep, "time", "time")) : null;
-  const arrTime = arr ? asNumber(pick(arr, "time", "time")) : null;
-
   if (depTime !== null) return depTime;
-  if (arrTime !== null) return arrTime;
   return null;
 }
 
@@ -583,6 +574,7 @@ export function buildDelayIndex(gtfsRtFeed) {
       const seqPart = seqKeyPart(stopSequence);
 
       const delaySec = getDelaySeconds(stu);
+      const delayDisplay = computeDepartureDelayDisplayFromSeconds(delaySec);
       const updatedEpoch = getUpdatedEpoch(stu);
       const stopScheduleRelationship = getStopTimeScheduleRelationship(stu);
 
@@ -661,14 +653,12 @@ export function buildDelayIndex(gtfsRtFeed) {
           if (prevEpoch !== null && updatedEpoch === null) continue;
         }
 
-        // NOTE: consider computing delayMin from seconds more "human":
-        // delayMinDisplay: delaySec > 0 ? Math.max(1, Math.round(delaySec/60)) : Math.round(delaySec/60)
         byKey[key] = {
           tripId,
           stopId,
           stopSequence: seqPart === "" ? null : Number(seqPart),
           delaySec,
-          delayMin: Math.round(delaySec / 60),
+          delayMin: delayDisplay.delayMinAfterClamp,
           updatedDepartureEpoch: updatedEpoch,
           tripStartDate,
         };
@@ -691,7 +681,7 @@ export function buildDelayIndex(gtfsRtFeed) {
           stopSequence: Number.isFinite(stopSequence) ? Number(stopSequence) : null,
           departureEpoch: updatedEpoch,
           delaySec,
-          delayMin: Math.round(delaySec / 60),
+          delayMin: delayDisplay.delayMinAfterClamp,
           tripStartDate,
           tripStartTime:
             getTripDescriptorField(tu, "start_time", "startTime") || "",

@@ -1,3 +1,5 @@
+import { computeDepartureDelayDisplayFromSeconds } from "../util/departureDelay.js";
+
 function pick(obj, ...keys) {
   if (!obj) return undefined;
   for (const key of keys) {
@@ -194,9 +196,10 @@ function extractAddedStopUpdates(tripUpdates) {
       if (stopRel === "SKIPPED") continue;
 
       const dep = pick(stu, "departure") || null;
-      const arr = pick(stu, "arrival") || null;
-      const depEpoch = asNumber(pick(dep, "time")) ?? asNumber(pick(arr, "time"));
+      const depEpoch = asNumber(pick(dep, "time"));
       if (depEpoch === null) continue;
+      const delaySec = asNumber(pick(dep, "delay"));
+      const delayDisplay = computeDepartureDelayDisplayFromSeconds(delaySec);
 
       const stopSequence = asNumber(pick(stu, "stop_sequence", "stopSequence"));
       const key = `${tripId}|${stopId}|${stopSequence ?? ""}|${depEpoch}`;
@@ -209,11 +212,8 @@ function extractAddedStopUpdates(tripUpdates) {
         stopId,
         stopSequence,
         departureEpoch: depEpoch,
-        delaySec: asNumber(pick(dep, "delay")) ?? asNumber(pick(arr, "delay")) ?? 0,
-        delayMin:
-          Math.round(
-            (asNumber(pick(dep, "delay")) ?? asNumber(pick(arr, "delay")) ?? 0) / 60
-          ) || 0,
+        delaySec,
+        delayMin: delayDisplay.delayMinAfterClamp ?? 0,
         tripStartDate: tripStartDate.length === 8 ? tripStartDate : "",
         tripShortName,
         tripHeadsign,

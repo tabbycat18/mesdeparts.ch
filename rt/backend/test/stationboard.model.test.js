@@ -85,3 +85,89 @@ test("normalizeDeparture delay: equal schedule with fallback source -> null", ()
   assert.equal(dep.delayMin, null);
   assert.ok(dep.debug.flags.includes("delay:unknown_scheduled_fallback"));
 });
+
+test("normalizeDeparture delay rounding uses ceil with jitter threshold and no-early clamp", () => {
+  const scheduledIso = "2026-02-17T10:00:00.000Z";
+  const scheduledMs = Date.parse(scheduledIso);
+
+  const cases = [
+    { label: "+120s", deltaSec: 120, expectedDelayMin: 2 },
+    { label: "+179s", deltaSec: 179, expectedDelayMin: 3 },
+    { label: "+180s", deltaSec: 180, expectedDelayMin: 3 },
+    { label: "+181s", deltaSec: 181, expectedDelayMin: 4 },
+    { label: "+29s jitter", deltaSec: 29, expectedDelayMin: 0 },
+    { label: "-30s early", deltaSec: -30, expectedDelayMin: 0 },
+    { label: "-61s early", deltaSec: -61, expectedDelayMin: 0 },
+  ];
+
+  for (const item of cases) {
+    const dep = normalizeDeparture({
+      trip_id: `trip-${item.label}`,
+      stop_id: "8501120:0:10",
+      scheduledDeparture: scheduledIso,
+      realtimeDeparture: new Date(scheduledMs + item.deltaSec * 1000).toISOString(),
+      source: "tripupdate",
+      _rtMatched: true,
+    });
+    assert.equal(dep.delayMin, item.expectedDelayMin, item.label);
+  }
+});
+
+test("normalizeDeparture includes delay computation debug fields only when requested", () => {
+  const depWithoutDebug = normalizeDeparture({
+    trip_id: "trip-delay-debug-off",
+    stop_id: "8501120:0:11",
+    scheduledDeparture: "2026-02-17T10:00:00.000Z",
+    realtimeDeparture: "2026-02-17T10:02:59.000Z",
+    source: "tripupdate",
+    _rtMatched: true,
+  });
+  assert.equal(depWithoutDebug.debug?.delayComputation, undefined);
+
+  const depWithDebug = normalizeDeparture(
+    {
+      trip_id: "trip-delay-debug-on",
+      stop_id: "8501120:0:12",
+      scheduledDeparture: "2026-02-17T10:00:00.000Z",
+      realtimeDeparture: "2026-02-17T10:02:59.000Z",
+      source: "tripupdate",
+      _rtMatched: true,
+    },
+    { includeDelayDebug: true }
+  );
+
+  assert.equal(depWithDebug.delayMin, 3);
+  assert.equal(depWithDebug.debug?.delayComputation?.sourceUsed, "rt_time_diff");
+  assert.equal(
+    depWithDebug.debug?.delayComputation?.rawScheduledISO,
+    "2026-02-17T10:00:00.000Z"
+  );
+  assert.equal(
+    depWithDebug.debug?.delayComputation?.rawRealtimeISO,
+    "2026-02-17T10:02:59.000Z"
+  );
+  assert.equal(depWithDebug.debug?.delayComputation?.rawScheduledEpochSec, 1771322400);
+  assert.equal(depWithDebug.debug?.delayComputation?.rawRealtimeEpochSec, 1771322579);
+  assert.equal(depWithDebug.debug?.delayComputation?.rawRtDelaySecUsed, null);
+  assert.equal(depWithDebug.debug?.delayComputation?.computedDelaySec, 179);
+  assert.equal(depWithDebug.debug?.delayComputation?.computedDelayMinBeforeClamp, 3);
+  assert.equal(depWithDebug.debug?.delayComputation?.computedDelayMinAfterClamp, 3);
+  assert.equal(depWithDebug.debug?.delayComputation?.roundingMethodUsed, "ceil");
+
+  const depWithDelayFieldDebug = normalizeDeparture(
+    {
+      trip_id: "trip-delay-debug-delay-field",
+      stop_id: "8501120:0:13",
+      scheduledDeparture: "2026-02-17T10:00:00.000Z",
+      realtimeDeparture: "2026-02-17T10:03:01.000Z",
+      source: "tripupdate",
+      _rtMatched: true,
+      _delaySourceUsed: "rt_delay_field",
+      _rawRtDelaySecUsed: 181,
+    },
+    { includeDelayDebug: true }
+  );
+  assert.equal(depWithDelayFieldDebug.delayMin, 4);
+  assert.equal(depWithDelayFieldDebug.debug?.delayComputation?.sourceUsed, "rt_delay_field");
+  assert.equal(depWithDelayFieldDebug.debug?.delayComputation?.rawRtDelaySecUsed, 181);
+});
