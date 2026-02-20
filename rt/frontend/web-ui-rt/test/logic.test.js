@@ -449,6 +449,321 @@ assert.equal(detectNetworkFromStation("Zurich HB"), "vbz");
   }
 }
 
+// small stops (<=4 lines) should show up to 2 departures per direction in line view
+{
+  const previous = {
+    station: appState.STATION,
+    stationId: appState.stationId,
+    trainFilter: appState.trainServiceFilter,
+    platformFilter: appState.platformFilter,
+    lineFilter: appState.lineFilter,
+    favoritesOnly: appState.favoritesOnly,
+    lastPlatforms: appState.lastPlatforms,
+  };
+
+  const nowBase = Date.now() + 8 * 60 * 1000;
+  const mkIso = (ms) => new Date(ms).toISOString();
+  const makeBusEntry = ({ line, to, offsetMin }) => {
+    const scheduledMs = nowBase + offsetMin * 60 * 1000;
+    return {
+      category: "B",
+      number: String(line),
+      name: String(line),
+      operator: "TL",
+      to,
+      source: "scheduled",
+      tags: [],
+      stop: {
+        departure: mkIso(scheduledMs),
+        platform: "A",
+        delay: 0,
+        prognosis: {
+          departure: mkIso(scheduledMs),
+          delay: 0,
+          status: "ON_TIME",
+          cancelled: false,
+        },
+        cancelled: false,
+      },
+      cancelled: false,
+    };
+  };
+
+  try {
+    appState.STATION = "Lausanne, Bel-Air";
+    appState.stationId = "Parent8591988";
+    appState.trainServiceFilter = "train_all";
+    appState.platformFilter = null;
+    appState.lineFilter = null;
+    appState.favoritesOnly = false;
+    appState.lastPlatforms = {};
+
+    const stationboard = [
+      makeBusEntry({ line: 8, to: "Pully, gare", offsetMin: 2 }),
+      makeBusEntry({ line: 8, to: "Pully, gare", offsetMin: 4 }),
+      makeBusEntry({ line: 8, to: "Pully, gare", offsetMin: 6 }),
+      makeBusEntry({ line: 8, to: "Prilly, gare", offsetMin: 3 }),
+      makeBusEntry({ line: 8, to: "Prilly, gare", offsetMin: 5 }),
+      makeBusEntry({ line: 8, to: "Prilly, gare", offsetMin: 7 }),
+    ];
+
+    const rows = buildDeparturesGrouped({ stationboard }, VIEW_MODE_LINE);
+    const line8Rows = rows.filter((row) => String(row.simpleLineId || "") === "8");
+    assert.equal(line8Rows.length, 4);
+
+    const byDest = line8Rows.reduce((acc, row) => {
+      const key = String(row.dest || "");
+      acc.set(key, (acc.get(key) || 0) + 1);
+      return acc;
+    }, new Map());
+    assert.equal(byDest.get("Pully, gare"), 2);
+    assert.equal(byDest.get("Prilly, gare"), 2);
+  } finally {
+    appState.STATION = previous.station;
+    appState.stationId = previous.stationId;
+    appState.trainServiceFilter = previous.trainFilter;
+    appState.platformFilter = previous.platformFilter;
+    appState.lineFilter = previous.lineFilter;
+    appState.favoritesOnly = previous.favoritesOnly;
+    appState.lastPlatforms = previous.lastPlatforms;
+  }
+}
+
+// large stops (>4 lines) should keep default per-line cap behavior
+{
+  const previous = {
+    station: appState.STATION,
+    stationId: appState.stationId,
+    trainFilter: appState.trainServiceFilter,
+    platformFilter: appState.platformFilter,
+    lineFilter: appState.lineFilter,
+    favoritesOnly: appState.favoritesOnly,
+    lastPlatforms: appState.lastPlatforms,
+  };
+
+  const nowBase = Date.now() + 8 * 60 * 1000;
+  const mkIso = (ms) => new Date(ms).toISOString();
+  const makeBusEntry = ({ line, to, offsetMin }) => {
+    const scheduledMs = nowBase + offsetMin * 60 * 1000;
+    return {
+      category: "B",
+      number: String(line),
+      name: String(line),
+      operator: "TL",
+      to: to || `Destination ${line}`,
+      source: "scheduled",
+      tags: [],
+      stop: {
+        departure: mkIso(scheduledMs),
+        platform: "A",
+        delay: 0,
+        prognosis: {
+          departure: mkIso(scheduledMs),
+          delay: 0,
+          status: "ON_TIME",
+          cancelled: false,
+        },
+        cancelled: false,
+      },
+      cancelled: false,
+    };
+  };
+
+  try {
+    appState.STATION = "Lausanne, Bel-Air";
+    appState.stationId = "Parent8591988";
+    appState.trainServiceFilter = "train_all";
+    appState.platformFilter = null;
+    appState.lineFilter = null;
+    appState.favoritesOnly = false;
+    appState.lastPlatforms = {};
+
+    const stationboard = [
+      makeBusEntry({ line: 8, to: "Pully, gare", offsetMin: 2 }),
+      makeBusEntry({ line: 8, to: "Pully, gare", offsetMin: 4 }),
+      makeBusEntry({ line: 8, to: "Pully, gare", offsetMin: 6 }),
+      makeBusEntry({ line: 8, to: "Prilly, gare", offsetMin: 3 }),
+      makeBusEntry({ line: 8, to: "Prilly, gare", offsetMin: 5 }),
+      makeBusEntry({ line: 8, to: "Prilly, gare", offsetMin: 7 }),
+      makeBusEntry({ line: 1, offsetMin: 8 }),
+      makeBusEntry({ line: 2, offsetMin: 9 }),
+      makeBusEntry({ line: 3, offsetMin: 10 }),
+      makeBusEntry({ line: 4, offsetMin: 11 }),
+      makeBusEntry({ line: 5, offsetMin: 12 }),
+    ];
+
+    const rows = buildDeparturesGrouped({ stationboard }, VIEW_MODE_LINE);
+    const line8Rows = rows.filter((row) => String(row.simpleLineId || "") === "8");
+    assert.equal(line8Rows.length, 2);
+  } finally {
+    appState.STATION = previous.station;
+    appState.stationId = previous.stationId;
+    appState.trainServiceFilter = previous.trainFilter;
+    appState.platformFilter = previous.platformFilter;
+    appState.lineFilter = previous.lineFilter;
+    appState.favoritesOnly = previous.favoritesOnly;
+    appState.lastPlatforms = previous.lastPlatforms;
+  }
+}
+
+// small-stop mode should apply a fair global cap (16 rows) across lines
+{
+  const previous = {
+    station: appState.STATION,
+    stationId: appState.stationId,
+    trainFilter: appState.trainServiceFilter,
+    platformFilter: appState.platformFilter,
+    lineFilter: appState.lineFilter,
+    favoritesOnly: appState.favoritesOnly,
+    lastPlatforms: appState.lastPlatforms,
+  };
+
+  const nowBase = Date.now() + 8 * 60 * 1000;
+  const mkIso = (ms) => new Date(ms).toISOString();
+  const makeBusEntry = ({ line, to, offsetMin }) => {
+    const scheduledMs = nowBase + offsetMin * 60 * 1000;
+    return {
+      category: "B",
+      number: String(line),
+      name: String(line),
+      operator: "TL",
+      to,
+      source: "scheduled",
+      tags: [],
+      stop: {
+        departure: mkIso(scheduledMs),
+        platform: "A",
+        delay: 0,
+        prognosis: {
+          departure: mkIso(scheduledMs),
+          delay: 0,
+          status: "ON_TIME",
+          cancelled: false,
+        },
+        cancelled: false,
+      },
+      cancelled: false,
+    };
+  };
+
+  try {
+    appState.STATION = "Lausanne, Bel-Air";
+    appState.stationId = "Parent8591988";
+    appState.trainServiceFilter = "train_all";
+    appState.platformFilter = null;
+    appState.lineFilter = null;
+    appState.favoritesOnly = false;
+    appState.lastPlatforms = {};
+
+    const lines = [1, 2, 3, 4];
+    const dirs = ["Direction A", "Direction B", "Direction C"];
+    const stationboard = [];
+    for (const line of lines) {
+      for (const [dirIdx, dir] of dirs.entries()) {
+        stationboard.push(makeBusEntry({ line, to: dir, offsetMin: line * 20 + dirIdx * 4 + 1 }));
+        stationboard.push(makeBusEntry({ line, to: dir, offsetMin: line * 20 + dirIdx * 4 + 2 }));
+      }
+    }
+
+    const rows = buildDeparturesGrouped({ stationboard }, VIEW_MODE_LINE);
+    assert.equal(rows.length, 16);
+
+    const byLine = rows.reduce((acc, row) => {
+      const key = String(row.simpleLineId || "");
+      acc.set(key, (acc.get(key) || 0) + 1);
+      return acc;
+    }, new Map());
+
+    assert.equal(byLine.size, 4);
+    assert.equal(byLine.get("1"), 4);
+    assert.equal(byLine.get("2"), 4);
+    assert.equal(byLine.get("3"), 4);
+    assert.equal(byLine.get("4"), 4);
+  } finally {
+    appState.STATION = previous.station;
+    appState.stationId = previous.stationId;
+    appState.trainServiceFilter = previous.trainFilter;
+    appState.platformFilter = previous.platformFilter;
+    appState.lineFilter = previous.lineFilter;
+    appState.favoritesOnly = previous.favoritesOnly;
+    appState.lastPlatforms = previous.lastPlatforms;
+  }
+}
+
+// small-stop mode should preserve delayed-row visibility without exceeding per-direction count
+{
+  const previous = {
+    station: appState.STATION,
+    stationId: appState.stationId,
+    trainFilter: appState.trainServiceFilter,
+    platformFilter: appState.platformFilter,
+    lineFilter: appState.lineFilter,
+    favoritesOnly: appState.favoritesOnly,
+    lastPlatforms: appState.lastPlatforms,
+  };
+
+  const nowBase = Date.now() + 8 * 60 * 1000;
+  const mkIso = (ms) => new Date(ms).toISOString();
+  const makeBusEntry = ({ line, offsetMin, delayMin = 0, to }) => {
+    const scheduledMs = nowBase + offsetMin * 60 * 1000;
+    const realtimeMs = scheduledMs + delayMin * 60 * 1000;
+    return {
+      category: "B",
+      number: String(line),
+      name: String(line),
+      operator: "TL",
+      to: to || `Destination ${line}`,
+      source: "scheduled",
+      tags: [],
+      stop: {
+        departure: mkIso(scheduledMs),
+        platform: "A",
+        delay: delayMin,
+        prognosis: {
+          departure: mkIso(realtimeMs),
+          delay: delayMin,
+          status: "ON_TIME",
+          cancelled: false,
+        },
+        cancelled: false,
+      },
+      cancelled: false,
+    };
+  };
+
+  try {
+    appState.STATION = "Lausanne, Bel-Air";
+    appState.stationId = "Parent8591988";
+    appState.trainServiceFilter = "train_all";
+    appState.platformFilter = null;
+    appState.lineFilter = null;
+    appState.favoritesOnly = false;
+    appState.lastPlatforms = {};
+
+    const stationboard = [
+      makeBusEntry({ line: 8, offsetMin: 2, delayMin: 0, to: "Pully, gare" }),
+      makeBusEntry({ line: 8, offsetMin: 4, delayMin: 0, to: "Pully, gare" }),
+      makeBusEntry({ line: 8, offsetMin: 6, delayMin: 4, to: "Pully, gare" }),
+    ];
+
+    const rows = buildDeparturesGrouped({ stationboard }, VIEW_MODE_LINE);
+    const line8Rows = rows.filter((row) => String(row.simpleLineId || "") === "8");
+
+    assert.equal(line8Rows.length, 2);
+    assert.ok(
+      line8Rows.some((row) => row.status === "delay" && typeof row.delayMin === "number" && row.delayMin >= 2)
+    );
+  } finally {
+    appState.STATION = previous.station;
+    appState.stationId = previous.stationId;
+    appState.trainServiceFilter = previous.trainFilter;
+    appState.platformFilter = previous.platformFilter;
+    appState.lineFilter = previous.lineFilter;
+    appState.favoritesOnly = previous.favoritesOnly;
+    appState.lastPlatforms = previous.lastPlatforms;
+  }
+}
+
 // fetchStationboardRaw should forward selected UI language to backend (?lang=..)
 {
   const originalFetch = globalThis.fetch;

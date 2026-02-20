@@ -6,6 +6,9 @@
 import {
   appState,
   DEPS_PER_LINE,
+  SMALL_STOP_MAX_LINES,
+  SMALL_STOP_DEPS_PER_DIRECTION,
+  SMALL_STOP_MAX_ROWS,
   MIN_ROWS,
   MAX_TRAIN_ROWS,
   BOARD_HORIZON_MINUTES,
@@ -822,6 +825,7 @@ export function buildDeparturesGrouped(data, viewMode = VIEW_MODE_LINE) {
 
   const byLine = new Map();
   const allDeps = [];
+  const uniqueBusLinesBeforeUiFilters = new Set();
   const seenSyntheticReplacementRows = new Set();
   const busLines = new Set();
   const busPlatforms = new Set();
@@ -976,6 +980,7 @@ export function buildDeparturesGrouped(data, viewMode = VIEW_MODE_LINE) {
     const simpleLineId = normalizeSimpleLineId(rawNumber, rawCategory);
     const entryNetwork = detectNetworkFromEntry(entry);
     if (mode === "bus") {
+      if (simpleLineId) uniqueBusLinesBeforeUiFilters.add(simpleLineId);
       busLines.add(simpleLineId);
       if (simpleLineId && !lineNetworkMap.has(simpleLineId)) {
         lineNetworkMap.set(simpleLineId, entryNetwork || appState.currentNetwork || "generic");
@@ -1241,7 +1246,6 @@ export function buildDeparturesGrouped(data, viewMode = VIEW_MODE_LINE) {
   }
 
   // Group-by-line view (default)
-  const flat = [];
   let lineKeys;
 
   lineKeys = Array.from(byLine.keys()).sort((a, b) => {
@@ -1252,11 +1256,16 @@ export function buildDeparturesGrouped(data, viewMode = VIEW_MODE_LINE) {
   });
 
   const perLineCap = Math.max(1, DEPS_PER_LINE);
+  const perDirectionCap = Math.max(1, SMALL_STOP_DEPS_PER_DIRECTION);
+  const smallStopMaxRows = Math.max(1, SMALL_STOP_MAX_ROWS);
+  const isSmallStopBoard =
+    uniqueBusLinesBeforeUiFilters.size > 0 &&
+    uniqueBusLinesBeforeUiFilters.size <= Math.max(1, SMALL_STOP_MAX_LINES);
 
   const balancedByDest = (deps, limit) => {
     const buckets = new Map();
     for (const d of deps) {
-      const key = d.dest || "";
+      const key = String(d?.dest || "").trim();
       if (!buckets.has(key)) buckets.set(key, []);
       buckets.get(key).push(d);
     }
@@ -1285,6 +1294,23 @@ export function buildDeparturesGrouped(data, viewMode = VIEW_MODE_LINE) {
       }
     }
 
+    return out;
+  };
+
+  const selectPerDirection = (deps, directionCap) => {
+    const buckets = new Map();
+    for (const d of deps) {
+      const key = String(d?.dest || "").trim();
+      if (!buckets.has(key)) buckets.set(key, []);
+      buckets.get(key).push(d);
+    }
+
+    const out = [];
+    for (const arr of buckets.values()) {
+      arr.sort((a, b) => (a.baseTime || 0) - (b.baseTime || 0));
+      for (const dep of arr.slice(0, directionCap)) out.push(dep);
+    }
+    out.sort((a, b) => (a.baseTime || 0) - (b.baseTime || 0));
     return out;
   };
 
@@ -1322,14 +1348,40 @@ export function buildDeparturesGrouped(data, viewMode = VIEW_MODE_LINE) {
     return out;
   };
 
+  const selectedByLine = new Map();
   for (const key of lineKeys) {
     const deps = (byLine.get(key) || []).slice().sort((a, b) => a.baseTime - b.baseTime);
-    const selected = preserveLineDelayVisibility(
-      balancedByDest(deps, perLineCap),
-      deps,
-      perLineCap
-    );
-    for (const d of selected) flat.push(d);
+    const initiallySelected = isSmallStopBoard
+      ? selectPerDirection(deps, perDirectionCap)
+      : balancedByDest(deps, perLineCap);
+    const selectionCap = isSmallStopBoard ? initiallySelected.length : perLineCap;
+    const selected = preserveLineDelayVisibility(initiallySelected, deps, selectionCap);
+    selectedByLine.set(key, selected);
+  }
+
+  if (!isSmallStopBoard) {
+    const flat = [];
+    for (const key of lineKeys) {
+      for (const dep of selectedByLine.get(key) || []) flat.push(dep);
+    }
+    return flat.sort(lineDestComparator);
+  }
+
+  // Small-stop mode: apply a fair global cap with round-robin picks across lines.
+  const flat = [];
+  const lineCursor = new Map(lineKeys.map((key) => [key, 0]));
+  while (flat.length < smallStopMaxRows) {
+    let pickedAny = false;
+    for (const key of lineKeys) {
+      const selected = selectedByLine.get(key) || [];
+      const cursor = lineCursor.get(key) || 0;
+      if (cursor >= selected.length) continue;
+      flat.push(selected[cursor]);
+      lineCursor.set(key, cursor + 1);
+      pickedAny = true;
+      if (flat.length >= smallStopMaxRows) break;
+    }
+    if (!pickedAny) break;
   }
 
   return flat.sort(lineDestComparator);
