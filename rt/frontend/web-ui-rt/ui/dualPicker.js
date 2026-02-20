@@ -631,9 +631,11 @@ export class DualPicker {
       deleteBtn.innerHTML = '<svg viewBox="0 0 24 24" focusable="false" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M18 6L6 18M6 6l12 12"/></svg>';
       deleteBtn.addEventListener("click", (e) => {
         e.stopPropagation();
-        removeFavorite(fav.id);
-        this.showToast(t("favoriteRemoved"));
-        this.renderFavoritesList();
+        if (confirm(`${t("favoritesDelete")} "${fav.name}"?`)) {
+          removeFavorite(fav.id);
+          this.showToast(t("favoriteRemoved"));
+          this.renderFavoritesList();
+        }
       });
 
       item.appendChild(btn);
