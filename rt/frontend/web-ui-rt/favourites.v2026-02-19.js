@@ -10,7 +10,6 @@ const MAX_FAVS = 50;
  * @typedef {Object} Favorite
  * @property {string} id
  * @property {string} name
- * @property {string} side - "left" or "right" (defaults to "left" for backward compatibility)
  * @property {number} addedAt
  */
 
@@ -27,12 +26,11 @@ function safeString(v) {
   return String(v);
 }
 
-function normalizeFavorite(input, defaultSide = "left") {
+function normalizeFavorite(input) {
   if (!input) return null;
 
   const id = safeString(input.id).trim();
   const name = safeString(input.name).trim();
-  const side = safeString(input.side).trim() || defaultSide;
 
   if (!id || !name) return null;
 
@@ -42,7 +40,7 @@ function normalizeFavorite(input, defaultSide = "left") {
       ? addedAtRaw
       : Date.now();
 
-  return { id, name, side, addedAt };
+  return { id, name, addedAt };
 }
 
 function dedupeAndSort(list) {
@@ -103,17 +101,15 @@ export function saveFavorites(list) {
 /**
  * Add (or refresh) a favourite station.
  * @param {{id: string, name: string}} station
- * @param {string} side - "left" or "right" (optional, defaults to "left")
  * @returns {Favorite[]} updated list
  */
-export function addFavorite(station, side = "left") {
+export function addFavorite(station) {
   const cur = loadFavorites();
   const fav = normalizeFavorite({
     id: station && station.id,
     name: station && station.name,
-    side: side,
     addedAt: Date.now(),
-  }, side);
+  });
 
   if (!fav) return cur;
 
@@ -122,41 +118,16 @@ export function addFavorite(station, side = "left") {
 }
 
 /**
- * Add a favourite for a specific side.
- * @param {string} side - "left" or "right"
- * @param {{id: string, name: string}} station
- * @returns {Favorite[]} updated list
- */
-export function addFavoriteForSide(side, station) {
-  return addFavorite(station, side);
-}
-
-/**
  * Remove a favourite by station id.
  * @param {string} stationId
- * @param {string} side - "left", "right", or null (removes from all sides)
  * @returns {Favorite[]} updated list
  */
-export function removeFavorite(stationId, side = null) {
+export function removeFavorite(stationId) {
   const id = safeString(stationId).trim();
   if (!id) return loadFavorites();
 
-  const next = loadFavorites().filter((f) => {
-    if (f.id !== id) return true;
-    if (side === null) return false;
-    return f.side !== side;
-  });
+  const next = loadFavorites().filter((f) => f.id !== id);
   return saveFavorites(next);
-}
-
-/**
- * Remove a favourite from a specific side.
- * @param {string} side - "left" or "right"
- * @param {string} stationId
- * @returns {Favorite[]} updated list
- */
-export function removeFavoriteForSide(side, stationId) {
-  return removeFavorite(stationId, side);
 }
 
 /**
@@ -172,16 +143,6 @@ export function isFavorite(stationId) {
 }
 
 /**
- * Load favourites for a specific side.
- * @param {string} side - "left" or "right"
- * @returns {Favorite[]}
- */
-export function loadFavoritesForSide(side) {
-  const sideName = safeString(side).trim() || "left";
-  return loadFavorites().filter((f) => (f.side || "left") === sideName);
-}
-
-/**
  * Clear all favourites.
  */
 export function clearFavorites() {
@@ -189,26 +150,6 @@ export function clearFavorites() {
     localStorage.removeItem(LS_KEY);
   } catch (e) {
     console.warn("[MesDeparts][favorites] clear failed", e);
-  }
-}
-
-/**
- * Migrate old favorites (without side) to have a side property.
- * Run once on app load to ensure backward compatibility.
- */
-export function migrateFavoritesToSided() {
-  try {
-    const all = loadFavorites();
-    const needsMigration = all.some((f) => !f.side);
-    if (needsMigration) {
-      const migrated = all.map((f) => ({
-        ...f,
-        side: f.side || "left",
-      }));
-      saveFavorites(migrated);
-    }
-  } catch (e) {
-    console.warn("[MesDeparts][favorites] migration failed", e);
   }
 }
 

@@ -1,6 +1,6 @@
 import { t } from "../i18n.v2026-02-19.js";
 import { fetchStationSuggestions, fetchStationsNearby } from "../logic.v2026-02-19.js";
-import { loadFavorites, addFavoriteForSide, removeFavoriteForSide } from "../favourites.v2026-02-19.js";
+import { loadFavorites, addFavorite, removeFavorite } from "../favourites.v2026-02-19.js";
 import {
   VIEW_MODE_LINE,
   VIEW_MODE_TIME,
@@ -536,7 +536,7 @@ export class DualPicker {
       return;
     }
     const stationName = this.state.stationName || "";
-    addFavoriteForSide(this.side, { id: this.state.stationId, name: stationName });
+    addFavorite({ id: this.state.stationId, name: stationName });
     this.showToast(t("favoriteAdded"));
     this.renderFavoritesList();
   }
@@ -582,10 +582,7 @@ export class DualPicker {
   renderFavoritesList() {
     if (!this.els.favoritesList || !this.els.favoritesPopover) return;
 
-    // Load all favorites and group by side
-    const allFavs = loadFavorites();
-    const sideLabel = this.side === "right" ? t("dualSideRight") : t("dualSideLeft");
-
+    const favs = loadFavorites();
     this.els.favoritesList.innerHTML = "";
 
     // Render header with "Add current station" button
@@ -595,16 +592,13 @@ export class DualPicker {
     const addBtn = document.createElement("button");
     addBtn.type = "button";
     addBtn.className = "hc2__primary";
-    addBtn.textContent = `+ ${t("filterFavoritesTitle")} (${sideLabel})`;
+    addBtn.textContent = `+ ${t("filterFavoritesTitle")}`;
     addBtn.addEventListener("click", () => this.addCurrentStationToFavorites());
 
     header.appendChild(addBtn);
     this.els.favoritesList.appendChild(header);
 
-    // Filter favorites for this side
-    const sideFavs = allFavs.filter((f) => (f.side || "left") === this.side);
-
-    if (sideFavs.length === 0) {
+    if (favs.length === 0) {
       if (this.els.favoritesEmpty) {
         this.els.favoritesEmpty.classList.remove("is-hidden");
       }
@@ -617,7 +611,7 @@ export class DualPicker {
 
     // Render favorite items with delete buttons
     const frag = document.createDocumentFragment();
-    sideFavs.forEach((fav) => {
+    favs.forEach((fav) => {
       const item = document.createElement("div");
       item.className = "hc2__favoriteItem";
 
@@ -637,7 +631,7 @@ export class DualPicker {
       deleteBtn.innerHTML = '<svg viewBox="0 0 24 24" focusable="false" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M12 5v14"/></svg>';
       deleteBtn.addEventListener("click", (e) => {
         e.stopPropagation();
-        removeFavoriteForSide(this.side, fav.id);
+        removeFavorite(fav.id);
         this.showToast(t("favoriteRemoved"));
         this.renderFavoritesList();
       });

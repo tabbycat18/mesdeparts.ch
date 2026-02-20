@@ -97,13 +97,11 @@
       } from "./state.v2026-02-19.js";
       import { setupInfoButton } from "./infoBTN.v2026-02-19.js";
       import { DualPicker } from "./ui/dualPicker.js";
-      import { migrateFavoritesToSided } from "./favourites.v2026-02-19.js";
 
       const DEFAULT_LANG = initI18n();
       appState.STATION = "Dual board";
 
       setupInfoButton();
-      migrateFavoritesToSided();
 
       const params = new URLSearchParams(window.location.search || "");
       const autoFullscreen = params.get("fs") === "1" || params.get("fullscreen") === "1";
