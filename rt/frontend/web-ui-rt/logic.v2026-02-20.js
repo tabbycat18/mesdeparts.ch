@@ -940,7 +940,8 @@ export function buildDeparturesGrouped(data, viewMode = VIEW_MODE_LINE) {
       });
     }
 
-    const platformRaw = stop.platform || "";
+    // Use prognosis platform if available (actual), fall back to stop platform (planned)
+    const platformRaw = prog.platform || entry.prognosis?.platform || stop.platform || "";
     const platformChanged = String(platformRaw).includes("!");
     const platform = String(platformRaw).replace("!", "");
     const previousPlatform =
@@ -948,6 +949,23 @@ export function buildDeparturesGrouped(data, viewMode = VIEW_MODE_LINE) {
         ? lastPlatforms[journeyId]
         : null;
     const didChange = platformChanged || !!previousPlatform;
+
+    // Debug logging for platform changes
+    if ((rawCategory === "R" && rawNumber === "9") || platformChanged) {
+      console.log("[MesDeparts][platform-debug]", {
+        line: `${rawCategory}${rawNumber}`,
+        to: dest,
+        progPlatform: prog.platform || "N/A",
+        entryPrognosisPlatform: entry.prognosis?.platform || "N/A",
+        stopPlatform: stop.platform || "N/A",
+        platformRaw,
+        platform,
+        platformChanged,
+        previousPlatform,
+        didChange,
+        journeyId,
+      });
+    }
 
     if (mode === "bus" && platform) {
       busHasPlatform = true;
@@ -977,17 +995,9 @@ export function buildDeparturesGrouped(data, viewMode = VIEW_MODE_LINE) {
       mode,
     });
     const status = rtView.status;
-    let remarkWide = rtView.remarkWide;
-    let remarkNarrow = rtView.remarkNarrow;
-    let remark = rtView.remark; // alias for remarkWide (backward compat)
-
-    // Append platform change message if applicable (for trains)
-    if (didChange && mode === "train") {
-      const platformChangeMsg = t("platformChange");
-      remarkWide = remarkWide ? `${remarkWide} • ${platformChangeMsg}` : platformChangeMsg;
-      remarkNarrow = remarkNarrow ? `${remarkNarrow} • ${platformChangeMsg}` : platformChangeMsg;
-      remark = remarkWide;
-    }
+    const remarkWide = rtView.remarkWide;
+    const remarkNarrow = rtView.remarkNarrow;
+    const remark = rtView.remark; // alias for remarkWide (backward compat)
 
     if (isDeltaDiagnosticsEnabled()) {
       // Per-row delay debug log — validate scheduled/rt dep, delayMin, mode, suppression
