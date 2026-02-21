@@ -12,9 +12,11 @@ import {
   detectNetworkFromStation,
   fetchJourneyDetails,
   parseApiDate,
+  RT_HARD_CAP_MS,
+  shouldApplyIncomingBoard,
   shouldHoldRtDowngrade,
-} from "../logic.v2026-02-21-3.js";
-import { appState, VIEW_MODE_LINE, VIEW_MODE_TIME } from "../state.v2026-02-21-3.js";
+} from "../logic.v2026-02-21-4.js";
+import { appState, VIEW_MODE_LINE, VIEW_MODE_TIME } from "../state.v2026-02-21-4.js";
 
 // classifyMode should categorize common transport codes
 assert.equal(classifyMode("IC"), "train");
@@ -136,6 +138,112 @@ assert.equal(
   }),
   false
 );
+
+// Strict no-downgrade decision matrix:
+// keep RT snapshot on scheduled-only responses unless forced or hard-cap exceeded.
+{
+  const nowMs = 1_000_000;
+  const currentRtState = {
+    currentBoardHasRtSnapshot: true,
+    lastRtSnapshotAtMs: nowMs - 10_000,
+  };
+  const scheduledOnlyPayload = {
+    rt: {
+      applied: false,
+      reason: "stale",
+    },
+  };
+  const rtPayload = {
+    rt: {
+      applied: true,
+      reason: "fresh",
+    },
+  };
+
+  // 1) keeps_rt_on_scheduled_only_when_not_forced
+  const holdDecision = shouldApplyIncomingBoard(
+    currentRtState,
+    scheduledOnlyPayload,
+    200,
+    {
+      contextChanged: false,
+      stopChanged: false,
+      languageChanged: false,
+      manualHardRefresh: false,
+      hardCapMs: RT_HARD_CAP_MS,
+    },
+    nowMs
+  );
+  assert.equal(holdDecision.apply, false);
+  assert.equal(holdDecision.mode, "ignore");
+
+  // 2) allows_downgrade_after_hard_cap
+  const hardCapDecision = shouldApplyIncomingBoard(
+    {
+      currentBoardHasRtSnapshot: true,
+      lastRtSnapshotAtMs: nowMs - (6 * 60 * 1000),
+    },
+    scheduledOnlyPayload,
+    200,
+    { hardCapMs: RT_HARD_CAP_MS },
+    nowMs
+  );
+  assert.equal(hardCapDecision.apply, true);
+  assert.equal(hardCapDecision.reason, "hard_cap_exceeded");
+
+  // 3) applies_scheduled_only_when_no_rt_yet
+  const firstLoadDecision = shouldApplyIncomingBoard(
+    {
+      currentBoardHasRtSnapshot: false,
+      lastRtSnapshotAtMs: null,
+    },
+    scheduledOnlyPayload,
+    200,
+    { hardCapMs: RT_HARD_CAP_MS },
+    nowMs
+  );
+  assert.equal(firstLoadDecision.apply, true);
+  assert.equal(firstLoadDecision.mode, "apply");
+
+  // 4) always_applies_rt_snapshot
+  const incomingRtDecision = shouldApplyIncomingBoard(
+    {
+      currentBoardHasRtSnapshot: true,
+      lastRtSnapshotAtMs: nowMs - 30_000,
+    },
+    rtPayload,
+    200,
+    { hardCapMs: RT_HARD_CAP_MS },
+    nowMs
+  );
+  assert.equal(incomingRtDecision.apply, true);
+  assert.equal(incomingRtDecision.reason, "incoming_rt_snapshot");
+
+  // 5) 204_does_nothing
+  const noContentDecision = shouldApplyIncomingBoard(
+    currentRtState,
+    null,
+    204,
+    { hardCapMs: RT_HARD_CAP_MS },
+    nowMs
+  );
+  assert.equal(noContentDecision.apply, false);
+  assert.equal(noContentDecision.reason, "http_204_no_change");
+
+  // 6) forced_stop_change_allows_downgrade
+  const stopChangeDecision = shouldApplyIncomingBoard(
+    currentRtState,
+    scheduledOnlyPayload,
+    200,
+    {
+      stopChanged: true,
+      hardCapMs: RT_HARD_CAP_MS,
+    },
+    nowMs
+  );
+  assert.equal(stopChangeDecision.apply, true);
+  assert.equal(stopChangeDecision.reason, "forced_stop_changed");
+}
 assert.equal(
   shouldHoldRtDowngrade({
     lastRtAppliedAtMs: 1_000,
