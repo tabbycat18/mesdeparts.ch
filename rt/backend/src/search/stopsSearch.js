@@ -69,6 +69,14 @@ function candidateLimitFor(limit) {
   return Math.min(CANDIDATE_MAX, Math.max(CANDIDATE_MIN, limit * CANDIDATE_MULTIPLIER));
 }
 
+function buildQueryBackoffVariants(queryNorm) {
+  const q = toString(queryNorm).trim();
+  if (q.length < MIN_QUERY_LEN + 1) return [];
+  const shortened = q.slice(0, -1).trim();
+  if (!shortened || shortened.length < MIN_QUERY_LEN || shortened === q) return [];
+  return [shortened];
+}
+
 function warnOnce(key, message, details = null) {
   if (warningKeys.has(key)) return;
   warningKeys.add(key);
@@ -1233,15 +1241,83 @@ async function runStopSearch(db, query, limit = DEFAULT_LIMIT, options = {}) {
     }
   }
 
+  const ranked = rankStopCandidates(rows, qNorm, lim);
+  if (ranked.length > 0 || options?.disableBackoff === true) {
+    if (options?.debug !== true) {
+      return ranked;
+    }
+
+    const rankedDetailed = rankStopCandidatesDetailed(rows, qNorm, lim);
+    return {
+      stops: ranked,
+      debug: {
+        query: qRaw,
+        queryNorm: qNorm,
+        candidateLimit,
+        rawRows: rows.length,
+        rankedTop: rankedDetailed.slice(0, 10).map((row) => ({
+          rank: row.rank,
+          stop_id: row.stopId,
+          group_id: row.groupId,
+          stop_name: row.stopName,
+          parent_station: row.parentStation,
+          location_type: row.locationType,
+          isParent: row.isParent === true,
+          score: row.score,
+          tier: row.tier,
+          score_components: row.debugScore,
+        })),
+      },
+    };
+  }
+
+  const backoffVariants = buildQueryBackoffVariants(qNorm);
+  for (const backoffQuery of backoffVariants) {
+    let retryRows = [];
+    try {
+      retryRows = await runFallbackSearch(db, backoffQuery, candidateLimit, caps, { budget });
+    } catch {
+      retryRows = [];
+    }
+    if (!Array.isArray(retryRows) || retryRows.length === 0) continue;
+    const retryRanked = rankStopCandidates(retryRows, backoffQuery, lim);
+    if (retryRanked.length === 0) continue;
+    if (options?.debug !== true) {
+      return retryRanked;
+    }
+    const retryRankedDetailed = rankStopCandidatesDetailed(retryRows, backoffQuery, lim);
+    return {
+      stops: retryRanked,
+      debug: {
+        query: qRaw,
+        queryNorm: qNorm,
+        queryBackoffNorm: backoffQuery,
+        candidateLimit,
+        rawRows: retryRows.length,
+        rankedTop: retryRankedDetailed.slice(0, 10).map((row) => ({
+          rank: row.rank,
+          stop_id: row.stopId,
+          group_id: row.groupId,
+          stop_name: row.stopName,
+          parent_station: row.parentStation,
+          location_type: row.locationType,
+          isParent: row.isParent === true,
+          score: row.score,
+          tier: row.tier,
+          score_components: row.debugScore,
+        })),
+      },
+    };
+  }
+
   if (options?.debug !== true) {
-    return rankStopCandidates(rows, qNorm, lim);
+    return [];
   }
 
   const rankedDetailed = rankStopCandidatesDetailed(rows, qNorm, lim);
-  const stops = rankStopCandidates(rows, qNorm, lim);
 
   return {
-    stops,
+    stops: [],
     debug: {
       query: qRaw,
       queryNorm: qNorm,

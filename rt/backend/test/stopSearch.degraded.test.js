@@ -235,3 +235,50 @@ test("searchStops forces degraded prefix fallback when unaccent extension is una
   assert.ok(rows.length > 0);
   assert.equal(rows[0].stop_id, "Parent8503000");
 });
+
+test("searchStops backoff keeps full query from being worse than one-char-shorter query", async () => {
+  __resetSearchCapabilitiesCacheForTests();
+
+  const db = {
+    async query(sql, params = []) {
+      const text = String(sql || "");
+
+      if (text.includes("to_regclass('public.stop_search_index')")) {
+        return { rows: [capabilityRow()] };
+      }
+
+      if (text.includes("FROM public.gtfs_stops s")) {
+        const qNorm = String(params?.[0] || "");
+        if (qNorm !== "riponn") {
+          return { rows: [] };
+        }
+        return {
+          rows: [
+            {
+              group_id: "Parent8592082",
+              stop_id: "Parent8592082",
+              stop_name: "Lausanne, Riponne",
+              parent_station: null,
+              location_type: "",
+              city_name: "Lausanne",
+              aliases_matched: [],
+              alias_weight: 0,
+              alias_similarity: 0,
+              name_similarity: 0,
+              core_similarity: 0,
+              is_parent: true,
+              has_hub_token: false,
+              nb_stop_times: 100,
+            },
+          ],
+        };
+      }
+
+      return { rows: [] };
+    },
+  };
+
+  const rows = await searchStops(db, "Riponne", 10);
+  assert.ok(rows.length > 0);
+  assert.equal(rows[0].stop_name, "Lausanne, Riponne");
+});
