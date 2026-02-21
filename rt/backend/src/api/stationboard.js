@@ -37,6 +37,13 @@ const OTD_SUPPLEMENT_CACHE_MS = Math.max(
 );
 const OTD_SUPPLEMENT_BLOCK_ON_COLD = process.env.OTD_EV_SUPPLEMENT_BLOCK_ON_COLD === "1";
 const INSTANCE_ID = `${os.hostname()}:${process.pid}`;
+const DEFAULT_STATIONBOARD_WINDOW_MINUTES = Math.max(
+  30,
+  Math.min(
+    Math.trunc(Number(process.env.STATIONBOARD_DEFAULT_WINDOW_MINUTES || "210")),
+    720
+  )
+);
 
 let alertsCacheValue = null;
 let alertsCacheTs = 0;
@@ -808,7 +815,7 @@ export async function getStationboard({
   const baseWindowMinutes =
     Number.isFinite(requestedWindow) && requestedWindow > 0
       ? Math.max(30, Math.min(Math.trunc(requestedWindow), 720))
-      : 120;
+      : DEFAULT_STATIONBOARD_WINDOW_MINUTES;
   const sparseRetryMin = Math.max(
     0,
     Number(process.env.STATIONBOARD_SPARSE_RETRY_MIN_DEPS || "2")
