@@ -27,12 +27,26 @@ import { t } from "./i18n.v2026-02-20-1.js";
 
 // API base can be overridden by setting window.__MD_API_BASE__ before scripts load.
 // Frontend now targets rt/backend endpoints only.
+function shouldForceLocalApi() {
+  if (typeof window === "undefined") return false;
+  try {
+    return new URLSearchParams(window.location.search || "").get("localApi") === "1";
+  } catch {
+    return false;
+  }
+}
+
 function defaultApiBase() {
   if (typeof window === "undefined") return "";
   const host = String(window.location.hostname || "").toLowerCase();
+  const forceLocalApi = shouldForceLocalApi();
 
   if (host === "localhost" || host === "127.0.0.1") {
     return "http://localhost:3001";
+  }
+
+  if (forceLocalApi && host) {
+    return `http://${host}:3001`;
   }
 
   // Production static frontend (mesdeparts.ch) proxies API via Cloudflare Worker.
@@ -40,8 +54,8 @@ function defaultApiBase() {
     return "https://api.mesdeparts.ch";
   }
 
-  // Fallback to same-origin on non-production hosts.
-  return "";
+  // Default to production API for IP/LAN and other hosts.
+  return "https://api.mesdeparts.ch";
 }
 
 const BACKEND_API_BASE =

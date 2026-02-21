@@ -56,6 +56,8 @@
       (function resolveApiBase() {
         if (window.__MD_API_BASE__) return;
         const host = String(window.location.hostname || "").toLowerCase();
+        const forceLocalApi =
+          new URLSearchParams(window.location.search || "").get("localApi") === "1";
         if (host === "mesdeparts.ch" || host === "www.mesdeparts.ch") {
           window.__MD_API_BASE__ = "https://api.mesdeparts.ch";
           return;
@@ -64,7 +66,11 @@
           window.__MD_API_BASE__ = "http://localhost:3001";
           return;
         }
-        window.__MD_API_BASE__ = `http://${window.location.hostname}:3001`;
+        if (forceLocalApi && window.location.hostname) {
+          window.__MD_API_BASE__ = `http://${window.location.hostname}:3001`;
+          return;
+        }
+        window.__MD_API_BASE__ = "https://api.mesdeparts.ch";
       })();
     </script>
     <link rel="stylesheet" href="style.v2026-02-20-1.css" />
