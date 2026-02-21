@@ -4,7 +4,8 @@ import assert from "node:assert/strict";
 import {
   normalizeDepartureAlerts,
   openDepartureAlertsPopover,
-} from "../ui.v2026-02-20-1.js";
+  resolveDepartureAlertsForLineBadge,
+} from "../ui.v2026-02-21-1.js";
 
 class FakeClassList {
   constructor() {
@@ -187,6 +188,30 @@ test("normalizeDepartureAlerts dedupes and suppresses banner-duplicate alerts", 
   assert.equal(detailAlerts.length, 2);
   assert.equal(inlineAlerts.length, 1);
   assert.equal(inlineAlerts[0].id, "a-1");
+});
+
+test("resolveDepartureAlertsForLineBadge falls back when all alerts duplicate banners", () => {
+  const dep = {
+    alerts: [
+      {
+        id: "b-1",
+        severity: "warning",
+        header: "Line 1 disruption",
+        description: "Stop moved",
+      },
+    ],
+  };
+  const banners = [
+    {
+      severity: "warning",
+      header: "Line 1 disruption",
+      description: "Stop moved",
+    },
+  ];
+
+  const alerts = resolveDepartureAlertsForLineBadge(dep, banners);
+  assert.equal(alerts.length, 1);
+  assert.equal(alerts[0].id, "b-1");
 });
 
 test("openDepartureAlertsPopover creates a visible panel with alert content", () => {

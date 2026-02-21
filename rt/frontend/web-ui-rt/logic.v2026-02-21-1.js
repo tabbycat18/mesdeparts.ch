@@ -22,8 +22,8 @@ import {
   TRAIN_FILTER_REGIONAL,
   TRAIN_FILTER_LONG_DISTANCE,
   STATION_ID_STORAGE_KEY,
-} from "./state.v2026-02-20-1.js";
-import { t } from "./i18n.v2026-02-20-1.js";
+} from "./state.v2026-02-21-1.js";
+import { t } from "./i18n.v2026-02-21-1.js";
 
 // API base can be overridden by setting window.__MD_API_BASE__ before scripts load.
 // Frontend now targets rt/backend endpoints only.
@@ -51,12 +51,22 @@ function defaultApiBase() {
   const forceProdApi = shouldForceProdApi();
   const forceLocalApi = shouldForceLocalApi();
 
+  const isPrivateIpv4Host =
+    /^192\.168\./.test(host) ||
+    /^10\./.test(host) ||
+    /^172\.(1[6-9]|2\d|3[0-1])\./.test(host);
+  const isLocalLikeHost = host.endsWith(".local");
+
   if (forceProdApi) {
     return "https://api.mesdeparts.ch";
   }
 
   if (host === "localhost" || host === "127.0.0.1") {
     return "http://localhost:3001";
+  }
+
+  if ((isPrivateIpv4Host || isLocalLikeHost) && host) {
+    return `http://${host}:3001`;
   }
 
   if (forceLocalApi && host) {
@@ -237,49 +247,138 @@ function toFiniteMinutesOrNull(value) {
   return Number.isFinite(n) ? Math.round(n) : null;
 }
 
+// Canonical raw delay helpers (vehicle-agnostic, no display suppression).
+export function computeDelaySeconds(scheduledISO, realtimeISO) {
+  const scheduled = parseDateLike(scheduledISO);
+  const realtime = parseDateLike(realtimeISO);
+  if (!scheduled || !realtime) return null;
+  return (realtime.getTime() - scheduled.getTime()) / 1000;
+}
+
+export function computeDelayMin(delaySeconds, { rounding = "round" } = {}) {
+  if (delaySeconds == null) return null;
+  const sec = Number(delaySeconds);
+  if (!Number.isFinite(sec)) return null;
+  if (rounding === "ceil") return Math.ceil(sec / 60);
+  return Math.round(sec / 60);
+}
+
+export function getDisplayedDelayBadge({
+  mode,
+  vehicleCategory,
+  delaySeconds,
+  cancelled = false,
+  busDelayThresholdMin = 2,
+}) {
+  if (cancelled) {
+    const msg = t("remarkCancelled");
+    return {
+      status: "cancelled",
+      displayedDelayMin: null,
+      remarkWide: msg,
+      remarkNarrow: msg,
+      remark: msg,
+      suppressed: false,
+    };
+  }
+
+  const sec = Number(delaySeconds);
+  if (!Number.isFinite(sec)) {
+    return {
+      status: null,
+      displayedDelayMin: null,
+      remarkWide: "",
+      remarkNarrow: "",
+      remark: "",
+      suppressed: false,
+    };
+  }
+
+  const isTrain = String(vehicleCategory || "").toLowerCase() === "train" || mode === "train";
+  const displayMinCeil = Math.max(0, computeDelayMin(sec, { rounding: "ceil" }) || 0);
+  const rawRoundedMin = computeDelayMin(sec, { rounding: "round" });
+
+  if (rawRoundedMin != null && rawRoundedMin < 0) {
+    const msg = t("remarkEarly");
+    return {
+      status: "early",
+      displayedDelayMin: rawRoundedMin,
+      remarkWide: msg,
+      remarkNarrow: msg,
+      remark: msg,
+      suppressed: false,
+    };
+  }
+
+  if (isTrain) {
+    if (displayMinCeil <= 1) {
+      return {
+        status: null,
+        displayedDelayMin: 0,
+        remarkWide: "",
+        remarkNarrow: "",
+        remark: "",
+        suppressed: true,
+      };
+    }
+    const wide = t("remarkDelayTrainApprox").replace("{min}", String(displayMinCeil));
+    const narrow = `+${displayMinCeil} min`;
+    return {
+      status: "delay",
+      displayedDelayMin: displayMinCeil,
+      remarkWide: wide,
+      remarkNarrow: narrow,
+      remark: wide,
+      suppressed: false,
+    };
+  }
+
+  if (displayMinCeil >= Math.max(1, Number(busDelayThresholdMin) || 2)) {
+    const msg = t("remarkDelayShort");
+    return {
+      status: "delay",
+      displayedDelayMin: displayMinCeil,
+      remarkWide: msg,
+      remarkNarrow: msg,
+      remark: msg,
+      suppressed: false,
+    };
+  }
+
+  return {
+    status: null,
+    displayedDelayMin: displayMinCeil,
+    remarkWide: "",
+    remarkNarrow: "",
+    remark: "",
+    suppressed: false,
+  };
+}
+
 // Shared realtime delta computation: signed minutes (late positive, early negative).
 export function computeDeltaMinutes(plannedTime, realtimeTime) {
-  const planned = parseDateLike(plannedTime);
-  const realtime = parseDateLike(realtimeTime);
-  if (!planned || !realtime) return null;
-  return Math.round((realtime.getTime() - planned.getTime()) / 60000);
+  const sec = computeDelaySeconds(plannedTime, realtimeTime);
+  return computeDelayMin(sec, { rounding: "round" });
 }
 
 function resolveRealtimeDelta({
   plannedTime,
   realtimeTime,
+  authoritativeDelaySec,
   authoritativeDelayMin,
 }) {
-  const planned = parseDateLike(plannedTime);
-  const realtime = parseDateLike(realtimeTime);
-  const computedDeltaSec =
-    planned && realtime
-      ? (realtime.getTime() - planned.getTime()) / 1000
-      : null;
+  const computedDeltaSec = computeDelaySeconds(plannedTime, realtimeTime);
+  const apiDelaySec =
+    Number.isFinite(Number(authoritativeDelaySec))
+      ? Number(authoritativeDelaySec)
+      : toFiniteMinutesOrNull(authoritativeDelayMin) != null
+        ? toFiniteMinutesOrNull(authoritativeDelayMin) * 60
+        : null;
   const apiDelayMin = toFiniteMinutesOrNull(authoritativeDelayMin);
-  const computedDeltaMin =
-    computedDeltaSec != null
-      ? Math.round(computedDeltaSec / 60)
-      : null;
-
-  // Prefer authoritative API delay, except when API reports 0 while timestamps show
-  // an actual early departure; keep that early signal for bus cosmetics/countdown.
-  const shouldTrustTimestampEarly =
-    apiDelayMin === 0 &&
-    computedDeltaMin != null &&
-    computedDeltaMin < 0;
-  const deltaMin =
-    shouldTrustTimestampEarly
-      ? computedDeltaMin
-      : apiDelayMin != null
-        ? apiDelayMin
-        : computedDeltaMin;
   const effectiveDeltaSec =
-    shouldTrustTimestampEarly
-      ? computedDeltaSec
-      : apiDelayMin != null
-        ? apiDelayMin * 60
-        : computedDeltaSec;
+    Number.isFinite(computedDeltaSec) ? computedDeltaSec : apiDelaySec;
+  const deltaMin = computeDelayMin(effectiveDeltaSec, { rounding: "round" });
+  const computedDeltaMin = computeDelayMin(computedDeltaSec, { rounding: "round" });
   const delayMin = deltaMin != null ? Math.max(0, deltaMin) : 0;
   const earlyMin = deltaMin != null ? Math.max(0, -deltaMin) : 0;
 
@@ -291,51 +390,22 @@ function resolveRealtimeDelta({
     apiDelayMin,
     computedDeltaSec,
     computedDeltaMin,
-    source:
-      shouldTrustTimestampEarly
-        ? "timestamps"
-        : apiDelayMin != null
-          ? "api_delay"
-          : computedDeltaMin != null
-            ? "timestamps"
-            : "none",
+    source: Number.isFinite(computedDeltaSec)
+      ? "timestamps"
+      : Number.isFinite(apiDelaySec)
+        ? "api_delay"
+        : "none",
   };
 }
 
-function deriveRealtimeRemark({ cancelled, delayMin, earlyMin, effectiveDeltaSec, mode }) {
-  if (cancelled) {
-    const msg = t("remarkCancelled");
-    return { status: "cancelled", remarkWide: msg, remarkNarrow: msg, remark: msg };
-  }
-
-  // Bus/tram/metro board rule:
-  // keep delay format plain (no minute count for buses).
-  if (mode === "bus") {
-    if (delayMin > 1) {
-      const msg = t("remarkDelayShort"); // plain "Retard" — no minutes for buses
-      return { status: "delay", remarkWide: msg, remarkNarrow: msg, remark: msg };
-    }
-    if (earlyMin > 0 || (Number.isFinite(effectiveDeltaSec) && effectiveDeltaSec < 0)) {
-      const msg = t("remarkEarly");
-      return { status: "early", remarkWide: msg, remarkNarrow: msg, remark: msg };
-    }
-    return { status: null, remarkWide: "", remarkNarrow: "", remark: "" };
-  }
-
-  if (earlyMin > 0 || (Number.isFinite(effectiveDeltaSec) && effectiveDeltaSec < 0)) {
-    const msg = t("remarkEarly");
-    return { status: "early", remarkWide: msg, remarkNarrow: msg, remark: msg };
-  }
-
-  // Train/rail delay rule: suppress +1 min jitter; show from +2 min.
-  if (delayMin >= 2) {
-    // WIDE: "Retard env. X min" / NARROW: "+X min" (numeric-only, no word prefix)
-    const wide = t("remarkDelayTrainApprox").replace("{min}", String(delayMin));
-    const narrow = `+${delayMin} min`;
-    return { status: "delay", remarkWide: wide, remarkNarrow: narrow, remark: wide };
-  }
-  // delayMin < 2 — suppress for trains
-  return { status: null, remarkWide: "", remarkNarrow: "", remark: "" };
+function deriveRealtimeRemark({ cancelled, effectiveDeltaSec, mode }) {
+  return getDisplayedDelayBadge({
+    mode,
+    vehicleCategory: mode === "train" ? "train" : "bus_tram_metro",
+    delaySeconds: effectiveDeltaSec,
+    cancelled,
+    busDelayThresholdMin: 2,
+  });
 }
 
 const FETCH_TIMEOUT_MS = 12_000;
@@ -603,6 +673,9 @@ function normalizeBackendStationboard(data) {
     const delta = resolveRealtimeDelta({
       plannedTime: scheduled,
       realtimeTime: realtime,
+      authoritativeDelaySec: dep?.rawDelaySec ??
+        dep?.delaySeconds ??
+        (dep?.rawDelayMin != null ? Number(dep.rawDelayMin) * 60 : null),
       authoritativeDelayMin: dep?.delayMin,
     });
     const platformRaw = String(dep?.platform || "");
@@ -643,10 +716,16 @@ function normalizeBackendStationboard(data) {
           Number.isFinite(scheduledMs) ? Math.floor(scheduledMs / 1000) : undefined,
         platform,
         delay: delta.deltaMin,
+        rawDelaySec: Number.isFinite(delta.effectiveDeltaSec) ? Number(delta.effectiveDeltaSec) : null,
+        displayedDelayMin:
+          Number.isFinite(dep?.displayedDelayMin) ? Number(dep.displayedDelayMin) : null,
         cancelled,
         prognosis: {
           departure: realtime,
           delay: delta.deltaMin,
+          rawDelaySec: Number.isFinite(delta.effectiveDeltaSec) ? Number(delta.effectiveDeltaSec) : null,
+          displayedDelayMin:
+            Number.isFinite(dep?.displayedDelayMin) ? Number(dep.displayedDelayMin) : null,
           status: String(dep?.status || (cancelled ? "CANCELED" : "")),
           cancelled,
           platform:
@@ -666,6 +745,8 @@ function normalizeBackendStationboard(data) {
         "departure.scheduledDeparture": dep?.scheduledDeparture ?? null,
         "departure.realtimeDeparture": dep?.realtimeDeparture ?? null,
         "departure.delayMin": dep?.delayMin ?? null,
+        "departure.rawDelaySec": dep?.rawDelaySec ?? dep?.delaySeconds ?? null,
+        "departure.displayedDelayMin": dep?.displayedDelayMin ?? null,
         "departure.status": dep?.status ?? null,
       },
     };
@@ -985,6 +1066,8 @@ export function buildDeparturesGrouped(data, viewMode = VIEW_MODE_LINE) {
     const delta = resolveRealtimeDelta({
       plannedTime: scheduledDt,
       realtimeTime: realtimeDt || prog.departure || null,
+      authoritativeDelaySec:
+        stop?.rawDelaySec ?? entry?.rawDelaySec ?? prog?.rawDelaySec ?? null,
       authoritativeDelayMin:
         stop?.delay ?? entry?.delayMin ?? prog?.delay ?? null,
     });
@@ -1100,8 +1183,6 @@ export function buildDeparturesGrouped(data, viewMode = VIEW_MODE_LINE) {
     const isCancelled = isCancelledEntry(entry, stop, prog);
     const rtView = deriveRealtimeRemark({
       cancelled: isCancelled,
-      delayMin,
-      earlyMin,
       effectiveDeltaSec: delta.effectiveDeltaSec,
       mode,
     });
@@ -1189,6 +1270,9 @@ export function buildDeparturesGrouped(data, viewMode = VIEW_MODE_LINE) {
       scheduledTime: scheduledDt.getTime(),
       realtimeTime: baseDt.getTime(),
       delaySource,
+      rawDelaySec: Number.isFinite(delta.effectiveDeltaSec) ? Number(delta.effectiveDeltaSec) : null,
+      displayedDelayMin:
+        Number.isFinite(rtView.displayedDelayMin) ? Number(rtView.displayedDelayMin) : null,
       delayMin: deltaMin,
       earlyMin,
       status,

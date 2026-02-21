@@ -11,21 +11,21 @@ import {
   TRAIN_FILTER_REGIONAL,
   TRAIN_FILTER_LONG_DISTANCE,
   REMARK_NARROW_BREAKPOINT_PX,
-} from "./state.v2026-02-20-1.js";
+} from "./state.v2026-02-21-1.js";
 import {
   fetchStationSuggestions,
   fetchStationsNearby,
   fetchJourneyDetails,
   parseApiDate,
-} from "./logic.v2026-02-20-1.js";
+} from "./logic.v2026-02-21-1.js";
 import {
   loadFavorites,
   addFavorite,
   removeFavorite,
   isFavorite,
   clearFavorites,
-} from "./favourites.v2026-02-20-1.js";
-import { t } from "./i18n.v2026-02-20-1.js";
+} from "./favourites.v2026-02-21-1.js";
+import { t } from "./i18n.v2026-02-21-1.js";
 
 const QUICK_CONTROLS_STORAGE_KEY = "mesdeparts.quickControlsCollapsed";
 let quickControlsCollapsed = false;
@@ -358,15 +358,35 @@ export function setBoardLoadingState(isLoading) {
 
 function getServiceBannersHost() {
   let host = document.getElementById("service-banners");
-  if (host) return host;
-
   const scroller = document.querySelector(".departures-scroller");
-  if (!scroller || !scroller.parentNode) return null;
-  host = document.createElement("section");
-  host.id = "service-banners";
-  host.className = "service-banners";
-  host.setAttribute("aria-live", "polite");
-  scroller.parentNode.insertBefore(host, scroller);
+  if (!scroller || !scroller.parentNode) return host || null;
+
+  if (!host) {
+    host = document.createElement("section");
+    host.id = "service-banners";
+    host.className = "service-banners";
+    host.setAttribute("aria-live", "polite");
+  }
+
+  const hc2ServedLines = document.getElementById("hc2-served-lines");
+  if (hc2ServedLines && hc2ServedLines.parentNode) {
+    if (host.parentNode !== hc2ServedLines.parentNode || host.nextSibling !== hc2ServedLines) {
+      hc2ServedLines.parentNode.insertBefore(host, hc2ServedLines);
+    }
+    return host;
+  }
+
+  const lineChips = document.getElementById("line-chips");
+  if (lineChips && lineChips.parentNode) {
+    if (host.parentNode !== lineChips.parentNode || host.nextSibling !== lineChips) {
+      lineChips.parentNode.insertBefore(host, lineChips);
+    }
+    return host;
+  }
+
+  if (host.parentNode !== scroller.parentNode || host.nextSibling !== scroller) {
+    scroller.parentNode.insertBefore(host, scroller);
+  }
   return host;
 }
 
@@ -496,7 +516,13 @@ function normalizeBannerPages(pages, targetChars = 0) {
 
 function setBannerPage(textEl, pagerDots, pages, index) {
   const safeIndex = Math.max(0, Math.min(index, pages.length - 1));
-  textEl.textContent = pages[safeIndex] || "";
+  const pageText = String(pages[safeIndex] || "");
+  if (/https?:\/\//i.test(pageText)) {
+    textEl.innerHTML = "";
+    appendAlertTextWithLinks(textEl, pageText, "service-banner__link");
+  } else {
+    textEl.textContent = pageText;
+  }
   pagerDots.forEach((dot, i) => {
     dot.classList.toggle("is-active", i === safeIndex);
   });
@@ -569,6 +595,16 @@ export function normalizeDepartureAlerts(
   }
 
   return out;
+}
+
+export function resolveDepartureAlertsForLineBadge(dep, banners = []) {
+  const uniqueOnly = normalizeDepartureAlerts(dep, banners, {
+    suppressBannerDuplicates: true,
+  });
+  if (uniqueOnly.length > 0) return uniqueOnly;
+  return normalizeDepartureAlerts(dep, banners, {
+    suppressBannerDuplicates: false,
+  });
 }
 
 function isAlertSheetMode() {
@@ -677,11 +713,18 @@ function appendTextWithLineBreaks(container, value) {
   const lines = text.split(/\n/);
   for (let idx = 0; idx < lines.length; idx += 1) {
     if (idx > 0) container.appendChild(document.createElement("br"));
-    if (lines[idx]) container.appendChild(document.createTextNode(lines[idx]));
+    if (!lines[idx]) continue;
+    if (typeof document.createTextNode === "function") {
+      container.appendChild(document.createTextNode(lines[idx]));
+    } else {
+      const span = document.createElement("span");
+      span.textContent = lines[idx];
+      container.appendChild(span);
+    }
   }
 }
 
-function appendAlertTextWithLinks(container, rawText) {
+function appendAlertTextWithLinks(container, rawText, linkClassName = "departure-alerts-link") {
   if (!container) return;
   const text = normalizeAlertDescriptionText(rawText);
   if (!text) return;
@@ -706,7 +749,7 @@ function appendAlertTextWithLinks(container, rawText) {
 
     if (url) {
       const link = document.createElement("a");
-      link.className = "departure-alerts-link";
+      link.className = linkClassName;
       link.href = url;
       link.textContent = url;
       link.target = "_blank";
@@ -754,9 +797,7 @@ function renderDepartureAlertsList(alerts, container) {
 }
 
 export function openDepartureAlertsPopover(dep, anchorEl) {
-  const alerts = normalizeDepartureAlerts(dep, lastRenderedServiceBanners, {
-    suppressBannerDuplicates: true,
-  });
+  const alerts = resolveDepartureAlertsForLineBadge(dep, lastRenderedServiceBanners);
   if (!alerts.length || !anchorEl) {
     closeDepartureAlertsPopover({ restoreFocus: false });
     return;
@@ -841,10 +882,13 @@ export function renderServiceBanners(banners) {
     const item = document.createElement("article");
     item.className = `service-banner service-banner--${severity}`;
 
-    const icon = document.createElement("img");
+    const icon = document.createElement("span");
     icon.className = "service-banner__icon";
-    icon.src = "./disruption-lightning.svg";
-    icon.alt = "";
+    icon.innerHTML = `
+      <svg class="service-banner__iconSvg" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M13.9 2.8L5.8 13h4.6l-1.5 8.2L18.2 10h-4.4l.1-7.2z" fill="currentColor"></path>
+      </svg>
+    `;
     icon.setAttribute("aria-hidden", "true");
     item.appendChild(icon);
 
@@ -874,8 +918,12 @@ export function renderServiceBanners(banners) {
     const pageLimit = titleEl
       ? Math.max(100, Math.floor(serviceBannerPageCharLimit() * 0.95))
       : serviceBannerPageCharLimit();
-    const pages = normalizeBannerPages(buildBannerPages(description, pageLimit), pageLimit);
-    if (pages.length === 0 && description) pages.push(description.trim());
+    const normalizedDescription = normalizeAlertDescriptionText(description);
+    const pages = normalizeBannerPages(
+      buildBannerPages(normalizedDescription, pageLimit),
+      pageLimit
+    );
+    if (pages.length === 0 && normalizedDescription) pages.push(normalizedDescription.trim());
     if (pages.length === 0) pages.push("");
     const hasTextPages = pages.some((p) => String(p || "").trim() !== "");
 
@@ -2532,6 +2580,12 @@ function renderLineChips(lines) {
   const wrap = document.getElementById("line-chips");
   const container = document.getElementById("line-chips-container");
   if (!wrap || !container) return;
+  // HC2 owns the served-lines UI; keep legacy chips hidden to avoid duplicates.
+  if (document.getElementById("hc2-served-lines")) {
+    wrap.style.display = "none";
+    container.innerHTML = "";
+    return;
+  }
 
   const normalizedLines = (lines || [])
     .map((v) => String(v || "").trim())
@@ -3194,13 +3248,6 @@ export function renderDepartures(rows) {
     return;
   }
 
-  const lineOptions = (appState.lineOptions || [])
-    .map((v) => String(v || "").trim())
-    .filter(Boolean);
-  const activeLineFilters = new Set(
-    normalizeFilterArray(appState.lineFilter, lineOptions)
-  );
-
   let prevLineKey = null;
   const useGroupSeparators =
     !appState.lastBoardIsTrain && appState.viewMode === VIEW_MODE_LINE;
@@ -3277,33 +3324,11 @@ export function renderDepartures(rows) {
         badge.className = busBadgeClass(dep);
         badge.textContent = lineId || "";
       }
-
-      if (lineId) {
-        badge.classList.add("is-clickable");
-        badge.setAttribute("role", "button");
-        badge.tabIndex = 0;
-        badge.title = `${t("filterLines")}: ${lineId}`;
-        badge.classList.toggle("is-active-filter", activeLineFilters.has(lineId));
-        badge.setAttribute("aria-pressed", activeLineFilters.has(lineId) ? "true" : "false");
-        badge.addEventListener("click", (e) => {
-          e.stopPropagation();
-          applyLineBadgeFilter(lineId);
-        });
-        badge.addEventListener("keydown", (e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            e.stopPropagation();
-            applyLineBadgeFilter(lineId);
-          }
-        });
-      }
     }
     tdLine.appendChild(badge);
 
-    const inlineAlerts = normalizeDepartureAlerts(dep, lastRenderedServiceBanners, {
-      suppressBannerDuplicates: true,
-    });
-    if (inlineAlerts.length > 0) {
+    const inlineAlerts = resolveDepartureAlertsForLineBadge(dep, lastRenderedServiceBanners);
+    if (dep.mode === "bus" && inlineAlerts.length > 0) {
       const alertBtn = document.createElement("button");
       alertBtn.type = "button";
       alertBtn.className = "line-alert-btn";
@@ -3315,13 +3340,11 @@ export function renderDepartures(rows) {
         `${t("alertsOpen")} ${lineLabel}${countSuffix}`.trim()
       );
       alertBtn.title = t("alertsOpen");
-      alertBtn.innerHTML = `
-        <svg class="line-alert-btn__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-          <path d="M12 2.4 2 20.2h20L12 2.4Zm0 4.6 6.05 10.6H5.95L12 7Z" fill="currentColor"/>
-          <rect x="11" y="9.6" width="2" height="5.5" rx="1" fill="currentColor"/>
-          <circle cx="12" cy="17.25" r="1.1" fill="currentColor"/>
-        </svg>
-      `;
+      const glyph = document.createElement("span");
+      glyph.className = "line-alert-btn__glyph";
+      glyph.setAttribute("aria-hidden", "true");
+      glyph.textContent = "!";
+      alertBtn.appendChild(glyph);
       if (inlineAlerts.length > 1) {
         const count = document.createElement("span");
         count.className = "line-alert-btn__count";

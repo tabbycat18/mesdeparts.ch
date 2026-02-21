@@ -5,11 +5,11 @@ import {
   TRAIN_FILTER_ALL,
   TRAIN_FILTER_REGIONAL,
   TRAIN_FILTER_LONG_DISTANCE,
-} from "../state.v2026-02-20-1.js";
-import { fetchStationSuggestions, fetchStationsNearby, isAbortError } from "../logic.v2026-02-20-1.js";
-import { loadFavorites, saveFavorites } from "../favourites.v2026-02-20-1.js";
-import { getHasSeenThreeDotsTip, setHasSeenThreeDotsTip } from "../threeDotsTip.v2026-02-20-1.js";
-import { t, setLanguage, LANGUAGE_OPTIONS, applyStaticTranslations } from "../i18n.v2026-02-20-1.js";
+} from "../state.v2026-02-21-1.js";
+import { fetchStationSuggestions, fetchStationsNearby, isAbortError } from "../logic.v2026-02-21-1.js";
+import { loadFavorites, saveFavorites } from "../favourites.v2026-02-21-1.js";
+import { getHasSeenThreeDotsTip, setHasSeenThreeDotsTip } from "../threeDotsTip.v2026-02-21-1.js";
+import { t, setLanguage, LANGUAGE_OPTIONS, applyStaticTranslations } from "../i18n.v2026-02-21-1.js";
 
 const STORAGE_COLLAPSED_KEY = "mesdeparts.headerControls2.collapsed";
 
@@ -93,9 +93,9 @@ const state = {
   initialized: false,
   mountEl: null,
   // Integration contract:
-  // - getCurrentStop(): provided by main.v2026-02-20-1.js -> returns { id, name } from appState.
-  // - onSelectStop(arg1, arg2): provided by main.v2026-02-20-1.js -> supports `(id, name)` and legacy payloads.
-  // - favorites storage: loadFavorites()/saveFavorites() from favourites.v2026-02-20-1.js.
+  // - getCurrentStop(): provided by main.v2026-02-21-1.js -> returns { id, name } from appState.
+  // - onSelectStop(arg1, arg2): provided by main.v2026-02-21-1.js -> supports `(id, name)` and legacy payloads.
+  // - favorites storage: loadFavorites()/saveFavorites() from favourites.v2026-02-21-1.js.
   callbacks: {
     getCurrentStop: () => ({ id: appState.stationId || null, name: appState.STATION || "" }),
     onSelectStop: null,
@@ -107,6 +107,7 @@ const state = {
   controlsOpen: false,
   favoritesOpen: false,
   favoritesManageMode: false,
+  pendingFavoriteDeleteId: null,
   searchText: "",
   favorites: [], // [{ id, name, addedAt }]
   selectedFavId: null,
@@ -731,6 +732,10 @@ function positionThreeDotsTip() {
     : Math.round(anchorRect.top - tipHeight - gap);
   let left = Math.round(anchorRect.right - tipWidth);
   left = Math.max(edgeGap, Math.min(left, vw - tipWidth - edgeGap));
+  const anchorCenterX = anchorRect.left + anchorRect.width / 2;
+  const arrowX = Math.round(anchorCenterX - left);
+  const clampedArrowX = Math.max(16, Math.min(arrowX, Math.max(16, tipWidth - 16)));
+  tip.style.setProperty("--hc2-tip-arrow-x", `${clampedArrowX}px`);
 
   tip.style.left = `${left}px`;
   tip.style.top = `${Math.max(edgeGap, top)}px`;
@@ -987,6 +992,7 @@ function openFavorites() {
   setBackgroundInert(true);
   state.favoritesOpen = true;
   state.favoritesManageMode = false;
+  state.pendingFavoriteDeleteId = null;
   updateFavoritesManageButton();
   renderFavoritesSheet();
 
@@ -1014,6 +1020,7 @@ function closeFavorites({ restoreFocus = true } = {}) {
   }
   state.favoritesOpen = false;
   state.favoritesManageMode = false;
+  state.pendingFavoriteDeleteId = null;
   updateFavoritesManageButton();
   if (favoritesSheet) {
     favoritesSheet.hidden = true;
@@ -1203,6 +1210,9 @@ function deleteFavorite(id) {
   state.favorites = (state.favorites || []).filter((fav) => fav.id !== favId);
   if (state.selectedFavId === favId) {
     state.selectedFavId = null;
+  }
+  if (state.pendingFavoriteDeleteId === favId) {
+    state.pendingFavoriteDeleteId = null;
   }
   persistFavorites();
   renderFavoritesSheet();
@@ -1965,20 +1975,54 @@ function renderFavoritesSheet() {
       selectFavorite(fav.id);
     });
 
+    const deleteGroup = document.createElement("div");
+    deleteGroup.className = "hc2__favoriteDeleteGroup";
+    deleteGroup.hidden = !state.favoritesManageMode;
+
     const deleteBtnInline = document.createElement("button");
     deleteBtnInline.type = "button";
     deleteBtnInline.className = "hc2__favoriteDelete";
     deleteBtnInline.setAttribute("aria-label", `${t("favoritesDelete")}: ${fav.name}`);
-    deleteBtnInline.textContent = "×";
-    deleteBtnInline.hidden = !state.favoritesManageMode;
+    deleteBtnInline.textContent = "✕";
+    deleteBtnInline.hidden =
+      !state.favoritesManageMode || state.pendingFavoriteDeleteId === fav.id;
     deleteBtnInline.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      state.pendingFavoriteDeleteId = fav.id;
+      renderFavoritesSheet();
+    });
+
+    const confirmDeleteBtn = document.createElement("button");
+    confirmDeleteBtn.type = "button";
+    confirmDeleteBtn.className = "hc2__favoriteDeleteConfirm";
+    confirmDeleteBtn.textContent = t("favoritesDeleteConfirmAction");
+    confirmDeleteBtn.hidden =
+      !state.favoritesManageMode || state.pendingFavoriteDeleteId !== fav.id;
+    confirmDeleteBtn.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
       deleteFavorite(fav.id);
     });
 
+    const cancelDeleteBtn = document.createElement("button");
+    cancelDeleteBtn.type = "button";
+    cancelDeleteBtn.className = "hc2__favoriteDeleteCancel";
+    cancelDeleteBtn.textContent = t("homeStopDialogCancel");
+    cancelDeleteBtn.hidden =
+      !state.favoritesManageMode || state.pendingFavoriteDeleteId !== fav.id;
+    cancelDeleteBtn.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      state.pendingFavoriteDeleteId = null;
+      renderFavoritesSheet();
+    });
+
     row.appendChild(pickBtn);
-    row.appendChild(deleteBtnInline);
+    deleteGroup.appendChild(deleteBtnInline);
+    deleteGroup.appendChild(confirmDeleteBtn);
+    deleteGroup.appendChild(cancelDeleteBtn);
+    row.appendChild(deleteGroup);
     host.appendChild(row);
   });
 
@@ -2114,6 +2158,7 @@ function bindEvents() {
   r.favoritesSave?.addEventListener("click", saveCurrentStop);
   r.favoritesManage?.addEventListener("click", () => {
     state.favoritesManageMode = !state.favoritesManageMode;
+    if (!state.favoritesManageMode) state.pendingFavoriteDeleteId = null;
     updateFavoritesManageButton();
     renderFavoritesSheet();
   });

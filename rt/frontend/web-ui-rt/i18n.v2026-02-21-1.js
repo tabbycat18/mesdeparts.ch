@@ -488,6 +488,12 @@ const TRANSLATIONS = {
     it: "Eliminare i preferiti selezionati?",
     en: "Delete selected favorites?",
   },
+  favoritesDeleteConfirmAction: {
+    fr: "Confirmer",
+    de: "Bestätigen",
+    it: "Conferma",
+    en: "Confirm",
+  },
   filterNoFavorites: {
     fr: "Aucun favori pour l'instant",
     de: "Noch keine Favoriten",

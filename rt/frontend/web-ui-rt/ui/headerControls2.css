@@ -136,7 +136,7 @@
 }
 
 .hc2__clock {
-  /* Legacy parity: style.v2026-02-20-1.css (.clock-block) = fixed 96x96 on all breakpoints */
+  /* Legacy parity: style.v2026-02-21-1.css (.clock-block) = fixed 96x96 on all breakpoints */
   width: 96px;
   height: 96px;
   min-width: 96px;
@@ -314,7 +314,7 @@
 }
 
 #digital-clock.digital-clock {
-  /* Legacy parity: style.v2026-02-20-1.css (.digital-clock) */
+  /* Legacy parity: style.v2026-02-21-1.css (.digital-clock) */
   margin-top: 2px;
   font-size: 1rem;
   line-height: 1.14;
@@ -894,7 +894,7 @@
 /* Plain (non-badge) chips still get the button resets.
    When .line-badge is also present these must NOT fire — the badge's own
    background / padding / color / font would lose on a same-specificity tie
-   because this file loads after style.v2026-02-20-1.css. */
+   because this file loads after style.v2026-02-21-1.css. */
 .hc2__servedChip:not(.line-badge) {
   background: transparent;
   padding: 0;
@@ -909,6 +909,7 @@
 }
 
 .hc2__menuTip {
+  --hc2-tip-arrow-x: 22px;
   position: fixed;
   z-index: 1702;
   max-width: min(88vw, 320px);
@@ -922,26 +923,46 @@
   padding: 10px 34px 10px 12px;
 }
 
+.hc2__menuTip::before,
 .hc2__menuTip::after {
   content: "";
   position: absolute;
-  right: 16px;
+  left: calc(var(--hc2-tip-arrow-x) - 6px);
+  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+  pointer-events: none;
+}
+
+.hc2__menuTip::before {
+  width: 12px;
+  height: 12px;
+  background: rgba(255, 255, 255, 0.2);
+  z-index: 0;
+}
+
+.hc2__menuTip::after {
   width: 10px;
   height: 10px;
-  border-right: 1px solid rgba(255, 255, 255, 0.2);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
   background: rgba(1, 20, 96, 0.98);
-  rotate: 45deg;
+  z-index: 1;
+}
+
+.hc2__menuTip--bottom::before {
+  top: -8px;
 }
 
 .hc2__menuTip--bottom::after {
-  top: -6px;
+  top: -7px;
+}
+
+.hc2__menuTip--top::before {
+  bottom: -8px;
 }
 
 .hc2__menuTip--top::after {
-  bottom: -6px;
+  bottom: -7px;
 }
 
+.hc2__menuTip--toast::before,
 .hc2__menuTip--toast::after {
   display: none;
 }
@@ -1330,7 +1351,7 @@
 }
 
 .hc2__favoriteRow.is-manage {
-  grid-template-columns: minmax(0, 1fr) 40px;
+  grid-template-columns: minmax(0, 1fr) auto;
 }
 
 .hc2__favoritesHeader {
@@ -1428,11 +1449,14 @@
   width: 36px;
   height: 36px;
   min-height: 36px;
+  padding: 0;
   border: 1px solid rgba(248, 69, 95, 0.2);
   border-radius: 9999px;
   background: rgba(248, 69, 95, 0.12);
   color: #ffecee;
-  font-size: 1.2rem;
+  font-size: 0.98rem;
+  font-weight: 700;
+  font-family: "Segoe UI Symbol", "Apple Symbols", system-ui, sans-serif;
   line-height: 1;
   cursor: pointer;
   transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
@@ -1440,10 +1464,56 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  overflow: hidden;
 }
 
 .hc2__favoriteDelete:hover {
   background: rgba(248, 69, 95, 0.22);
+}
+
+.hc2__favoriteDeleteGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.hc2__favoriteDeleteGroup[hidden] {
+  display: none !important;
+}
+
+.hc2__favoriteDeleteConfirm,
+.hc2__favoriteDeleteCancel {
+  min-height: 32px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #f6f9ff;
+  font-size: 0.74rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.hc2__favoriteDelete[hidden],
+.hc2__favoriteDeleteConfirm[hidden],
+.hc2__favoriteDeleteCancel[hidden] {
+  display: none !important;
+}
+
+.hc2__favoriteDeleteConfirm {
+  background: rgba(248, 69, 95, 0.2);
+  border-color: rgba(248, 69, 95, 0.45);
+}
+
+.hc2__favoriteDeleteConfirm:hover {
+  background: rgba(248, 69, 95, 0.3);
+}
+
+.hc2__favoriteDeleteCancel {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.hc2__favoriteDeleteCancel:hover {
+  background: rgba(255, 255, 255, 0.14);
 }
 
 .hc2__sheetFooter {
@@ -1693,7 +1763,7 @@
 
 @media (max-width: 520px) {
   .hc2__title {
-    /* Legacy parity: style.v2026-02-20-1.css @media (max-width: 520px) */
+    /* Legacy parity: style.v2026-02-21-1.css @media (max-width: 520px) */
     font-size: 1.58rem;
     line-height: 1.05;
   }

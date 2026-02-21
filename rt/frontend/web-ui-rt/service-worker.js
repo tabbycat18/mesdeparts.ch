@@ -3,17 +3,17 @@ const CORE_ASSETS = [
   "./index.html",
   "./dual-board.html",
   "./manifest.webmanifest",
-  "./style.v2026-02-20-1.css",
-  "./main.v2026-02-20-1.js",
-  "./logic.v2026-02-20-1.js",
-  "./ui.v2026-02-20-1.js",
-  "./state.v2026-02-20-1.js",
-  "./i18n.v2026-02-20-1.js",
-  "./favourites.v2026-02-20-1.js",
-  "./homeStop.v2026-02-20-1.js",
-  "./threeDotsTip.v2026-02-20-1.js",
-  "./infoBTN.v2026-02-20-1.js",
-  "./ui/homeStopOnboarding.v2026-02-20-1.js",
+  "./style.v2026-02-21-1.css",
+  "./main.v2026-02-21-1.js",
+  "./logic.v2026-02-21-1.js",
+  "./ui.v2026-02-21-1.js",
+  "./state.v2026-02-21-1.js",
+  "./i18n.v2026-02-21-1.js",
+  "./favourites.v2026-02-21-1.js",
+  "./homeStop.v2026-02-21-1.js",
+  "./threeDotsTip.v2026-02-21-1.js",
+  "./infoBTN.v2026-02-21-1.js",
+  "./ui/homeStopOnboarding.v2026-02-21-1.js",
   "./disruption-lightning.svg",
   "./bus-icon-1.png",
   "./bus-icon-1.svg",
@@ -26,7 +26,7 @@ const LAZY_ASSETS = [
 ];
 
 const ASSETS = [...CORE_ASSETS, ...LAZY_ASSETS];
-const CACHE_REV = "2026-02-21-6-v1.8.3";
+const CACHE_REV = "2026-02-21-9-v1.8.4";
 
 function hashStrings(list) {
   const str = list.join("|");

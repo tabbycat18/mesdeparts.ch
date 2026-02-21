@@ -3,14 +3,17 @@ import assert from "node:assert/strict";
 import {
   buildDeparturesGrouped,
   classifyMode,
+  computeDelayMin,
+  computeDelaySeconds,
   computeDeltaMinutes,
   fetchStationSuggestions,
   fetchStationboardRaw,
+  getDisplayedDelayBadge,
   detectNetworkFromStation,
   fetchJourneyDetails,
   parseApiDate,
-} from "../logic.v2026-02-20-1.js";
-import { appState, VIEW_MODE_LINE, VIEW_MODE_TIME } from "../state.v2026-02-20-1.js";
+} from "../logic.v2026-02-21-1.js";
+import { appState, VIEW_MODE_LINE, VIEW_MODE_TIME } from "../state.v2026-02-21-1.js";
 
 // classifyMode should categorize common transport codes
 assert.equal(classifyMode("IC"), "train");
@@ -33,6 +36,36 @@ assert.equal(
   -2,
 );
 assert.equal(computeDeltaMinutes("2026-02-19T12:00:00+0100", null), null);
+
+// canonical raw delay helpers
+assert.equal(
+  computeDelaySeconds("2026-02-19T12:00:00+0100", "2026-02-19T12:01:00+0100"),
+  60,
+);
+assert.equal(computeDelayMin(60), 1);
+assert.equal(computeDelayMin(60, { rounding: "ceil" }), 1);
+
+// display-only suppression is train-only
+{
+  const busBadge = getDisplayedDelayBadge({
+    mode: "bus",
+    vehicleCategory: "bus_tram_metro",
+    delaySeconds: 60,
+    cancelled: false,
+    busDelayThresholdMin: 1,
+  });
+  assert.equal(busBadge.displayedDelayMin, 1);
+  assert.equal(busBadge.status, "delay");
+
+  const trainBadge = getDisplayedDelayBadge({
+    mode: "train",
+    vehicleCategory: "train",
+    delaySeconds: 60,
+    cancelled: false,
+  });
+  assert.equal(trainBadge.displayedDelayMin, 0);
+  assert.equal(trainBadge.status, null);
+}
 
 // detectNetworkFromStation should pick up city-specific networks
 assert.equal(detectNetworkFromStation("Lausanne, gare"), "tl");
@@ -253,6 +286,139 @@ assert.equal(detectNetworkFromStation("Zurich HB"), "vbz");
         assert.equal(rows.some((row) => row.status === "early"), true);
       }
     }
+  } finally {
+    appState.STATION = previous.station;
+    appState.stationId = previous.stationId;
+    appState.trainServiceFilter = previous.trainFilter;
+    appState.platformFilter = previous.platformFilter;
+    appState.lineFilter = previous.lineFilter;
+    appState.favoritesOnly = previous.favoritesOnly;
+    appState.lastPlatforms = previous.lastPlatforms;
+  }
+}
+
+// raw-vs-display invariants:
+// - raw delay uses timestamps
+// - train +1 can be display-suppressed
+// - bus/tram/metro must not be train-suppressed
+// - countdown/sorting must use realtime timestamps (not display suppression)
+{
+  const previous = {
+    station: appState.STATION,
+    stationId: appState.stationId,
+    trainFilter: appState.trainServiceFilter,
+    platformFilter: appState.platformFilter,
+    lineFilter: appState.lineFilter,
+    favoritesOnly: appState.favoritesOnly,
+    lastPlatforms: appState.lastPlatforms,
+  };
+
+  const nowBase = Date.now() + 10 * 60 * 1000;
+  const mkIso = (ms) => new Date(ms).toISOString();
+  const makeEntry = ({ category, number, offsetMin, deltaSec }) => {
+    const scheduledMs = nowBase + offsetMin * 60 * 1000;
+    const realtimeMs = scheduledMs + deltaSec * 1000;
+    return {
+      category,
+      number: String(number),
+      name: String(number),
+      operator: category === "S" ? "SBB" : "TL",
+      to: `Dest ${number}`,
+      source: "scheduled",
+      tags: [],
+      stop: {
+        departure: mkIso(scheduledMs),
+        platform: "A",
+        delay: Math.round(deltaSec / 60),
+        prognosis: {
+          departure: mkIso(realtimeMs),
+          delay: Math.round(deltaSec / 60),
+          status: "ON_TIME",
+          cancelled: false,
+        },
+        cancelled: false,
+      },
+      cancelled: false,
+    };
+  };
+
+  try {
+    appState.STATION = "Test, Stop";
+    appState.stationId = "Parent0000000";
+    appState.trainServiceFilter = "train_all";
+    appState.platformFilter = null;
+    appState.lineFilter = null;
+    appState.favoritesOnly = false;
+    appState.lastPlatforms = {};
+
+    const busOnlyRows = buildDeparturesGrouped(
+      {
+        stationboard: [
+          makeEntry({ category: "B", number: "7", offsetMin: 2, deltaSec: 60 }),
+          makeEntry({ category: "B", number: "8", offsetMin: 1, deltaSec: 0 }),
+        ],
+      },
+      VIEW_MODE_TIME,
+    );
+    const bus7 = busOnlyRows.find((row) => row.mode === "bus" && String(row.simpleLineId || "") === "7");
+    assert.ok(bus7);
+    // 1) BUS: raw +60s stays +60s and display remains bus-domain (no train suppression)
+    assert.equal(bus7.rawDelaySec, 60);
+    assert.equal(bus7.delayMin, 1);
+    assert.equal(bus7.displayedDelayMin, 1);
+
+    const trainRows = buildDeparturesGrouped(
+      {
+        stationboard: [
+          // Train +1 minute (display suppression allowed, raw must remain +60s)
+          makeEntry({ category: "S", number: "5", offsetMin: 4, deltaSec: 60 }),
+          makeEntry({ category: "S", number: "6", offsetMin: 3, deltaSec: 120 }),
+        ],
+      },
+      VIEW_MODE_TIME,
+    );
+    const train5 = trainRows.find((row) => row.mode === "train" && String(row.simpleLineId || "") === "5");
+    assert.ok(train5);
+    // 2) TRAIN: raw +60s is preserved, while display can suppress +1
+    assert.equal(train5.rawDelaySec, 60);
+    assert.equal(train5.delayMin, 1);
+    assert.equal(train5.displayedDelayMin, 0);
+    assert.equal(train5.status, null);
+
+    // 3) Countdown/min uses realtime timestamp directly (no 1-min global shift)
+    assert.ok(
+      Number.isFinite(train5.realtimeTime) &&
+        Number.isFinite(train5.scheduledTime) &&
+        train5.realtimeTime - train5.scheduledTime === 60_000,
+    );
+    const expectedTrainInMin = Math.max(0, Math.ceil((train5.realtimeTime - Date.now()) / 60_000));
+    assert.equal(train5.inMin, expectedTrainInMin);
+
+    // 4+5) Mixed regression + sorting by realtime/base time (not display fields)
+    // 4) Mixed regression at helper level: train suppression must not change bus display mapping
+    const mixedBusDisplay = getDisplayedDelayBadge({
+      mode: "bus",
+      vehicleCategory: "bus_tram_metro",
+      delaySeconds: 60,
+      cancelled: false,
+      busDelayThresholdMin: 1,
+    });
+    const mixedTrainDisplay = getDisplayedDelayBadge({
+      mode: "train",
+      vehicleCategory: "train",
+      delaySeconds: 60,
+      cancelled: false,
+    });
+    assert.equal(mixedBusDisplay.displayedDelayMin, 1);
+    assert.equal(mixedTrainDisplay.displayedDelayMin, 0);
+
+    // 5) Sorting stays based on realtime/base time (not display fields)
+    const sortedByBaseTime = [...trainRows].sort((a, b) => (a.baseTime || 0) - (b.baseTime || 0));
+    assert.deepEqual(
+      trainRows.map((row) => row.baseTime),
+      sortedByBaseTime.map((row) => row.baseTime),
+    );
+    assert.ok(trainRows.every((row) => row.baseTime === row.realtimeTime));
   } finally {
     appState.STATION = previous.station;
     appState.stationId = previous.stationId;

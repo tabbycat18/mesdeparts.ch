@@ -16,17 +16,17 @@
       name="description"
       content="Double tableau de départs Mes Départs avec horloge sbbUhr, installable en PWA."
     />
-    <link rel="preload" href="style.v2026-02-20-1.css" as="style" />
-    <link rel="modulepreload" href="logic.v2026-02-20-1.js" as="script" />
-    <link rel="modulepreload" href="ui.v2026-02-20-1.js" />
-    <link rel="modulepreload" href="state.v2026-02-20-1.js" />
-    <link rel="modulepreload" href="i18n.v2026-02-20-1.js" />
-    <link rel="modulepreload" href="infoBTN.v2026-02-20-1.js" />
-    <link rel="modulepreload" href="favourites.v2026-02-20-1.js" />
+    <link rel="preload" href="style.v2026-02-21-1.css" as="style" />
+    <link rel="modulepreload" href="logic.v2026-02-21-1.js" as="script" />
+    <link rel="modulepreload" href="ui.v2026-02-21-1.js" />
+    <link rel="modulepreload" href="state.v2026-02-21-1.js" />
+    <link rel="modulepreload" href="i18n.v2026-02-21-1.js" />
+    <link rel="modulepreload" href="infoBTN.v2026-02-21-1.js" />
+    <link rel="modulepreload" href="favourites.v2026-02-21-1.js" />
     <script>window.__MD_API_BASE__ = window.__MD_API_BASE__ || "";</script>
-    <link rel="modulepreload" href="main.v2026-02-20-1.js" />
-    <link rel="stylesheet" href="style.v2026-02-20-1.css" />
-    <link rel="stylesheet" href="ui/headerControls2.css?v=2026-02-21-2" />
+    <link rel="modulepreload" href="main.v2026-02-21-1.js" />
+    <link rel="stylesheet" href="style.v2026-02-21-1.css" />
+    <link rel="stylesheet" href="ui/headerControls2.css?v=2026-02-21-3" />
   </head>
   <body class="dual-body">
     <div class="dual-shell">
@@ -34,7 +34,7 @@
         <div class="dual-app-bar">
           <div class="dual-bar-left">
             <div class="dual-title">Dual</div>
-            <div class="dual-version">v1.8.3</div>
+            <div class="dual-version">v1.8.4</div>
           </div>
           <div class="dual-bar-right">
             <div class="language-switcher language-switcher--inline dual-lang-switcher">
@@ -77,12 +77,12 @@
     </button>
 
     <div class="dual-badges-float">
-      <div class="dual-version-float" aria-label="Version">v1.8.3</div>
+      <div class="dual-version-float" aria-label="Version">v1.8.4</div>
       <button id="info-badge-float" class="dual-info-float" type="button" aria-label="Info" title="Info">INFO</button>
     </div>
 
     <script type="module">
-      import { LANGUAGE_OPTIONS, initI18n, setLanguage, t } from "./i18n.v2026-02-20-1.js";
+      import { LANGUAGE_OPTIONS, initI18n, setLanguage, t } from "./i18n.v2026-02-21-1.js";
       import {
         appState,
         VIEW_MODE_LINE,
@@ -90,8 +90,8 @@
         TRAIN_FILTER_ALL,
         TRAIN_FILTER_REGIONAL,
         TRAIN_FILTER_LONG_DISTANCE,
-      } from "./state.v2026-02-20-1.js";
-      import { setupInfoButton } from "./infoBTN.v2026-02-20-1.js";
+      } from "./state.v2026-02-21-1.js";
+      import { setupInfoButton } from "./infoBTN.v2026-02-21-1.js";
       import { DualPicker } from "./ui/dualPicker.js";
 
       const DEFAULT_LANG = initI18n();
@@ -742,6 +742,14 @@
     </script>
     <script>
       if ("serviceWorker" in navigator) {
+        const host = (window.location.hostname || "").toLowerCase();
+        const isPrivateIpv4Host =
+          /^(10|127)\./.test(host) ||
+          /^192\.168\./.test(host) ||
+          /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(host);
+        const isLocalLikeHost =
+          host === "localhost" || host.endsWith(".local") || host.endsWith(".localhost");
+        const disableSwForLanDev = isPrivateIpv4Host || isLocalLikeHost;
         const path = window.location.pathname || "/";
         const isClock = path.startsWith("/clock");
         const allowed =
@@ -753,13 +761,17 @@
 
         const registerSW = () => {
           navigator.serviceWorker
-            .register("/service-worker.js")
+            .register("/service-worker.js?v=2026-02-21-9")
             .catch((err) => {
               console.error("Service worker registration failed", err);
             });
         };
 
-        if (!isClock && allowed) {
+        if (disableSwForLanDev) {
+          navigator.serviceWorker.getRegistrations().then((regs) => {
+            regs.forEach((reg) => reg.unregister());
+          });
+        } else if (!isClock && allowed) {
           if (document.readyState === "complete" || document.readyState === "interactive") {
             registerSW();
           } else {
