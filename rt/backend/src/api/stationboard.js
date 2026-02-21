@@ -3,7 +3,6 @@ import { query as dbQuery } from "../db/query.js";
 import { performance } from "node:perf_hooks";
 import os from "node:os";
 import { resolveStop } from "../resolve/resolveStop.js";
-import { fetchServiceAlerts } from "../loaders/fetchServiceAlerts.js";
 import { attachAlerts } from "../merge/attachAlerts.js";
 import { supplementFromOtdStationboard } from "../merge/supplementFromOtdStationboard.js";
 import { pickPreferredMergedDeparture } from "../merge/pickPreferredDeparture.js";
@@ -19,16 +18,9 @@ import {
   shouldEnableStationboardDebug,
 } from "../debug/stationboardDebug.js";
 import { guardStationboardRequestPathUpstream } from "../util/upstreamRequestGuard.js";
-import { LA_TRIPUPDATES_FEED_KEY } from "../db/rtCache.js";
+import { LA_SERVICEALERTS_FEED_KEY, LA_TRIPUPDATES_FEED_KEY } from "../db/rtCache.js";
+import { loadAlertsFromCache } from "../rt/loadAlertsFromCache.js";
 
-const ALERTS_CACHE_MS = Math.max(
-  1_000,
-  Number(process.env.SERVICE_ALERTS_CACHE_MS || "30000")
-);
-const ALERTS_FETCH_TIMEOUT_MS = Math.max(
-  500,
-  Number(process.env.SERVICE_ALERTS_FETCH_TIMEOUT_MS || "3000")
-);
 const OTD_STATIONBOARD_URL = "https://transport.opendata.ch/v1/stationboard";
 const OTD_STATIONBOARD_FETCH_TIMEOUT_MS = Math.max(
   500,
@@ -40,7 +32,6 @@ const OTD_SUPPLEMENT_CACHE_MS = Math.max(
 );
 const OTD_SUPPLEMENT_BLOCK_ON_COLD = process.env.OTD_EV_SUPPLEMENT_BLOCK_ON_COLD === "1";
 const STATIONBOARD_DISABLE_REQUEST_PATH_UPSTREAM = true;
-const SERVICE_ALERTS_UPSTREAM_URL = "https://api.opentransportdata.swiss/la/gtfs-sa";
 const INSTANCE_HOST = String(os.hostname() || "").trim() || "localhost";
 const INSTANCE_ALLOC_ID = String(process.env.FLY_ALLOC_ID || "").trim();
 const INSTANCE_ID = INSTANCE_ALLOC_ID || `${INSTANCE_HOST}:${process.pid}`;
@@ -74,86 +65,7 @@ const DEFAULT_STATIONBOARD_WINDOW_MINUTES = Math.max(
   )
 );
 
-let alertsCacheValue = null;
-let alertsCacheTs = 0;
-let alertsInflight = null;
-let alertsCooldownUntil = 0; // epoch ms; prevents retry storms after 429s
 const otdSupplementCache = new Map();
-
-function resolveServiceAlertsApiKey() {
-  return (
-    process.env.OPENTDATA_GTFS_SA_KEY ||
-    process.env.OPENTDATA_API_KEY ||
-    process.env.GTFS_RT_TOKEN ||
-    process.env.OPENDATA_SWISS_TOKEN ||
-    process.env.OPENTDATA_GTFS_RT_KEY ||
-    ""
-  );
-}
-
-async function refreshAlertsCache() {
-  if (STATIONBOARD_DISABLE_REQUEST_PATH_UPSTREAM) {
-    return null;
-  }
-  const allowed = guardStationboardRequestPathUpstream(SERVICE_ALERTS_UPSTREAM_URL, {
-    scope: "api/stationboard:service_alerts",
-  });
-  if (!allowed) return null;
-  const next = await fetchServiceAlerts({
-    apiKey: resolveServiceAlertsApiKey(),
-    timeoutMs: ALERTS_FETCH_TIMEOUT_MS,
-  });
-  alertsCacheValue = next;
-  alertsCacheTs = Date.now();
-  return next;
-}
-
-async function getServiceAlertsCached() {
-  const now = Date.now();
-
-  // Serve cached if fresh.
-  const fresh = alertsCacheValue && now - alertsCacheTs <= ALERTS_CACHE_MS;
-  if (fresh) return alertsCacheValue;
-
-  // If we recently got rate-limited, do not refetch yet.
-  if (alertsCooldownUntil && now < alertsCooldownUntil) {
-    return alertsCacheValue; // may be null; caller must tolerate
-  }
-
-  // If a refresh is already running, do not start another.
-  if (alertsInflight) {
-    return alertsCacheValue || alertsInflight.catch(() => null);
-  }
-
-  alertsInflight = refreshAlertsCache()
-    .catch((err) => {
-      const msg = String(err?.message || err);
-
-      // If 429, set a cooldown (default 5 min) to avoid hammering the API.
-      if (msg.includes("http_429")) {
-        const cooldownMs = Math.max(
-          5_000,
-          Number(process.env.SERVICE_ALERTS_COOLDOWN_MS || "300000")
-        );
-        alertsCooldownUntil = Date.now() + cooldownMs;
-        console.warn(`[alerts] rate-limited (429); cooling down ${cooldownMs}ms`);
-      } else {
-        console.warn(`[alerts] fetch failed; continuing without alerts: ${msg}`);
-      }
-
-      // Never crash stationboard because alerts failed.
-      return alertsCacheValue; // may be null
-    })
-    .finally(() => {
-      alertsInflight = null;
-    });
-
-  // Stale-while-revalidate: if we have something, return it immediately.
-  if (alertsCacheValue) return alertsCacheValue;
-
-  // Otherwise wait for first load, but still never throw.
-  return alertsInflight.catch(() => null);
-}
 
 function localizeServiceAlerts(alerts, langPrefs) {
   const entities = Array.isArray(alerts?.entities) ? alerts.entities : [];
@@ -779,15 +691,47 @@ function buildAlertsResponseMeta({
   includeAlertsRequested,
   includeAlertsApplied,
   reason,
+  alertsMeta,
 } = {}) {
+  const source = alertsMeta && typeof alertsMeta === "object" ? alertsMeta : {};
+  const fetchedAt =
+    String(source.fetchedAt || source.cacheFetchedAt || "").trim() || null;
+  const cacheAgeMs = Number.isFinite(Number(source.cacheAgeMs))
+    ? Number(source.cacheAgeMs)
+    : null;
+  const ageSeconds = Number.isFinite(Number(source.ageSeconds))
+    ? Number(source.ageSeconds)
+    : Number.isFinite(cacheAgeMs)
+      ? Math.floor(cacheAgeMs / 1000)
+      : null;
   return {
-    available: false,
-    applied: false,
-    reason: String(reason || "disabled"),
-    fetchedAt: null,
-    ageSeconds: null,
+    available: source.available === true,
+    applied: source.applied === true,
+    reason:
+      String(source.reason || "").trim() ||
+      String(reason || "disabled"),
+    fetchedAt,
+    ageSeconds,
     includeRequested: includeAlertsRequested === true,
     includeApplied: includeAlertsApplied === true,
+    feedKey: String(source.feedKey || LA_SERVICEALERTS_FEED_KEY),
+    cacheAgeMs,
+    freshnessThresholdMs: Number.isFinite(Number(source.freshnessThresholdMs))
+      ? Number(source.freshnessThresholdMs)
+      : null,
+    status: Number.isFinite(Number(source.status))
+      ? Number(source.status)
+      : Number.isFinite(Number(source.lastStatus))
+        ? Number(source.lastStatus)
+        : null,
+    lastStatus: Number.isFinite(Number(source.lastStatus))
+      ? Number(source.lastStatus)
+      : null,
+    lastError: String(source.lastError || "").trim() || null,
+    payloadBytes: Number.isFinite(Number(source.payloadBytes))
+      ? Number(source.payloadBytes)
+      : null,
+    cacheStatus: String(source.cacheStatus || "").trim() || null,
   };
 }
 
@@ -808,9 +752,11 @@ export async function getStationboard({
 } = {}) {
   void fromTs;
   void toTs;
-  const alertsFeatureEnabled = false;
+  const alertsFeatureEnabled =
+    String(process.env.STATIONBOARD_ENABLE_ALERTS || "").trim() !== "0" &&
+    String(process.env.STATIONBOARD_ENABLE_M2 || "").trim() !== "0";
   const includeAlertsRequested = includeAlerts !== false;
-  const includeAlertsApplied = false;
+  const includeAlertsApplied = alertsFeatureEnabled && includeAlertsRequested;
   const debugEnabled =
     debug === true || shouldEnableStationboardDebug(process.env.STATIONBOARD_DEBUG_JSON);
   const rtDebugMode = debugEnabled ? String(debugRt || "").trim().toLowerCase() : "";
@@ -993,7 +939,12 @@ export async function getStationboard({
       locationId,
     childStops: Array.isArray(resolved?.children) ? resolved.children : [],
   };
-  const alertsPromise = includeAlertsApplied ? getServiceAlertsCached() : null;
+  const alertsPromise = includeAlertsApplied
+    ? loadAlertsFromCache({
+        enabled: true,
+        nowMs: Date.now(),
+      })
+    : null;
   const buildOptionsBase = {
     limit: boundedLimit,
     windowMinutes: baseWindowMinutes,
@@ -1073,12 +1024,14 @@ export async function getStationboard({
   debugState.rowSources = rowSources;
   debugState.rtTripUpdates = board?.debugMeta?.rtTripUpdates || null;
   const rtResponseMeta = buildRtResponseMeta(debugState.rtTripUpdates);
-  const alertsResponseMeta = buildAlertsResponseMeta({
+  let alertsResponseMeta = buildAlertsResponseMeta({
     includeAlertsRequested,
     includeAlertsApplied,
-    reason: STATIONBOARD_DISABLE_REQUEST_PATH_UPSTREAM
-      ? "disabled"
-      : "not_available",
+    reason: includeAlertsApplied
+      ? "missing_cache"
+      : alertsFeatureEnabled
+        ? "not_requested"
+        : "disabled",
   });
   const scheduledRowCount = rowSources.reduce(
     (acc, source) => acc + (Number(source?.rowCount) || 0),
@@ -1226,7 +1179,18 @@ export async function getStationboard({
 
   try {
     const alertsWaitStartedMs = performance.now();
-    const alertsRaw = (await alertsPromise) || { entities: [] };
+    const alertsLoadResult = (await alertsPromise) || {
+      alerts: { entities: [] },
+      meta: { reason: "missing_cache" },
+    };
+    const alertsRaw = alertsLoadResult?.alerts || { entities: [] };
+    alertsResponseMeta = buildAlertsResponseMeta({
+      includeAlertsRequested,
+      includeAlertsApplied,
+      reason: "missing_cache",
+      alertsMeta: alertsLoadResult?.meta,
+    });
+    baseResponse.alerts = alertsResponseMeta;
     timing.alertsWaitMs = roundMs(performance.now() - alertsWaitStartedMs);
     const alertsMergeStartedMs = performance.now();
     const syntheticDepartures = [];

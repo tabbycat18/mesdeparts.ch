@@ -1,6 +1,7 @@
 import { query } from "./query.js";
 
 export const LA_TRIPUPDATES_FEED_KEY = "la_tripupdates";
+export const LA_SERVICEALERTS_FEED_KEY = "la_servicealerts";
 
 function normalizeFeedKey(feedKey) {
   const value = String(feedKey || "").trim();

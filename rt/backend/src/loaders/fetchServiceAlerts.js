@@ -1,7 +1,9 @@
 import GtfsRealtimeBindings from "gtfs-realtime-bindings";
 import { pickTranslation } from "../util/i18n.js";
 
-const DEFAULT_SERVICE_ALERTS_URL = "https://api.opentransportdata.swiss/la/gtfs-sa";
+export const LA_GTFS_RT_SERVICE_ALERTS_URL =
+  "https://api.opentransportdata.swiss/la/gtfs-sa";
+const DEFAULT_SERVICE_ALERTS_URL = LA_GTFS_RT_SERVICE_ALERTS_URL;
 
 const CAUSE_BY_CODE = {
   0: "UNKNOWN_CAUSE",
@@ -145,7 +147,7 @@ function normalizeInformedEntity(rawEntity) {
   };
 }
 
-function normalizeAlertEntity(entity) {
+export function normalizeAlertEntity(entity) {
   const alert = pick(entity, "alert");
   if (!alert || typeof alert !== "object") return null;
 
@@ -190,7 +192,7 @@ function normalizeAlertEntity(entity) {
   };
 }
 
-function resolveApiKey(explicitApiKey) {
+export function resolveServiceAlertsApiKey(explicitApiKey) {
   return (
     explicitApiKey ||
     process.env.OPENTDATA_GTFS_SA_KEY ||
@@ -203,7 +205,7 @@ function resolveApiKey(explicitApiKey) {
 }
 
 export async function fetchServiceAlerts({ apiKey, urlOverride, timeoutMs } = {}) {
-  const token = resolveApiKey(apiKey);
+  const token = resolveServiceAlertsApiKey(apiKey);
   if (!token) {
     throw new Error("service_alerts_fetch_failed: missing_api_key");
   }
