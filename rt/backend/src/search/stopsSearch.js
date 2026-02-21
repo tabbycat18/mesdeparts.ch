@@ -360,6 +360,10 @@ function scoreCandidate(row, queryCtx) {
     nameNorm.startsWith(queryCtx.queryNorm) ||
     (queryCtx.queryCore ? coreNorm.startsWith(queryCtx.queryCore) : false);
   const prefixAlias = aliasNorms.some((aliasNorm) => aliasNorm.startsWith(queryCtx.queryNorm));
+  const containsName =
+    nameNorm.includes(queryCtx.queryNorm) ||
+    (queryCtx.queryCore ? coreNorm.includes(queryCtx.queryCore) : false);
+  const containsAlias = aliasNorms.some((aliasNorm) => aliasNorm.includes(queryCtx.queryNorm));
 
   const startsMatch = wordStartMatch(queryCtx.queryTokens, candidateTokens);
   const tokenContains = tokenContainmentMatch(queryCtx.queryTokens, candidateTokens);
@@ -395,7 +399,7 @@ function scoreCandidate(row, queryCtx) {
   let tier = 0;
   if (exactName || exactAlias) tier = 4;
   else if (prefixName || prefixAlias) tier = 3;
-  else if (startsMatch) tier = 2;
+  else if (containsName || containsAlias || startsMatch) tier = 2;
   else if (fuzzyAccepted) tier = 1;
   else if (tokenContains && fuzzySimilarity >= queryCtx.fuzzyThreshold - 0.08) tier = 1;
 
@@ -435,6 +439,7 @@ function scoreCandidate(row, queryCtx) {
 
   if (exactAlias) score += 1700;
   else if (prefixAlias) score += 900;
+  else if (containsAlias) score += 420;
 
   score += Math.round(aliasWeight * 260);
   score += Math.round(Math.min(nbStopTimes, 120_000) / 250);
@@ -463,6 +468,7 @@ function scoreCandidate(row, queryCtx) {
 
   if (tokenContains) score += 120;
   if (startsMatch) score += 180;
+  if (containsName) score += 240;
 
   const parentTieRank = queryCtx.queryPostCommaTokens.length > 0 ? (parentLike ? 0 : 1) : parentLike ? 1 : 0;
   const locationType = toString(row?.location_type).trim();
@@ -491,6 +497,8 @@ function scoreCandidate(row, queryCtx) {
       exactAlias,
       prefixName,
       prefixAlias,
+      containsName,
+      containsAlias,
       startsMatch,
       tokenContains,
       cityMatch,
@@ -865,10 +873,11 @@ candidates AS (
     CASE
       WHEN b.name_lower = p.q_norm OR b.name_simple = p.q_norm THEN 4
       WHEN b.name_lower LIKE p.q_norm || '%' OR b.name_simple LIKE p.q_norm || '%' THEN 3
+      WHEN b.name_lower LIKE '%' || p.q_norm || '%' OR b.name_simple LIKE '%' || p.q_norm || '%' THEN 2
       WHEN p.q_head <> '' AND (
         b.name_lower LIKE p.q_head || '%'
         OR b.name_simple LIKE p.q_head || '%'
-      ) THEN 2
+      ) THEN 1
       WHEN p.q_first <> '' AND (
         b.name_lower LIKE p.q_first || '%'
         OR b.name_simple LIKE p.q_first || '%'
@@ -882,6 +891,8 @@ candidates AS (
     AND (
       b.name_lower LIKE p.q_norm || '%'
       OR b.name_simple LIKE p.q_norm || '%'
+      OR b.name_lower LIKE '%' || p.q_norm || '%'
+      OR b.name_simple LIKE '%' || p.q_norm || '%'
       OR (
         p.q_head <> ''
         AND (

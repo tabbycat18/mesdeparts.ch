@@ -282,3 +282,55 @@ test("searchStops backoff keeps full query from being worse than one-char-shorte
   assert.ok(rows.length > 0);
   assert.equal(rows[0].stop_name, "Lausanne, Riponne");
 });
+
+test("degraded fallback SQL supports non-leading substring matches", async () => {
+  __resetSearchCapabilitiesCacheForTests();
+
+  let sawSubstringClause = false;
+
+  const db = {
+    async query(sql, params = []) {
+      const text = String(sql || "");
+
+      if (text.includes("to_regclass('public.stop_search_index')")) {
+        return { rows: [capabilityRow()] };
+      }
+
+      if (text.includes("FROM public.gtfs_stops s")) {
+        sawSubstringClause =
+          text.includes("b.name_lower LIKE '%' || p.q_norm || '%'") &&
+          text.includes("b.name_simple LIKE '%' || p.q_norm || '%'");
+
+        const qNorm = String(params?.[0] || "");
+        if (qNorm !== "grande bor") return { rows: [] };
+        return {
+          rows: [
+            {
+              group_id: "Parent8591979",
+              stop_id: "Parent8591979",
+              stop_name: "Lausanne, Grande-Borde",
+              parent_station: null,
+              location_type: "",
+              city_name: "Lausanne",
+              aliases_matched: [],
+              alias_weight: 0,
+              alias_similarity: 0,
+              name_similarity: 0,
+              core_similarity: 0,
+              is_parent: true,
+              has_hub_token: false,
+              nb_stop_times: 200,
+            },
+          ],
+        };
+      }
+
+      return { rows: [] };
+    },
+  };
+
+  const rows = await searchStops(db, "Grande Bor", 10);
+  assert.equal(sawSubstringClause, true);
+  assert.ok(rows.length > 0);
+  assert.equal(rows[0].stop_name, "Lausanne, Grande-Borde");
+});

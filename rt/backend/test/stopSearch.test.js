@@ -182,6 +182,38 @@ function fixtureRows() {
       has_hub_token: false,
     },
     {
+      group_id: "Parent8591979",
+      stop_id: "Parent8591979",
+      stop_name: "Lausanne, Grande-Borde",
+      parent_station: "",
+      location_type: "0",
+      city_name: "Lausanne",
+      aliases_matched: ["grande borde", "lausanne grande borde"],
+      alias_weight: 8.4,
+      alias_similarity: 0.9,
+      name_similarity: 0.84,
+      core_similarity: 0.84,
+      nb_stop_times: 28000,
+      is_parent: true,
+      has_hub_token: false,
+    },
+    {
+      group_id: "Parent8591999",
+      stop_id: "Parent8591999",
+      stop_name: "Lausanne, Grand-Pont",
+      parent_station: "",
+      location_type: "0",
+      city_name: "Lausanne",
+      aliases_matched: ["grand pont", "lausanne grand pont"],
+      alias_weight: 4.1,
+      alias_similarity: 0.66,
+      name_similarity: 0.7,
+      core_similarity: 0.7,
+      nb_stop_times: 22000,
+      is_parent: true,
+      has_hub_token: false,
+    },
+    {
       group_id: "Parent8506302",
       stop_id: "Parent8506302",
       stop_name: "St. Gallen",
@@ -308,6 +340,21 @@ test("Bel Air and Bel-Air queries resolve to same top station", () => {
     normalizeSearchText(plain[0].stop_name),
     normalizeSearchText(hyphen[0].stop_name)
   );
+});
+
+test("Grande Borde and Grande-Borde queries resolve to same top station", () => {
+  const plain = rankStopCandidates(fixtureRows(), "Grande Borde", 7);
+  const hyphen = rankStopCandidates(fixtureRows(), "Grande-Borde", 7);
+  assert.ok(plain.length > 0);
+  assert.ok(hyphen.length > 0);
+  assert.equal(plain[0].stop_id, "Parent8591979");
+  assert.equal(hyphen[0].stop_id, "Parent8591979");
+});
+
+test("partial grande bor query ranks Lausanne, Grande-Borde first", () => {
+  const ranked = rankStopCandidates(fixtureRows(), "grande bor", 7);
+  assert.ok(ranked.length > 0);
+  assert.equal(ranked[0].stop_id, "Parent8591979");
 });
 
 test("golden variants keep stable top result and canonical fields", () => {
