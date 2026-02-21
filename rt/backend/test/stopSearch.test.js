@@ -399,6 +399,39 @@ test("bel aie typo still returns Bel-Air in top 10", () => {
   assert.ok(topIds.includes("Parent8587055") || topIds.includes("Parent8587387"));
 });
 
+test("acceptance criteria queries return expected stops in top 10", () => {
+  const cases = [
+    { query: "foret", expectAny: ["Parent8591888"] },
+    { query: "lausanne foret", expectAny: ["Parent8591888"] },
+    { query: "grande borde", expectAny: ["Parent8591979"] },
+    { query: "grande-borde", expectAny: ["Parent8591979"] },
+    { query: "bel air", expectAll: ["Parent8587055", "Parent8587387"] },
+    { query: "bel aie", expectAny: ["Parent8587055", "Parent8587387"] },
+  ];
+
+  for (const item of cases) {
+    const ranked = rankStopCandidates(fixtureRows(), item.query, 10);
+    const topIds = ranked.slice(0, 10).map((row) => row.stop_id);
+    assert.ok(topIds.length > 0, `expected non-empty top 10 for "${item.query}"`);
+
+    if (item.expectAll) {
+      for (const expectedId of item.expectAll) {
+        assert.ok(
+          topIds.includes(expectedId),
+          `expected "${item.query}" top 10 to include ${expectedId}, got: ${topIds.join(", ")}`
+        );
+      }
+    }
+
+    if (item.expectAny) {
+      assert.ok(
+        item.expectAny.some((expectedId) => topIds.includes(expectedId)),
+        `expected "${item.query}" top 10 to include one of ${item.expectAny.join(", ")}, got: ${topIds.join(", ")}`
+      );
+    }
+  }
+});
+
 test("golden variants keep stable top result and canonical fields", () => {
   const cases = [
     { query: "Zurich", expectedTop: "zurich hb" },
