@@ -320,6 +320,14 @@ export async function buildStationboard(locationId, options = {}) {
     Number.isFinite(PAST_LOOKBACK_MINUTES) && PAST_LOOKBACK_MINUTES > 0
       ? Math.round(PAST_LOOKBACK_MINUTES * 60)
       : 0;
+  const PREV_SERVICE_DAY_CUTOFF_MINUTES = Number(
+    process.env.PREV_SERVICE_DAY_CUTOFF_MINUTES || "360"
+  );
+  const prevServiceDayCutoffSeconds =
+    Number.isFinite(PREV_SERVICE_DAY_CUTOFF_MINUTES) &&
+    PREV_SERVICE_DAY_CUTOFF_MINUTES > 0
+      ? Math.round(PREV_SERVICE_DAY_CUTOFF_MINUTES * 60)
+      : windowMinutes * 60;
 
   // Clamp at 0 to stay within the day's GTFS seconds range.
   const queryFromSecondsRaw = Math.max(0, nowSecondsRaw - lookbackSeconds);
@@ -610,7 +618,8 @@ export async function buildStationboard(locationId, options = {}) {
   debugMeta.rowSources = [...rowSources];
 
   const includePreviousServiceDay =
-    nowSecondsRaw < Math.max(windowMinutes * 60, lookbackSeconds);
+    nowSecondsRaw <
+    Math.max(windowMinutes * 60, lookbackSeconds, prevServiceDayCutoffSeconds);
 
   let rows = todayRowsResult.rows;
   if (includePreviousServiceDay) {
