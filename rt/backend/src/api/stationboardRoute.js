@@ -1,7 +1,23 @@
 import { performance } from "node:perf_hooks";
+import os from "node:os";
 
 const DEFAULT_STATIONBOARD_ROUTE_TIMEOUT_MS = 6500;
 const DEFAULT_STATIONBOARD_STALE_CACHE_MS = 90000;
+const DEFAULT_RT_FRESHNESS_THRESHOLD_MS = Math.max(
+  5_000,
+  Number(process.env.STATIONBOARD_RT_FRESH_MAX_AGE_MS || "45000")
+);
+const DEFAULT_RT_FEED_KEY = "la_tripupdates";
+const ROUTE_INSTANCE_ID = String(process.env.FLY_ALLOC_ID || os.hostname() || "local").trim();
+const ROUTE_BUILD = String(
+  process.env.APP_VERSION ||
+    process.env.RELEASE_VERSION ||
+    process.env.FLY_IMAGE_REF ||
+    process.env.GIT_SHA ||
+    "dev"
+)
+  .trim()
+  .slice(0, 32);
 const stationboardResponseCache = new Map();
 
 function stationboardRouteTimeoutMs() {
@@ -59,6 +75,115 @@ function setResponseHeader(res, key, value) {
   if (res.headers && typeof res.headers === "object") {
     res.headers[key] = val;
   }
+}
+
+function appendVaryHeader(res, ...tokens) {
+  const values = (Array.isArray(tokens) ? tokens : [])
+    .flatMap((token) => String(token || "").split(","))
+    .map((token) => token.trim())
+    .filter(Boolean);
+  if (!values.length) return;
+  const existingRaw = typeof res?.getHeader === "function" ? res.getHeader("Vary") : "";
+  const existing = String(existingRaw || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const merged = Array.from(new Set([...existing, ...values]));
+  if (!merged.length) return;
+  setResponseHeader(res, "Vary", merged.join(", "));
+}
+
+function toFiniteNumberOrNull(value) {
+  if (value == null) return null;
+  if (typeof value === "string" && value.trim() === "") return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function routeInstanceMeta(raw) {
+  const src = raw && typeof raw === "object" ? raw : {};
+  const id = text(src.id) || ROUTE_INSTANCE_ID || `${os.hostname()}:${process.pid}`;
+  return {
+    id,
+    allocId: text(src.allocId) || text(process.env.FLY_ALLOC_ID) || null,
+    host: text(src.host) || text(os.hostname()) || "localhost",
+    pid: Number.isFinite(Number(src.pid)) ? Number(src.pid) : process.pid,
+    build: text(src.build) || ROUTE_BUILD || "dev",
+  };
+}
+
+function ensureRtMeta(raw) {
+  const src = raw && typeof raw === "object" ? raw : {};
+  const applied = src.applied === true;
+  const reason = text(src.reason) || (applied ? "applied" : "missing_cache");
+  const fetchedAt = text(src.cacheFetchedAt) || text(src.fetchedAt) || null;
+  const ageMs =
+    toFiniteNumberOrNull(src.cacheAgeMs) ??
+    (toFiniteNumberOrNull(src.ageSeconds) != null
+      ? Math.max(0, Math.round(Number(src.ageSeconds) * 1000))
+      : null);
+  const freshnessThresholdMs = Math.max(
+    5_000,
+    toFiniteNumberOrNull(src.freshnessThresholdMs) ??
+      (toFiniteNumberOrNull(src.freshnessMaxAgeSeconds) != null
+        ? Math.round(Number(src.freshnessMaxAgeSeconds) * 1000)
+        : DEFAULT_RT_FRESHNESS_THRESHOLD_MS)
+  );
+  return {
+    available: src.available === true || applied,
+    applied,
+    reason,
+    feedKey: text(src.feedKey) || DEFAULT_RT_FEED_KEY,
+    fetchedAt,
+    cacheFetchedAt: fetchedAt,
+    cacheAgeMs: ageMs,
+    ageSeconds:
+      toFiniteNumberOrNull(src.ageSeconds) ??
+      (ageMs != null ? Math.max(0, Math.floor(ageMs / 1000)) : null),
+    freshnessThresholdMs,
+    freshnessMaxAgeSeconds: Math.round(freshnessThresholdMs / 1000),
+    cacheStatus: text(src.cacheStatus) || (applied ? "FRESH" : "MISS"),
+    lastStatus: toFiniteNumberOrNull(src.lastStatus),
+    lastError: text(src.lastError) || null,
+    payloadBytes: toFiniteNumberOrNull(src.payloadBytes),
+    instance: routeInstanceMeta(src.instance),
+  };
+}
+
+function ensureAlertsMeta(raw) {
+  const src = raw && typeof raw === "object" ? raw : {};
+  return {
+    available: src.available === true,
+    applied: src.applied === true,
+    reason: text(src.reason) || "disabled",
+    fetchedAt: text(src.fetchedAt) || null,
+    ageSeconds: toFiniteNumberOrNull(src.ageSeconds),
+    includeRequested: src.includeRequested === true,
+    includeApplied: src.includeApplied === true,
+  };
+}
+
+function ensureStationboardMetaPayload(payload) {
+  const src = payload && typeof payload === "object" ? payload : {};
+  return {
+    ...src,
+    departures: Array.isArray(src.departures) ? src.departures : [],
+    rt: ensureRtMeta(src.rt),
+    alerts: ensureAlertsMeta(src.alerts),
+  };
+}
+
+function applyRtDiagnosticHeaders(res, payload, { cacheKey = "" } = {}) {
+  const rt = payload?.rt && typeof payload.rt === "object" ? payload.rt : ensureRtMeta();
+  const applied = rt.applied === true ? "1" : "0";
+  const reason = text(rt.reason) || (rt.applied === true ? "applied" : "missing_cache");
+  const ageMs = toFiniteNumberOrNull(rt.cacheAgeMs);
+  const instanceId = text(rt.instance?.id) || ROUTE_INSTANCE_ID || `${os.hostname()}:${process.pid}`;
+  setResponseHeader(res, "x-md-rt-applied", applied);
+  setResponseHeader(res, "x-md-rt-reason", reason);
+  setResponseHeader(res, "x-md-rt-age-ms", ageMs == null ? "-1" : String(Math.max(0, Math.round(ageMs))));
+  setResponseHeader(res, "x-md-instance", instanceId);
+  if (cacheKey) setResponseHeader(res, "x-md-cache-key", cacheKey);
 }
 
 function withTimeout(promise, timeoutMs, code = "timeout") {
@@ -232,7 +357,8 @@ export function createStationboardRouteHandler({
       "CDN-Cache-Control",
       "public, max-age=12, stale-while-revalidate=24"
     );
-    setResponseHeader(res, "Vary", "Origin");
+    appendVaryHeader(res, "Origin", "Accept-Encoding");
+    setResponseHeader(res, "x-md-instance", ROUTE_INSTANCE_ID);
     try {
       const stopIdRaw = text(req.query.stop_id);
       const stationIdCamelRaw = text(req.query.stationId);
@@ -257,6 +383,7 @@ export function createStationboardRouteHandler({
         windowMinutes,
         includeAlerts: includeAlertsParsed,
       });
+      setResponseHeader(res, "x-md-cache-key", responseCacheKey);
 
       logger?.log?.("[API] /api/stationboard params", {
         requestId,
@@ -344,22 +471,54 @@ export function createStationboardRouteHandler({
         if (err?.code !== "stationboard_timeout") throw err;
         const cached = readCachedStationboard(responseCacheKey);
         if (!cached) throw err;
+        const normalizedCached = ensureStationboardMetaPayload(cached);
         setResponseHeader(res, "x-md-stale", "1");
         setResponseHeader(res, "x-md-stale-reason", "stationboard_timeout");
+        applyRtDiagnosticHeaders(res, normalizedCached, {
+          cacheKey: responseCacheKey,
+        });
         setResponseHeader(
           res,
           "x-md-backend-total-ms",
           String(roundMs(performance.now() - routeStartedMs))
         );
-        return res.json(cached);
+        if (debug) {
+          normalizedCached.debug = {
+            ...(normalizedCached.debug && typeof normalizedCached.debug === "object"
+              ? normalizedCached.debug
+              : {}),
+            cache: {
+              key: responseCacheKey,
+              vary: "Origin, Accept-Encoding",
+              cacheControl: "public, max-age=0, must-revalidate",
+              cdnCacheControl: "public, max-age=12, stale-while-revalidate=24",
+            },
+          };
+        }
+        return res.json(normalizedCached);
       }
-      storeCachedStationboard(responseCacheKey, result);
+      const normalizedResult = ensureStationboardMetaPayload(result);
+      if (debug) {
+        normalizedResult.debug = {
+          ...(normalizedResult.debug && typeof normalizedResult.debug === "object"
+            ? normalizedResult.debug
+            : {}),
+          cache: {
+            key: responseCacheKey,
+            vary: "Origin, Accept-Encoding",
+            cacheControl: "public, max-age=0, must-revalidate",
+            cdnCacheControl: "public, max-age=12, stale-while-revalidate=24",
+          },
+        };
+      }
+      storeCachedStationboard(responseCacheKey, normalizedResult);
+      applyRtDiagnosticHeaders(res, normalizedResult, { cacheKey: responseCacheKey });
       setResponseHeader(
         res,
         "x-md-backend-total-ms",
         String(roundMs(performance.now() - routeStartedMs))
       );
-      return res.json(result);
+      return res.json(normalizedResult);
     } catch (err) {
       const backendTotalMs = roundMs(performance.now() - routeStartedMs);
       setResponseHeader(res, "x-md-backend-total-ms", String(backendTotalMs));

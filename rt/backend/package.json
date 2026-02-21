@@ -17,6 +17,7 @@
     "schema:drift": "node scripts/schemaDriftTask.js",
     "sb:filter": "node scripts/filter-stationboard.js",
     "sanity:m1": "node scripts/sanitySweepM1.js",
+    "probe:rt": "node scripts/probeStationboardRt.js",
     "test": "node --test test/*.test.js"
   },
   "dependencies": {

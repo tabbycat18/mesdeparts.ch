@@ -20,17 +20,45 @@
   "$defs": {
     "rtMeta": {
       "type": "object",
-      "required": ["available", "applied", "reason", "fetchedAt", "ageSeconds"],
+      "required": [
+        "available",
+        "applied",
+        "reason",
+        "feedKey",
+        "fetchedAt",
+        "cacheFetchedAt",
+        "cacheAgeMs",
+        "freshnessThresholdMs",
+        "ageSeconds",
+        "instance"
+      ],
       "properties": {
         "available": { "type": "boolean" },
         "applied": { "type": "boolean" },
         "reason": { "type": "string" },
+        "feedKey": { "type": "string" },
         "fetchedAt": { "type": ["string", "null"], "format": "date-time" },
+        "cacheFetchedAt": { "type": ["string", "null"], "format": "date-time" },
+        "cacheAgeMs": { "type": ["integer", "null"] },
+        "freshnessThresholdMs": { "type": "integer" },
         "ageSeconds": { "type": ["integer", "null"] },
         "freshnessMaxAgeSeconds": { "type": ["integer", "null"] },
         "cacheStatus": { "type": ["string", "null"] },
         "lastStatus": { "type": ["integer", "null"] },
-        "lastError": { "type": ["string", "null"] }
+        "lastError": { "type": ["string", "null"] },
+        "payloadBytes": { "type": ["integer", "null"] },
+        "instance": {
+          "type": "object",
+          "required": ["id", "allocId", "host", "pid", "build"],
+          "properties": {
+            "id": { "type": "string" },
+            "allocId": { "type": ["string", "null"] },
+            "host": { "type": "string" },
+            "pid": { "type": "integer" },
+            "build": { "type": "string" }
+          },
+          "additionalProperties": true
+        }
       },
       "additionalProperties": true
     },

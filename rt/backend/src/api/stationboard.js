@@ -19,6 +19,7 @@ import {
   shouldEnableStationboardDebug,
 } from "../debug/stationboardDebug.js";
 import { guardStationboardRequestPathUpstream } from "../util/upstreamRequestGuard.js";
+import { LA_TRIPUPDATES_FEED_KEY } from "../db/rtCache.js";
 
 const ALERTS_CACHE_MS = Math.max(
   1_000,
@@ -38,10 +39,33 @@ const OTD_SUPPLEMENT_CACHE_MS = Math.max(
   Number(process.env.OTD_SUPPLEMENT_CACHE_MS || "30000")
 );
 const OTD_SUPPLEMENT_BLOCK_ON_COLD = process.env.OTD_EV_SUPPLEMENT_BLOCK_ON_COLD === "1";
-const STATIONBOARD_DISABLE_REQUEST_PATH_UPSTREAM =
-  process.env.STATIONBOARD_DISABLE_REQUEST_PATH_UPSTREAM !== "0";
+const STATIONBOARD_DISABLE_REQUEST_PATH_UPSTREAM = true;
 const SERVICE_ALERTS_UPSTREAM_URL = "https://api.opentransportdata.swiss/la/gtfs-sa";
-const INSTANCE_ID = `${os.hostname()}:${process.pid}`;
+const INSTANCE_HOST = String(os.hostname() || "").trim() || "localhost";
+const INSTANCE_ALLOC_ID = String(process.env.FLY_ALLOC_ID || "").trim();
+const INSTANCE_ID = INSTANCE_ALLOC_ID || `${INSTANCE_HOST}:${process.pid}`;
+function compactBuildVersion(raw) {
+  const value = String(raw || "").trim();
+  if (!value) return "dev";
+  if (/^[0-9a-f]{7,40}$/i.test(value)) return value.slice(0, 12);
+  if (value.length <= 32) return value;
+  return value.slice(0, 32);
+}
+const BUILD_VERSION = compactBuildVersion(
+  process.env.APP_VERSION ||
+    process.env.RELEASE_VERSION ||
+    process.env.FLY_IMAGE_REF ||
+    process.env.GIT_SHA ||
+    process.env.SOURCE_VERSION ||
+    ""
+);
+const RT_INSTANCE_META = Object.freeze({
+  id: INSTANCE_ID,
+  allocId: INSTANCE_ALLOC_ID || null,
+  host: INSTANCE_HOST,
+  pid: process.pid,
+  build: BUILD_VERSION,
+});
 const DEFAULT_STATIONBOARD_WINDOW_MINUTES = Math.max(
   30,
   Math.min(
@@ -680,18 +704,55 @@ function toRtTripUpdatesDebug(rtMeta, departureAuditRows) {
 function buildRtResponseMeta(rtMetaRaw) {
   const rtMeta = rtMetaRaw && typeof rtMetaRaw === "object" ? rtMetaRaw : {};
   const reason = String(rtMeta.reason || (rtMeta.applied ? "applied" : "missing_cache"));
+  const cacheFetchedAt =
+    String(rtMeta.cacheFetchedAt || rtMeta.fetchedAt || "").trim() || null;
+  const cacheAgeMs = Number.isFinite(rtMeta.cacheAgeMs)
+    ? Number(rtMeta.cacheAgeMs)
+    : Number.isFinite(rtMeta.ageMs)
+      ? Number(rtMeta.ageMs)
+      : Number.isFinite(rtMeta.ageSeconds)
+        ? Math.max(0, Number(rtMeta.ageSeconds) * 1000)
+        : null;
+  const freshnessThresholdMs = Number.isFinite(rtMeta.freshnessThresholdMs)
+    ? Math.max(5_000, Number(rtMeta.freshnessThresholdMs))
+    : Number.isFinite(rtMeta.freshnessMaxAgeSeconds)
+      ? Math.max(5_000, Number(rtMeta.freshnessMaxAgeSeconds) * 1000)
+      : 45_000;
+  const instance =
+    rtMeta.instance && typeof rtMeta.instance === "object"
+      ? {
+          id: String(rtMeta.instance.id || RT_INSTANCE_META.id),
+          allocId:
+            String(rtMeta.instance.allocId || rtMeta.instance.allocID || "").trim() || null,
+          host: String(rtMeta.instance.host || RT_INSTANCE_META.host),
+          pid: Number.isFinite(Number(rtMeta.instance.pid))
+            ? Number(rtMeta.instance.pid)
+            : RT_INSTANCE_META.pid,
+          build:
+            String(rtMeta.instance.build || rtMeta.instance.version || "").trim() ||
+            RT_INSTANCE_META.build,
+        }
+      : RT_INSTANCE_META;
   return {
     available: rtMeta.available === true,
     applied: rtMeta.applied === true,
     reason,
-    fetchedAt: rtMeta.fetchedAt || null,
-    ageSeconds: Number.isFinite(rtMeta.ageSeconds) ? Number(rtMeta.ageSeconds) : null,
-    freshnessMaxAgeSeconds: Number.isFinite(rtMeta.freshnessMaxAgeSeconds)
-      ? Number(rtMeta.freshnessMaxAgeSeconds)
-      : 45,
+    feedKey: String(rtMeta.feedKey || LA_TRIPUPDATES_FEED_KEY),
+    fetchedAt: cacheFetchedAt,
+    cacheFetchedAt,
+    cacheAgeMs,
+    ageSeconds: Number.isFinite(rtMeta.ageSeconds)
+      ? Number(rtMeta.ageSeconds)
+      : Number.isFinite(cacheAgeMs)
+        ? Math.floor(cacheAgeMs / 1000)
+        : null,
+    freshnessThresholdMs,
+    freshnessMaxAgeSeconds: Math.round(freshnessThresholdMs / 1000),
     cacheStatus: String(rtMeta.cacheStatus || "MISS"),
     lastStatus: Number.isFinite(rtMeta.lastStatus) ? Number(rtMeta.lastStatus) : null,
     lastError: rtMeta.lastError ? String(rtMeta.lastError) : null,
+    payloadBytes: Number.isFinite(rtMeta.payloadBytes) ? Number(rtMeta.payloadBytes) : null,
+    instance,
   };
 }
 

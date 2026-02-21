@@ -40,6 +40,8 @@ test("loadScopedRtFromCache returns disabled reason when RT is disabled", async 
 
   assert.equal(out.meta.applied, false);
   assert.equal(out.meta.reason, "disabled");
+  assert.equal(out.meta.feedKey, "la_tripupdates");
+  assert.equal(typeof out.meta.freshnessThresholdMs, "number");
   assert.equal(Array.isArray(out.tripUpdates.entities), true);
   assert.equal(out.tripUpdates.entities.length, 0);
 });
@@ -53,6 +55,10 @@ test("loadScopedRtFromCache returns missing_cache when cache has no payload", as
 
   assert.equal(out.meta.applied, false);
   assert.equal(out.meta.reason, "missing_cache");
+  assert.equal(
+    out.meta.cacheFetchedAt == null || typeof out.meta.cacheFetchedAt === "string",
+    true
+  );
 });
 
 test("loadScopedRtFromCache returns stale_cache when payload is too old", async () => {
@@ -78,6 +84,7 @@ test("loadScopedRtFromCache returns stale_cache when payload is too old", async 
 
   assert.equal(out.meta.applied, false);
   assert.equal(out.meta.reason, "stale_cache");
+  assert.equal(Number.isFinite(out.meta.cacheAgeMs), true);
 });
 
 test("loadScopedRtFromCache returns decode_failed when decode failed", async () => {
@@ -193,6 +200,8 @@ test("loadScopedRtFromCache applies scoped filtering by trip/stop/window", async
 
   assert.equal(out.meta.applied, true);
   assert.equal(out.meta.reason, "applied");
+  assert.equal(out.meta.feedKey, "la_tripupdates");
+  assert.equal(typeof out.meta.instance, "string");
   assert.equal(Array.isArray(out.tripUpdates.entities), true);
   assert.equal(out.tripUpdates.entities.length, 2);
 });

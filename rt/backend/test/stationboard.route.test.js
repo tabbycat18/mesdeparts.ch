@@ -46,8 +46,19 @@ function makeStationboardStub(calls) {
         available: false,
         applied: false,
         reason: "missing_cache",
+        feedKey: "la_tripupdates",
         fetchedAt: null,
+        cacheFetchedAt: null,
+        cacheAgeMs: null,
+        freshnessThresholdMs: 45000,
         ageSeconds: null,
+        instance: {
+          id: "test-instance",
+          allocId: null,
+          host: "localhost",
+          pid: 1,
+          build: "test",
+        },
       },
       alerts: {
         available: false,
@@ -194,6 +205,20 @@ test("stationboard route does not conflict when params resolve to same canonical
     res.headers["CDN-Cache-Control"] || res.headers["cdn-cache-control"],
     "public, max-age=12, stale-while-revalidate=24"
   );
+  assert.equal(
+    res.headers["Vary"] || res.headers["vary"],
+    "Origin, Accept-Encoding"
+  );
+  assert.equal(res.headers["x-md-rt-applied"], "0");
+  assert.equal(res.headers["x-md-rt-reason"], "missing_cache");
+  assert.equal(res.headers["x-md-rt-age-ms"], "-1");
+  assert.equal(typeof res.headers["x-md-instance"], "string");
+  assert.ok(String(res.headers["x-md-instance"]).length > 0);
+  assert.equal(typeof res.headers["x-md-cache-key"], "string");
+  assert.equal(res.body?.rt?.feedKey, "la_tripupdates");
+  assert.equal(typeof res.body?.rt?.freshnessThresholdMs, "number");
+  assert.equal(typeof res.body?.rt?.instance?.id, "string");
+  assert.equal(typeof res.body?.alerts?.reason, "string");
 
   assert.equal(calls.length, 1);
 });
@@ -371,6 +396,35 @@ test("stationboard route returns structured 404 stop_not_found with debug payloa
   );
 });
 
+test("stationboard route normalizes rt/alerts metadata when omitted by builder", async () => {
+  const handler = createStationboardRouteHandler({
+    getStationboardLike: async (input) => ({
+      station: { id: input.stopId || "Parent8501120", name: "Lausanne" },
+      departures: [{ line: "R1", destination: "Renens", scheduledDeparture: "2026-02-17T04:49:00.000Z", cancelled: false }],
+    }),
+    resolveStopLike: makeResolveStopStub({
+      "stop:Parent8501120": { resolvedStopId: "Parent8501120", resolvedRootId: "Parent8501120" },
+    }),
+    dbQueryLike: async () => ({ rows: [] }),
+    logger: { log() {}, error() {} },
+  });
+
+  const res = await invokeRoute(handler, {
+    query: {
+      stop_id: "Parent8501120",
+    },
+  });
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(typeof res.body?.rt, "object");
+  assert.equal(typeof res.body?.alerts, "object");
+  assert.equal(res.body?.rt?.applied, false);
+  assert.equal(typeof res.body?.rt?.reason, "string");
+  assert.equal(typeof res.body?.rt?.instance?.id, "string");
+  assert.equal(res.headers["x-md-rt-applied"], "0");
+  assert.equal(typeof res.headers["x-md-rt-reason"], "string");
+});
+
 test("stationboard route preserves structured noService payload when departures are empty", async () => {
   const handler = createStationboardRouteHandler({
     getStationboardLike: async (input) => ({
@@ -434,6 +488,36 @@ test("stationboard route serves cached response when build times out", async () 
     assert.equal(second.headers["x-md-stale"], "1");
     assert.equal(second.headers["x-md-stale-reason"], "stationboard_timeout");
   });
+});
+
+test("stationboard route does not call upstream fetch on request path", async () => {
+  const originalFetch = globalThis.fetch;
+  let fetchCalls = 0;
+  globalThis.fetch = async () => {
+    fetchCalls += 1;
+    throw new Error("must_not_call_fetch");
+  };
+  try {
+    const calls = [];
+    const handler = createStationboardRouteHandler({
+      getStationboardLike: makeStationboardStub(calls),
+      resolveStopLike: makeResolveStopStub({
+        "stop:Parent8501120": { resolvedStopId: "Parent8501120", resolvedRootId: "Parent8501120" },
+      }),
+      dbQueryLike: async () => ({ rows: [] }),
+      logger: { log() {}, error() {} },
+    });
+
+    const res = await invokeRoute(handler, {
+      query: {
+        stop_id: "Parent8501120",
+      },
+    });
+    assert.equal(res.statusCode, 200);
+    assert.equal(fetchCalls, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("stationboard route returns 504 when build times out and no cache exists", async () => {

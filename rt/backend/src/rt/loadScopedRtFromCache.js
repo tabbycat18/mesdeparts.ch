@@ -1,6 +1,8 @@
 import { performance } from "node:perf_hooks";
+import os from "node:os";
 
 import { readTripUpdatesFeedFromCache } from "../../loaders/loadRealtime.js";
+import { LA_TRIPUPDATES_FEED_KEY } from "../db/rtCache.js";
 
 const DEFAULT_RT_FRESH_MAX_AGE_MS = Math.max(
   5_000,
@@ -24,6 +26,8 @@ const DEFAULT_RT_SCOPE_MAX_SCOPED_STOP_UPDATES = Math.max(
 );
 
 const EMPTY_SCOPED_RT = Object.freeze({ entities: [], entity: [] });
+const INSTANCE_LABEL = `${String(process.env.FLY_ALLOC_ID || os.hostname() || "local").trim()}:${process.pid}`;
+let lastObservedFetchedAtMs = null;
 
 function text(value) {
   return String(value || "").trim();
@@ -134,11 +138,16 @@ function baseMeta(nowMs) {
     applied: false,
     reason: "missing_cache",
     available: false,
+    feedKey: LA_TRIPUPDATES_FEED_KEY,
     fetchedAt: null,
+    cacheFetchedAt: null,
+    cacheAgeMs: null,
     ageSeconds: null,
+    freshnessThresholdMs: DEFAULT_RT_FRESH_MAX_AGE_MS,
     freshnessMaxAgeSeconds: Math.round(DEFAULT_RT_FRESH_MAX_AGE_MS / 1000),
     cacheStatus: "MISS",
     hasPayload: false,
+    payloadBytes: null,
     lastStatus: null,
     lastError: null,
     etag: null,
@@ -148,6 +157,7 @@ function baseMeta(nowMs) {
     scopedStopUpdates: 0,
     processingMs: 0,
     nowIso: new Date(nowMs).toISOString(),
+    instance: INSTANCE_LABEL,
   };
 }
 
@@ -175,6 +185,11 @@ export async function loadScopedRtFromCache(options = {}) {
     scopeStopIds = [],
     readCacheLike = readTripUpdatesFeedFromCache,
   } = options;
+  const feedKey = text(options.feedKey || LA_TRIPUPDATES_FEED_KEY) || LA_TRIPUPDATES_FEED_KEY;
+  const freshnessThresholdMs = Math.max(
+    5_000,
+    Number(options.freshnessThresholdMs || DEFAULT_RT_FRESH_MAX_AGE_MS)
+  );
 
   const limits = {
     maxProcessMs: Math.max(
@@ -196,6 +211,9 @@ export async function loadScopedRtFromCache(options = {}) {
   };
 
   const meta = baseMeta(nowMs);
+  meta.feedKey = feedKey;
+  meta.freshnessThresholdMs = freshnessThresholdMs;
+  meta.freshnessMaxAgeSeconds = Math.round(freshnessThresholdMs / 1000);
   if (!enabled) {
     meta.reason = "disabled";
     meta.cacheStatus = "BYPASS";
@@ -205,23 +223,47 @@ export async function loadScopedRtFromCache(options = {}) {
   const startedAt = performance.now();
   let cache;
   try {
-    cache = await readCacheLike();
+    cache = await readCacheLike({ feedKey });
   } catch (err) {
     meta.reason = "decode_failed";
     meta.lastError = text(err?.message || err) || "read_cache_failed";
     meta.processingMs = Number((performance.now() - startedAt).toFixed(1));
+    console.warn("[GTFS-RT] scoped cache read failed", {
+      instance: INSTANCE_LABEL,
+      feedKey,
+      reason: meta.reason,
+      error: meta.lastError,
+    });
     return { tripUpdates: EMPTY_SCOPED_RT, meta };
   }
 
   const fetchedAtMs = cache?.fetchedAtMs;
   const ageMs = Number.isFinite(fetchedAtMs) ? Math.max(0, nowMs - fetchedAtMs) : null;
   meta.fetchedAt = toIsoOrNull(fetchedAtMs);
+  meta.cacheFetchedAt = meta.fetchedAt;
+  meta.cacheAgeMs = Number.isFinite(ageMs) ? Math.round(ageMs) : null;
   meta.ageSeconds = Number.isFinite(ageMs) ? Math.floor(ageMs / 1000) : null;
   meta.hasPayload = cache?.hasPayload === true;
+  meta.payloadBytes = Number.isFinite(Number(cache?.payloadBytes))
+    ? Number(cache.payloadBytes)
+    : null;
   meta.lastStatus = Number.isFinite(Number(cache?.lastStatus)) ? Number(cache.lastStatus) : null;
   meta.lastError = text(cache?.lastError) || null;
   meta.etag = text(cache?.etag) || null;
   meta.entityCount = getEntityCount(cache?.feed);
+  if (Number.isFinite(fetchedAtMs) && fetchedAtMs > 0 && fetchedAtMs !== lastObservedFetchedAtMs) {
+    const previousFetchedAtMs = lastObservedFetchedAtMs;
+    lastObservedFetchedAtMs = fetchedAtMs;
+    console.log("[GTFS-RT] scoped cache snapshot changed", {
+      instance: INSTANCE_LABEL,
+      feedKey,
+      fetchedAt: meta.fetchedAt,
+      previousFetchedAt: toIsoOrNull(previousFetchedAtMs),
+      cacheAgeMs: meta.cacheAgeMs,
+      payloadBytes: meta.payloadBytes,
+      lastStatus: meta.lastStatus,
+    });
+  }
 
   if (!cache?.hasPayload) {
     meta.reason = "missing_cache";
@@ -248,7 +290,7 @@ export async function loadScopedRtFromCache(options = {}) {
     return { tripUpdates: EMPTY_SCOPED_RT, meta };
   }
 
-  if (!Number.isFinite(ageMs) || ageMs > DEFAULT_RT_FRESH_MAX_AGE_MS) {
+  if (!Number.isFinite(ageMs) || ageMs > freshnessThresholdMs) {
     meta.reason = "stale_cache";
     meta.cacheStatus = "STALE";
     meta.available = true;
@@ -342,7 +384,7 @@ export async function loadScopedRtFromCache(options = {}) {
       meta.scannedEntities = scannedEntities;
       meta.scopedEntities = scopedEntities.length;
       meta.scopedStopUpdates = scopedStopUpdates;
-      meta.processingMs = Number(elapsedAfterIncludeMs.toFixed(1));
+      meta.processingMs = Number(elapsedMs.toFixed(1));
       return { tripUpdates: EMPTY_SCOPED_RT, meta };
     }
   }

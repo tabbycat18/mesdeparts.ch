@@ -412,10 +412,15 @@ export function decodeTripUpdatesFeedPayload(payloadBytes) {
 export async function readTripUpdatesFeedFromCache() {
   const cacheRow = await getRtCache(LA_TRIPUPDATES_FEED_KEY);
   const fetchedAtMs = parsedTimestampMs(cacheRow?.fetched_at);
+  const payloadBytes = Buffer.isBuffer(cacheRow?.payloadBytes)
+    ? cacheRow.payloadBytes.length
+    : 0;
   if (!cacheRow?.payloadBytes) {
     return {
       feed: null,
+      feedKey: LA_TRIPUPDATES_FEED_KEY,
       fetchedAtMs,
+      payloadBytes,
       lastStatus: Number.isFinite(Number(cacheRow?.last_status))
         ? Number(cacheRow.last_status)
         : null,
@@ -429,7 +434,9 @@ export async function readTripUpdatesFeedFromCache() {
   const decoded = decodeTripUpdatesFeedPayload(cacheRow.payloadBytes);
   return {
     feed: decoded.feed,
+    feedKey: LA_TRIPUPDATES_FEED_KEY,
     fetchedAtMs,
+    payloadBytes,
     lastStatus: Number.isFinite(Number(cacheRow?.last_status))
       ? Number(cacheRow.last_status)
       : null,
