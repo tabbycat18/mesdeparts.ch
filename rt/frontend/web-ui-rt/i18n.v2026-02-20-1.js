@@ -536,6 +536,42 @@ const TRANSLATIONS = {
     it: "Impossibile caricare le fermate per questo viaggio.",
     en: "Unable to load stops for this trip.",
   },
+  alertsTitle: {
+    fr: "Alertes",
+    de: "Meldungen",
+    it: "Avvisi",
+    en: "Alerts",
+  },
+  alertsForLine: {
+    fr: "Alertes ligne",
+    de: "Meldungen Linie",
+    it: "Avvisi linea",
+    en: "Line alerts",
+  },
+  alertsCount: {
+    fr: "alertes",
+    de: "Meldungen",
+    it: "avvisi",
+    en: "alerts",
+  },
+  alertsNone: {
+    fr: "Aucune alerte pour ce départ.",
+    de: "Keine Meldung für diese Abfahrt.",
+    it: "Nessun avviso per questa partenza.",
+    en: "No alerts for this departure.",
+  },
+  alertsOpen: {
+    fr: "Voir les alertes",
+    de: "Meldungen anzeigen",
+    it: "Mostra avvisi",
+    en: "Show alerts",
+  },
+  alertsClose: {
+    fr: "Fermer les alertes",
+    de: "Meldungen schliessen",
+    it: "Chiudi avvisi",
+    en: "Close alerts",
+  },
   favoritesClearConfirm: {
     fr: "Supprimer tous les favoris ?",
     de: "Alle Favoriten löschen?",

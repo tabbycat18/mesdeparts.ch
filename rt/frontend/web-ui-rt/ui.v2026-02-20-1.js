@@ -34,6 +34,15 @@ const SERVICE_BANNER_PAGE_ROTATE_MS = 12000;
 const SERVICE_BANNER_MAX_PAGES = 3;
 let serviceBannerTimers = [];
 const serviceBannerCycleAnchors = new Map();
+let lastRenderedServiceBanners = [];
+const ALERTS_SHEET_BREAKPOINT_PX = 640;
+let departureAlertsLayer = null;
+let departureAlertsPanel = null;
+let departureAlertsTitle = null;
+let departureAlertsList = null;
+let departureAlertsCloseBtn = null;
+let activeDepartureAlertsTrigger = null;
+let activeDepartureAlertsDep = null;
 
 const pad2 = (n) => String(n).padStart(2, "0");
 const CH_TIMEZONE = "Europe/Zurich";
@@ -493,6 +502,236 @@ function setBannerPage(textEl, pagerDots, pages, index) {
   });
 }
 
+function normalizeAlertSeverity(value) {
+  const raw = String(value || "").trim().toLowerCase();
+  if (!raw) return "unknown";
+  if (raw === "severe" || raw === "critical" || raw === "danger") return "severe";
+  if (raw === "warning" || raw === "warn") return "warning";
+  if (raw === "info" || raw === "information") return "info";
+  return "unknown";
+}
+
+function normalizedText(value) {
+  return String(value || "").trim();
+}
+
+function normalizedTextKey(value) {
+  return normalizedText(value).toLowerCase();
+}
+
+function normalizedBannerTextKey(item) {
+  const header = normalizedTextKey(item?.header || item?.headerText);
+  const description = normalizedTextKey(item?.description || item?.descriptionText);
+  if (!header && !description) return "";
+  return `${header}|${description}`;
+}
+
+function normalizedAlertKey(alert) {
+  const id = normalizedTextKey(alert?.id);
+  const severity = normalizeAlertSeverity(alert?.severity);
+  const header = normalizedTextKey(alert?.header || alert?.headerText);
+  const description = normalizedTextKey(alert?.description || alert?.descriptionText);
+  return `${id}|${severity}|${header}|${description}`;
+}
+
+export function normalizeDepartureAlerts(
+  dep,
+  banners = [],
+  { suppressBannerDuplicates = false } = {}
+) {
+  const source = Array.isArray(dep?.alerts) ? dep.alerts : [];
+  if (!source.length) return [];
+
+  const bannerKeys = new Set(
+    (Array.isArray(banners) ? banners : [])
+      .map((banner) => normalizedBannerTextKey(banner))
+      .filter(Boolean)
+  );
+  const seen = new Set();
+  const out = [];
+
+  for (const raw of source) {
+    const normalized = {
+      id: normalizedText(raw?.id),
+      severity: normalizeAlertSeverity(raw?.severity),
+      header: normalizedText(raw?.header || raw?.headerText),
+      description: normalizedText(raw?.description || raw?.descriptionText),
+    };
+    if (!normalized.header && !normalized.description) continue;
+    if (suppressBannerDuplicates) {
+      const textKey = normalizedBannerTextKey(normalized);
+      if (textKey && bannerKeys.has(textKey)) continue;
+    }
+    const key = normalizedAlertKey(normalized);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(normalized);
+  }
+
+  return out;
+}
+
+function isAlertSheetMode() {
+  return typeof window !== "undefined" && window.innerWidth <= ALERTS_SHEET_BREAKPOINT_PX;
+}
+
+function closeDepartureAlertsPopover({ restoreFocus = false } = {}) {
+  if (!departureAlertsLayer || !departureAlertsPanel) return;
+  departureAlertsLayer.classList.remove("is-visible", "is-sheet");
+  departureAlertsPanel.style.removeProperty("top");
+  departureAlertsPanel.style.removeProperty("left");
+  departureAlertsPanel.style.removeProperty("right");
+  departureAlertsPanel.style.removeProperty("max-width");
+  departureAlertsPanel.style.removeProperty("max-height");
+  if (restoreFocus && activeDepartureAlertsTrigger) {
+    try {
+      activeDepartureAlertsTrigger.focus();
+    } catch {
+      // ignore focus errors
+    }
+  }
+  activeDepartureAlertsTrigger = null;
+  activeDepartureAlertsDep = null;
+}
+
+function onDepartureAlertsViewportChange() {
+  if (!departureAlertsLayer?.classList.contains("is-visible")) return;
+  if (!activeDepartureAlertsDep || !activeDepartureAlertsTrigger) return;
+  openDepartureAlertsPopover(activeDepartureAlertsDep, activeDepartureAlertsTrigger);
+}
+
+function ensureDepartureAlertsLayer() {
+  if (departureAlertsLayer) return departureAlertsLayer;
+  departureAlertsLayer = document.createElement("div");
+  departureAlertsLayer.id = "departure-alerts-layer";
+  departureAlertsLayer.className = "departure-alerts-layer";
+  departureAlertsPanel = document.createElement("div");
+  departureAlertsPanel.className = "departure-alerts-panel";
+  departureAlertsPanel.setAttribute("role", "dialog");
+  departureAlertsPanel.setAttribute("aria-modal", "false");
+
+  const header = document.createElement("div");
+  header.className = "departure-alerts-header";
+  departureAlertsTitle = document.createElement("div");
+  departureAlertsTitle.className = "departure-alerts-title";
+  departureAlertsCloseBtn = document.createElement("button");
+  departureAlertsCloseBtn.type = "button";
+  departureAlertsCloseBtn.className = "departure-alerts-close";
+  header.appendChild(departureAlertsTitle);
+  header.appendChild(departureAlertsCloseBtn);
+
+  departureAlertsList = document.createElement("div");
+  departureAlertsList.className = "departure-alerts-list";
+  departureAlertsPanel.appendChild(header);
+  departureAlertsPanel.appendChild(departureAlertsList);
+  departureAlertsLayer.appendChild(departureAlertsPanel);
+  departureAlertsCloseBtn.textContent = "×";
+  departureAlertsCloseBtn.setAttribute("aria-label", t("alertsClose"));
+  departureAlertsCloseBtn.addEventListener("click", () => {
+    closeDepartureAlertsPopover({ restoreFocus: true });
+  });
+  departureAlertsLayer.addEventListener("click", (event) => {
+    if (event.target === departureAlertsLayer) {
+      closeDepartureAlertsPopover({ restoreFocus: true });
+    }
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && departureAlertsLayer.classList.contains("is-visible")) {
+      event.preventDefault();
+      closeDepartureAlertsPopover({ restoreFocus: true });
+    }
+  });
+  window.addEventListener("resize", onDepartureAlertsViewportChange, { passive: true });
+  window.addEventListener("scroll", onDepartureAlertsViewportChange, { passive: true });
+  document.body.appendChild(departureAlertsLayer);
+  return departureAlertsLayer;
+}
+
+function renderDepartureAlertsList(alerts, container) {
+  if (!container) return;
+  container.innerHTML = "";
+  if (!Array.isArray(alerts) || alerts.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "departure-alerts-empty";
+    empty.textContent = t("alertsNone");
+    container.appendChild(empty);
+    return;
+  }
+
+  for (const alert of alerts) {
+    const item = document.createElement("article");
+    item.className = `departure-alerts-item departure-alerts-item--${alert.severity || "unknown"}`;
+    if (alert.header) {
+      const title = document.createElement("h4");
+      title.className = "departure-alerts-item-title";
+      title.textContent = alert.header;
+      item.appendChild(title);
+    }
+    if (alert.description) {
+      const body = document.createElement("p");
+      body.className = "departure-alerts-item-text";
+      body.textContent = alert.description;
+      item.appendChild(body);
+    }
+    container.appendChild(item);
+  }
+}
+
+export function openDepartureAlertsPopover(dep, anchorEl) {
+  const alerts = normalizeDepartureAlerts(dep, lastRenderedServiceBanners, {
+    suppressBannerDuplicates: true,
+  });
+  if (!alerts.length || !anchorEl) {
+    closeDepartureAlertsPopover({ restoreFocus: false });
+    return;
+  }
+
+  const layer = ensureDepartureAlertsLayer();
+  const panel = departureAlertsPanel;
+  const lineLabel = normalizeLineId(dep) || dep?.line || dep?.number || "";
+  const lineSuffix = lineLabel ? ` ${lineLabel}` : "";
+  departureAlertsTitle.textContent = `${t("alertsForLine")}${lineSuffix}`;
+  departureAlertsCloseBtn.setAttribute("aria-label", t("alertsClose"));
+  renderDepartureAlertsList(alerts, departureAlertsList);
+
+  const sheet = isAlertSheetMode();
+  layer.classList.add("is-visible");
+  layer.classList.toggle("is-sheet", sheet);
+  activeDepartureAlertsTrigger = anchorEl;
+  activeDepartureAlertsDep = dep;
+
+  if (sheet) {
+    panel.style.removeProperty("top");
+    panel.style.removeProperty("left");
+    panel.style.removeProperty("right");
+    panel.style.removeProperty("max-width");
+    panel.style.removeProperty("max-height");
+    return;
+  }
+
+  const rect = anchorEl.getBoundingClientRect();
+  const viewportWidth = Math.max(window.innerWidth || 0, document.documentElement?.clientWidth || 0);
+  const viewportHeight = Math.max(window.innerHeight || 0, document.documentElement?.clientHeight || 0);
+  const panelWidth = Math.min(360, Math.max(260, viewportWidth - 24));
+  panel.style.maxWidth = `${panelWidth}px`;
+  panel.style.left = "8px";
+  panel.style.top = `${Math.max(8, rect.bottom + 8)}px`;
+  panel.style.right = "auto";
+  panel.style.maxHeight = `${Math.max(180, viewportHeight - 40)}px`;
+
+  const panelRect = panel.getBoundingClientRect();
+  const desiredLeft = Math.min(
+    Math.max(8, rect.right - panelRect.width),
+    Math.max(8, viewportWidth - panelRect.width - 8)
+  );
+  let desiredTop = rect.bottom + 8;
+  if (desiredTop + panelRect.height > viewportHeight - 8) {
+    desiredTop = Math.max(8, rect.top - panelRect.height - 8);
+  }
+  panel.style.left = `${Math.max(8, desiredLeft)}px`;
+  panel.style.top = `${Math.max(8, desiredTop)}px`;
+}
+
 export function renderServiceBanners(banners) {
   clearServiceBannerTimers();
   const host = getServiceBannersHost();
@@ -501,6 +740,13 @@ export function renderServiceBanners(banners) {
   const activeBannerKeys = new Set();
 
   const list = Array.isArray(banners) ? banners : [];
+  lastRenderedServiceBanners = list
+    .map((item) => ({
+      severity: normalizeAlertSeverity(item?.severity),
+      header: normalizedText(item?.header),
+      description: normalizedText(item?.description),
+    }))
+    .filter((item) => item.header || item.description);
   if (list.length === 0) {
     host.classList.remove("is-visible");
     return;
@@ -2321,6 +2567,7 @@ function ensureJourneyOverlay() {
       </div>
       <div class="tripDetailsBody">
         <div class="tripDetailsStopsCard">
+          <div class="journey-alerts"></div>
           <div class="journey-stops stopsList"></div>
         </div>
       </div>
@@ -2531,11 +2778,13 @@ async function openJourneyDetails(dep) {
 
   const titleEl = overlay.querySelector(".journey-title");
   const metaEl = overlay.querySelector(".journey-meta");
+  const alertsEl = overlay.querySelector(".journey-alerts");
   const stopsEl = overlay.querySelector(".journey-stops");
 
   // Loading state
   titleEl.textContent = t("journeyTitle");
   metaEl.textContent = t("journeyLoading");
+  if (alertsEl) alertsEl.innerHTML = "";
   stopsEl.innerHTML = "";
 
   try {
@@ -2640,6 +2889,23 @@ async function openJourneyDetails(dep) {
       pill.className = "journey-meta-pill journey-meta-pill--operator";
       pill.textContent = String(dep.operator);
       metaEl.appendChild(pill);
+    }
+
+    if (alertsEl) {
+      const detailAlerts = normalizeDepartureAlerts(dep, lastRenderedServiceBanners, {
+        suppressBannerDuplicates: false,
+      });
+      alertsEl.innerHTML = "";
+      if (detailAlerts.length > 0) {
+        const title = document.createElement("h4");
+        title.className = "journey-alerts-title";
+        title.textContent = t("alertsTitle");
+        alertsEl.appendChild(title);
+        const list = document.createElement("div");
+        list.className = "journey-alerts-list";
+        renderDepartureAlertsList(detailAlerts, list);
+        alertsEl.appendChild(list);
+      }
     }
 
     stopsEl.innerHTML = "";
@@ -2817,6 +3083,7 @@ export function renderDepartures(rows) {
   }
 
   tbody.innerHTML = "";
+  closeDepartureAlertsPopover({ restoreFocus: false });
 
   // UI debug: board summary
   const total = Array.isArray(rows) ? rows.length : 0;
@@ -2956,6 +3223,53 @@ export function renderDepartures(rows) {
       }
     }
     tdLine.appendChild(badge);
+
+    const inlineAlerts = normalizeDepartureAlerts(dep, lastRenderedServiceBanners, {
+      suppressBannerDuplicates: true,
+    });
+    if (inlineAlerts.length > 0) {
+      const alertBtn = document.createElement("button");
+      alertBtn.type = "button";
+      alertBtn.className = "line-alert-btn";
+      const lineLabel = normalizeLineId(dep) || dep.line || dep.number || "";
+      const countSuffix =
+        inlineAlerts.length > 1 ? ` (${inlineAlerts.length} ${t("alertsCount")})` : "";
+      alertBtn.setAttribute(
+        "aria-label",
+        `${t("alertsOpen")} ${lineLabel}${countSuffix}`.trim()
+      );
+      alertBtn.title = t("alertsOpen");
+      alertBtn.innerHTML = `
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M12 3 2.8 19h18.4L12 3Zm0 4.1 5.74 9.9H6.26L12 7.1Zm-1 2.4v4.5h2V9.5h-2Zm0 5.6v2h2v-2h-2Z" fill="currentColor"/>
+        </svg>
+      `;
+      if (inlineAlerts.length > 1) {
+        const count = document.createElement("span");
+        count.className = "line-alert-btn__count";
+        count.textContent = String(inlineAlerts.length);
+        alertBtn.appendChild(count);
+      }
+      alertBtn.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const sameTrigger = activeDepartureAlertsTrigger === alertBtn;
+        const isVisible = departureAlertsLayer?.classList.contains("is-visible");
+        if (sameTrigger && isVisible) {
+          closeDepartureAlertsPopover({ restoreFocus: false });
+          return;
+        }
+        openDepartureAlertsPopover(dep, alertBtn);
+      });
+      alertBtn.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          event.stopPropagation();
+          openDepartureAlertsPopover(dep, alertBtn);
+        }
+      });
+      tdLine.appendChild(alertBtn);
+    }
 
     // Destination
     const tdTo = document.createElement("td");

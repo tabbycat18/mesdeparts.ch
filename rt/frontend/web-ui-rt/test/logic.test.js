@@ -806,7 +806,7 @@ assert.equal(detectNetworkFromStation("Zurich HB"), "vbz");
   }
 }
 
-// fetchStationboardRaw should derive fallback banners from departure alerts when API banners are empty
+// fetchStationboardRaw should keep banners empty when API banners are empty
 {
   const originalFetch = globalThis.fetch;
   const previous = {
@@ -873,12 +873,80 @@ assert.equal(detectNetworkFromStation("Zurich HB"), "vbz");
   try {
     const data = await fetchStationboardRaw({ allowRetry: false, bustCache: false });
     assert.equal(Array.isArray(data?.banners), true);
-    assert.equal(data.banners.length, 1);
-    assert.deepEqual(data.banners[0], {
-      severity: "warning",
-      header: "Limited train service between Kerzers and Payerne",
-      description: "Construction work, replacement transport.",
-    });
+    assert.equal(data.banners.length, 0);
+  } finally {
+    appState.STATION = previous.station;
+    appState.stationId = previous.stationId;
+    appState.language = previous.language;
+    globalThis.fetch = originalFetch;
+  }
+}
+
+// fetchStationboardRaw + buildDeparturesGrouped should preserve departure-level alerts
+{
+  const originalFetch = globalThis.fetch;
+  const previous = {
+    station: appState.STATION,
+    stationId: appState.stationId,
+    language: appState.language,
+  };
+
+  appState.STATION = "Bern, Bahnhof";
+  appState.stationId = "Parent8576646";
+  appState.language = "fr";
+
+  const nowMs = Date.now() + 12 * 60 * 1000;
+  const scheduledIso = new Date(nowMs).toISOString();
+
+  globalThis.fetch = async () => ({
+    ok: true,
+    status: 200,
+    statusText: "OK",
+    json: async () => ({
+      station: { id: "Parent8576646", name: "Bern, Bahnhof" },
+      banners: [],
+      departures: [
+        {
+          trip_id: "trip-m10",
+          category: "B",
+          number: "M10",
+          line: "M10",
+          destination: "Biel/Bienne, Bahnhof/Gare",
+          scheduledDeparture: scheduledIso,
+          realtimeDeparture: scheduledIso,
+          delayMin: 0,
+          alerts: [
+            {
+              id: "a-1",
+              severity: "warning",
+              header: "Service restreint Biel/Bienne, Bahnhof/Gare [bus].",
+              description: "Une manifestation en est la cause.",
+            },
+            {
+              id: "empty-alert",
+              severity: "info",
+              header: "",
+              description: "",
+            },
+          ],
+        },
+      ],
+    }),
+  });
+
+  try {
+    const data = await fetchStationboardRaw({ allowRetry: false, bustCache: false });
+    assert.equal(Array.isArray(data?.stationboard), true);
+    assert.equal(data.stationboard.length, 1);
+    assert.equal(Array.isArray(data.stationboard[0]?.alerts), true);
+    assert.equal(data.stationboard[0].alerts.length, 1);
+    assert.equal(data.stationboard[0].alerts[0].id, "a-1");
+
+    const rows = buildDeparturesGrouped(data, VIEW_MODE_LINE);
+    assert.ok(rows.length >= 1);
+    assert.equal(Array.isArray(rows[0]?.alerts), true);
+    assert.equal(rows[0].alerts.length, 1);
+    assert.equal(rows[0].alerts[0].id, "a-1");
   } finally {
     appState.STATION = previous.station;
     appState.stationId = previous.stationId;
@@ -913,11 +981,13 @@ assert.equal(detectNetworkFromStation("Zurich HB"), "vbz");
     assert.ok(requestedUrl.includes("/api/stops/search?"));
     const parsed = new URL(requestedUrl, "http://localhost");
     assert.equal(parsed.searchParams.get("q"), "Zurich");
-    assert.equal(parsed.searchParams.get("limit"), "7");
-    assert.deepEqual(rows, [
-      { id: "Parent8503000", name: "Zürich HB" },
-      { id: "Parent8587057", name: "Genève, gare Cornavin" },
-      { id: "Parent8587387", name: "Genève, Bel-Air" },
+    assert.equal(parsed.searchParams.get("limit"), "20");
+    assert.equal(rows.length, 3);
+    const ids = rows.map((row) => row.id).sort();
+    assert.deepEqual(ids, [
+      "Parent8503000",
+      "Parent8587057",
+      "Parent8587387",
     ]);
   } finally {
     globalThis.fetch = originalFetch;

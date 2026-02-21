@@ -56,8 +56,14 @@
       (function resolveApiBase() {
         if (window.__MD_API_BASE__) return;
         const host = String(window.location.hostname || "").toLowerCase();
+        const forceProdApi =
+          new URLSearchParams(window.location.search || "").get("prodApi") === "1";
         const forceLocalApi =
           new URLSearchParams(window.location.search || "").get("localApi") === "1";
+        if (forceProdApi) {
+          window.__MD_API_BASE__ = "https://api.mesdeparts.ch";
+          return;
+        }
         if (host === "mesdeparts.ch" || host === "www.mesdeparts.ch") {
           window.__MD_API_BASE__ = "https://api.mesdeparts.ch";
           return;

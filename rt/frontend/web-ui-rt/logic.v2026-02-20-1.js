@@ -36,10 +36,24 @@ function shouldForceLocalApi() {
   }
 }
 
+function shouldForceProdApi() {
+  if (typeof window === "undefined") return false;
+  try {
+    return new URLSearchParams(window.location.search || "").get("prodApi") === "1";
+  } catch {
+    return false;
+  }
+}
+
 function defaultApiBase() {
   if (typeof window === "undefined") return "";
   const host = String(window.location.hostname || "").toLowerCase();
+  const forceProdApi = shouldForceProdApi();
   const forceLocalApi = shouldForceLocalApi();
+
+  if (forceProdApi) {
+    return "https://api.mesdeparts.ch";
+  }
 
   if (host === "localhost" || host === "127.0.0.1") {
     return "http://localhost:3001";
@@ -578,28 +592,7 @@ export async function fetchStationsNearby(lat, lon, limit = 7) {
 function normalizeBackendStationboard(data) {
   const departures = Array.isArray(data?.departures) ? data.departures : [];
   const apiBanners = Array.isArray(data?.banners) ? data.banners : [];
-  const fallbackBanners = [];
-  const fallbackSeen = new Set();
-  if (apiBanners.length === 0) {
-    for (const dep of departures) {
-      const depAlerts = Array.isArray(dep?.alerts) ? dep.alerts : [];
-      for (const alert of depAlerts) {
-        const severity = String(alert?.severity || "unknown").trim().toLowerCase() || "unknown";
-        const header = String(alert?.header || alert?.headerText || "").trim();
-        const description = String(alert?.description || alert?.descriptionText || "").trim();
-        if (!header && !description) continue;
-        const key = `${String(alert?.id || "")}|${severity}|${header}|${description}`;
-        if (fallbackSeen.has(key)) continue;
-        fallbackSeen.add(key);
-        fallbackBanners.push({
-          severity,
-          header,
-          description,
-        });
-      }
-    }
-  }
-  const banners = apiBanners.length > 0 ? apiBanners : fallbackBanners;
+  const banners = apiBanners;
   const stationId = String(data?.station?.id || appState.stationId || "").trim();
   const stationName = String(data?.station?.name || appState.STATION || "").trim();
   const station = { id: stationId, name: stationName };
@@ -620,6 +613,15 @@ function normalizeBackendStationboard(data) {
       dep?.isCancelled === true ||
       dep?.cancellation === true;
     const scheduledMs = Date.parse(String(scheduled || ""));
+    const alerts = (Array.isArray(dep?.alerts) ? dep.alerts : [])
+      .map((alert) => {
+        const id = String(alert?.id || "").trim();
+        const severity = String(alert?.severity || "unknown").trim().toLowerCase() || "unknown";
+        const header = String(alert?.header || alert?.headerText || "").trim();
+        const description = String(alert?.description || alert?.descriptionText || "").trim();
+        return { id, severity, header, description };
+      })
+      .filter((alert) => alert.header || alert.description);
 
     return {
       category: String(dep?.category || ""),
@@ -629,6 +631,7 @@ function normalizeBackendStationboard(data) {
       to: String(dep?.destination || ""),
       source: String(dep?.source || ""),
       tags: Array.isArray(dep?.tags) ? dep.tags : [],
+      alerts,
       cancelled,
       journey: dep?.trip_id ? { id: String(dep.trip_id) } : null,
       trip: dep?.trip_id ? { id: String(dep.trip_id) } : null,
@@ -1202,6 +1205,7 @@ export function buildDeparturesGrouped(data, viewMode = VIEW_MODE_LINE) {
       isPostBus,
       source,
       tags,
+      alerts: Array.isArray(entry?.alerts) ? entry.alerts : [],
 
       // details lookup helpers
       fromStationId: appState.stationId || null,
