@@ -306,6 +306,7 @@ export async function loadScopedRtFromCache(options = {}) {
     : Array.isArray(cache.feed?.entity)
       ? cache.feed.entity
       : [];
+  const scopeScanStartedAt = performance.now();
 
   const scopedEntities = [];
   let scannedEntities = 0;
@@ -313,7 +314,7 @@ export async function loadScopedRtFromCache(options = {}) {
 
   for (const entity of allEntities) {
     scannedEntities += 1;
-    const elapsedAfterIncludeMs = performance.now() - startedAt;
+    const elapsedAfterIncludeMs = performance.now() - scopeScanStartedAt;
     if (
       guardTripped(
         elapsedAfterIncludeMs,
@@ -368,10 +369,10 @@ export async function loadScopedRtFromCache(options = {}) {
     scopedEntities.push(entity);
     scopedStopUpdates += stopUpdates.length;
 
-    const elapsedMs = performance.now() - startedAt;
+    const elapsedScopedMs = performance.now() - scopeScanStartedAt;
     if (
       guardTripped(
-        elapsedMs,
+        elapsedScopedMs,
         scannedEntities,
         scopedEntities.length,
         scopedStopUpdates,
@@ -384,7 +385,7 @@ export async function loadScopedRtFromCache(options = {}) {
       meta.scannedEntities = scannedEntities;
       meta.scopedEntities = scopedEntities.length;
       meta.scopedStopUpdates = scopedStopUpdates;
-      meta.processingMs = Number(elapsedMs.toFixed(1));
+      meta.processingMs = Number((performance.now() - startedAt).toFixed(1));
       return { tripUpdates: EMPTY_SCOPED_RT, meta };
     }
   }

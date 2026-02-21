@@ -38,7 +38,7 @@ function makeStationboardStub(calls) {
     calls.push(input);
     const includeAlertsRequested = input.includeAlerts !== false;
     const includeAlertsApplied =
-      process.env.STATIONBOARD_ENABLE_M2 !== "0" && includeAlertsRequested;
+      process.env.STATIONBOARD_ENABLE_ALERTS !== "0" && includeAlertsRequested;
 
     return {
       station: { id: input.stopId || "Parent8501120", name: "Lausanne" },
@@ -437,8 +437,8 @@ test("stationboard route returns 200 when since_rt is older than current cache",
   assert.equal(calls.length, 1);
 });
 
-test("stationboard route include_alerts=1 with STATIONBOARD_ENABLE_M2=0 keeps requested=true and applied=false in debug", async () => {
-  await withEnv("STATIONBOARD_ENABLE_M2", "0", async () => {
+test("stationboard route include_alerts=1 with STATIONBOARD_ENABLE_ALERTS=0 keeps requested=true and applied=false in debug", async () => {
+  await withEnv("STATIONBOARD_ENABLE_ALERTS", "0", async () => {
     const calls = [];
     const handler = createRouteHandler({
       getStationboardLike: makeStationboardStub(calls),
@@ -466,8 +466,8 @@ test("stationboard route include_alerts=1 with STATIONBOARD_ENABLE_M2=0 keeps re
   });
 });
 
-test("stationboard route includeAlerts=1 camel-case also maps to requested=true with M2 gate off", async () => {
-  await withEnv("STATIONBOARD_ENABLE_M2", "0", async () => {
+test("stationboard route includeAlerts=1 camel-case also maps to requested=true with alerts gate off", async () => {
+  await withEnv("STATIONBOARD_ENABLE_ALERTS", "0", async () => {
     const calls = [];
     const handler = createRouteHandler({
       getStationboardLike: makeStationboardStub(calls),
@@ -494,8 +494,8 @@ test("stationboard route includeAlerts=1 camel-case also maps to requested=true 
   });
 });
 
-test("stationboard route accepts include_alerts when M2 is enabled", async () => {
-  await withEnv("STATIONBOARD_ENABLE_M2", "1", async () => {
+test("stationboard route accepts include_alerts when alerts feature is enabled", async () => {
+  await withEnv("STATIONBOARD_ENABLE_ALERTS", "1", async () => {
     const calls = [];
     const handler = createRouteHandler({
       getStationboardLike: makeStationboardStub(calls),

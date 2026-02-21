@@ -15,7 +15,10 @@ import {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const INTERVAL_MS = 15_000;
+const INTERVAL_MS = Math.max(
+  15_000,
+  Number(process.env.GTFS_SA_POLL_INTERVAL_MS || "60000")
+);
 const FETCH_TIMEOUT_MS = Math.max(
   1_000,
   Number(process.env.GTFS_SA_FETCH_TIMEOUT_MS || process.env.GTFS_RT_FETCH_TIMEOUT_MS || "8000")

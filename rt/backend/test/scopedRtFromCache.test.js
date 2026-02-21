@@ -124,6 +124,49 @@ test("loadScopedRtFromCache returns guard_tripped when scanned entity limit is e
   assert.equal(out.meta.reason, "guard_tripped");
 });
 
+test("loadScopedRtFromCache guard timer excludes cache read/decode latency", async () => {
+  const loadScopedRtFromCache = await loadScopedRtFromCacheFn();
+  const nowMs = Date.now();
+  const nowSec = Math.floor(nowMs / 1000);
+  const entities = [
+    {
+      id: "hit-trip",
+      trip_update: {
+        trip: {
+          trip_id: "trip-keep",
+          schedule_relationship: "SCHEDULED",
+        },
+        stop_time_update: [
+          {
+            stop_id: "8503000:0:1",
+            stop_sequence: 5,
+            departure: {
+              time: nowSec + 180,
+              delay: 120,
+            },
+          },
+        ],
+      },
+    },
+  ];
+
+  const out = await loadScopedRtFromCache({
+    enabled: true,
+    nowMs,
+    maxProcessMs: 20,
+    scopeTripIds: ["trip-keep"],
+    scopeStopIds: ["8503000:0:1"],
+    readCacheLike: async () => {
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      return makeCachePayload({ entities });
+    },
+  });
+
+  assert.equal(out.meta.reason, "applied");
+  assert.equal(out.meta.applied, true);
+  assert.equal(out.tripUpdates.entities.length, 1);
+});
+
 test("loadScopedRtFromCache applies scoped filtering by trip/stop/window", async () => {
   const loadScopedRtFromCache = await loadScopedRtFromCacheFn();
   const nowMs = Date.now();

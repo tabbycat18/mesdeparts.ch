@@ -753,8 +753,7 @@ export async function getStationboard({
   void fromTs;
   void toTs;
   const alertsFeatureEnabled =
-    String(process.env.STATIONBOARD_ENABLE_ALERTS || "").trim() !== "0" &&
-    String(process.env.STATIONBOARD_ENABLE_M2 || "").trim() !== "0";
+    String(process.env.STATIONBOARD_ENABLE_ALERTS || "").trim() !== "0";
   const includeAlertsRequested = includeAlerts !== false;
   const includeAlertsApplied = alertsFeatureEnabled && includeAlertsRequested;
   const debugEnabled =
