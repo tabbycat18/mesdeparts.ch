@@ -245,6 +245,90 @@ assert.equal(
   }
 }
 
+// fetchStationboardRaw should send since_rt and handle 204 no-content responses.
+{
+  const originalFetch = globalThis.fetch;
+  const previous = {
+    stationId: appState.stationId,
+    station: appState.STATION,
+    language: appState.language,
+    lastRtFetchedAt: appState.lastRtFetchedAt,
+    lastStationboardHttpStatus: appState.lastStationboardHttpStatus,
+  };
+  appState.stationId = "Parent8501120";
+  appState.STATION = "Lausanne";
+  appState.language = "fr";
+  appState.lastRtFetchedAt = "2026-02-21T15:00:00.000Z";
+
+  try {
+    let requestUrl = "";
+    globalThis.fetch = async (url) => {
+      requestUrl = String(url || "");
+      return {
+        ok: true,
+        status: 204,
+        statusText: "No Content",
+        headers: {
+          get(name) {
+            if (String(name || "").toLowerCase() === "x-md-rt-fetched-at") {
+              return "2026-02-21T15:00:00.000Z";
+            }
+            return null;
+          },
+        },
+      };
+    };
+    const notModified = await fetchStationboardRaw({ allowRetry: false });
+    assert.equal(notModified?.__notModified, true);
+    assert.equal(notModified?.__status, 204);
+    assert.equal(requestUrl.includes("since_rt=2026-02-21T15%3A00%3A00.000Z"), true);
+
+    globalThis.fetch = async () => ({
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      headers: {
+        get() {
+          return null;
+        },
+      },
+      json: async () => ({
+        station: { id: "Parent8501120", name: "Lausanne" },
+        departures: [],
+        banners: [],
+        rt: {
+          available: true,
+          applied: true,
+          reason: "fresh",
+          feedKey: "la_tripupdates",
+          fetchedAt: "2026-02-21T15:01:00.000Z",
+          cacheFetchedAt: "2026-02-21T15:01:00.000Z",
+          cacheAgeMs: 1000,
+          freshnessThresholdMs: 45000,
+          status: 200,
+        },
+        alerts: {
+          available: false,
+          applied: false,
+          reason: "disabled",
+          fetchedAt: null,
+          ageSeconds: null,
+        },
+      }),
+    });
+    const full = await fetchStationboardRaw({ allowRetry: false });
+    assert.equal(full?.__status, 200);
+    assert.equal(appState.lastRtFetchedAt, "2026-02-21T15:01:00.000Z");
+  } finally {
+    globalThis.fetch = originalFetch;
+    appState.stationId = previous.stationId;
+    appState.STATION = previous.station;
+    appState.language = previous.language;
+    appState.lastRtFetchedAt = previous.lastRtFetchedAt;
+    appState.lastStationboardHttpStatus = previous.lastStationboardHttpStatus;
+  }
+}
+
 // realtime delta regression harness:
 // Lausanne / Geneva / Zurich must follow one render rule for delay/early/cancelled.
 {

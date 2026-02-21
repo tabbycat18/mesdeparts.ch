@@ -71,6 +71,15 @@ const REFRESH_JITTER_MAX_MS = 600;
 const REFRESH_BACKOFF_STEPS_MS = [2_000, 5_000, 10_000, 15_000];
 const RT_DOWNGRADE_HOLD_WINDOW_MS = 30_000;
 const RT_LONG_STALE_GRACE_MS = 30_000;
+const DEBUG_RT_CLIENT =
+  (() => {
+    try {
+      const params = new URLSearchParams(window.location.search || "");
+      return params.get("debug") === "1";
+    } catch {
+      return false;
+    }
+  })();
 const DEBUG_PERF =
   (() => {
     try {
@@ -203,6 +212,43 @@ let refreshLoopActive = false;
 let refreshInFlight = false;
 let lastRtAppliedSnapshot = null;
 let lastRtAppliedAtMs = 0;
+let nextRefreshAtMs = 0;
+let rtDebugOverlayEl = null;
+
+function ensureRtDebugOverlay() {
+  if (!DEBUG_RT_CLIENT || typeof document === "undefined") return null;
+  if (rtDebugOverlayEl && document.body?.contains(rtDebugOverlayEl)) return rtDebugOverlayEl;
+  const el = document.createElement("div");
+  el.id = "rt-debug-overlay";
+  el.style.position = "fixed";
+  el.style.right = "8px";
+  el.style.bottom = "8px";
+  el.style.zIndex = "9999";
+  el.style.background = "rgba(255,255,255,0.95)";
+  el.style.border = "1px solid rgba(0,0,0,0.2)";
+  el.style.borderRadius = "8px";
+  el.style.padding = "6px 8px";
+  el.style.fontFamily = "monospace";
+  el.style.fontSize = "11px";
+  el.style.lineHeight = "1.3";
+  el.style.color = "#111";
+  document.body?.appendChild(el);
+  rtDebugOverlayEl = el;
+  return el;
+}
+
+function updateRtDebugOverlay() {
+  if (!DEBUG_RT_CLIENT) return;
+  const el = ensureRtDebugOverlay();
+  if (!el) return;
+  const remainingMs = Math.max(0, nextRefreshAtMs - Date.now());
+  const nextSec = nextRefreshAtMs > 0 ? Math.ceil(remainingMs / 1000) : "-";
+  el.textContent = [
+    `lastRtFetchedAt=${appState.lastRtFetchedAt || "-"}`,
+    `lastStatus=${appState.lastStationboardHttpStatus ?? "-"}`,
+    `nextPollSec=${nextSec}`,
+  ].join(" | ");
+}
 
 function clearBoardForStationChange() {
   // Invalidate old in-flight refreshes and cached rows immediately.
@@ -215,7 +261,10 @@ function clearBoardForStationChange() {
   lastNonEmptyStationboardAt = 0;
   lastRtAppliedSnapshot = null;
   lastRtAppliedAtMs = 0;
+  appState.lastRtFetchedAt = null;
+  appState.lastStationboardHttpStatus = null;
   setBoardNoticeHint("");
+  updateRtDebugOverlay();
 
   // Clear visible rows so we don't briefly show the previous station board.
   const tbody = document.getElementById("departures-body");
@@ -241,6 +290,8 @@ function clearScheduledRefresh() {
     clearTimeout(refreshTimer);
     refreshTimer = null;
   }
+  nextRefreshAtMs = 0;
+  updateRtDebugOverlay();
 }
 
 function clearFollowupRefresh() {
@@ -260,9 +311,13 @@ function scheduleNextRefresh({ useBackoff = false } = {}) {
   ];
   const baseMs = useBackoff ? backoffMs : REFRESH_DEPARTURES;
   const delayMs = jitteredDelayMs(baseMs);
+  nextRefreshAtMs = Date.now() + delayMs;
+  updateRtDebugOverlay();
 
   refreshTimer = setTimeout(() => {
     refreshTimer = null;
+    nextRefreshAtMs = 0;
+    updateRtDebugOverlay();
     if (refreshInFlight) {
       scheduleNextRefresh({ useBackoff });
       return;
@@ -506,6 +561,15 @@ async function refreshDepartures({ retried, showLoadingHint = true, fromSchedule
   try {
     const data = await fetchStationboardRaw();
     if (isStaleRequest()) return;
+    if (Number.isFinite(Number(data?.__status))) {
+      appState.lastStationboardHttpStatus = Number(data.__status);
+      updateRtDebugOverlay();
+    }
+    if (data?.__notModified) {
+      refreshSucceeded = true;
+      publishEmbedState();
+      return;
+    }
     const tAfterFetch = DEBUG_PERF ? performance.now() : 0;
     const nowMs = Date.now();
     if (data?.rt?.applied === true) {
@@ -743,6 +807,7 @@ async function refreshDepartures({ retried, showLoadingHint = true, fromSchedule
       setBoardLoadingHint(false);
     }
     publishEmbedState();
+    updateRtDebugOverlay();
 
     if (fromScheduler) {
       if (refreshSucceeded) {
@@ -929,6 +994,13 @@ async function runHomeStopOnboardingIfNeeded() {
   }
   if (typeof document !== "undefined" && document.hidden) {
     handleVisibilityChange();
+  }
+  if (DEBUG_RT_CLIENT) {
+    ensureRtDebugOverlay();
+    updateRtDebugOverlay();
+    setInterval(() => {
+      updateRtDebugOverlay();
+    }, 1000);
   }
 
   if (DEBUG_PERF) {

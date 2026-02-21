@@ -693,6 +693,7 @@ function normalizeBackendStationboard(data) {
     fetchedAt: rtFetchedAt,
     cacheFetchedAt: rtFetchedAt,
     cacheAgeMs: rtAgeMs,
+    ageMs: rtAgeMs,
     ageSeconds:
       Number.isFinite(Number(rtRaw?.ageSeconds))
         ? Math.max(0, Math.floor(Number(rtRaw.ageSeconds)))
@@ -701,6 +702,11 @@ function normalizeBackendStationboard(data) {
           : null,
     freshnessThresholdMs: rtFreshnessMs,
     freshnessMaxAgeSeconds: Math.round(rtFreshnessMs / 1000),
+    status: Number.isFinite(Number(rtRaw?.status))
+      ? Number(rtRaw.status)
+      : Number.isFinite(Number(rtRaw?.lastStatus))
+        ? Number(rtRaw.lastStatus)
+        : null,
     instance:
       rtRaw?.instance && typeof rtRaw.instance === "object"
         ? {
@@ -908,7 +914,9 @@ export async function fetchStationboardRaw(options = {}) {
   const stationKey = appState.stationId || "unknown";
   const requestLangRaw = String(appState.language || "").trim().toLowerCase();
   const requestLang = SUPPORTED_QUERY_LANGS.has(requestLangRaw) ? requestLangRaw : "fr";
-  const inflightKey = `${getApiBase()}|${stationKey}|${requestLang}|${bustCache ? "bust" : "default"}`;
+  const sinceRtRaw = String(appState.lastRtFetchedAt || "").trim();
+  const includeSinceRt = !bustCache && !!sinceRtRaw;
+  const inflightKey = `${getApiBase()}|${stationKey}|${requestLang}|${bustCache ? "bust" : "default"}|${includeSinceRt ? sinceRtRaw : "-"}`;
 
   if (!fetchStationboardRaw._inflight) {
     fetchStationboardRaw._inflight = new Map();
@@ -923,15 +931,69 @@ export async function fetchStationboardRaw(options = {}) {
     limit: String(STATIONBOARD_LIMIT),
     lang: requestLang,
   });
+  if (includeSinceRt) params.set("since_rt", sinceRtRaw);
   if (bustCache) params.set("_ts", String(Date.now()));
   const url = apiUrl(`/api/stationboard?${params.toString()}`);
   const req = (async () => {
     try {
-      const backendData = await fetchJson(url, {
-        cache: bustCache ? "reload" : "default",
-        timeoutMs: STATIONBOARD_FETCH_TIMEOUT_MS,
-      });
+      const controller = new AbortController();
+      const timeout = setTimeout(
+        () => controller.abort(new DOMException("Timeout", "AbortError")),
+        STATIONBOARD_FETCH_TIMEOUT_MS
+      );
+      let response;
+      try {
+        response = await fetch(url, {
+          signal: controller.signal,
+          cache: bustCache ? "reload" : "default",
+        });
+      } finally {
+        clearTimeout(timeout);
+      }
+
+      appState.lastStationboardHttpStatus = Number(response?.status || 0) || null;
+      if (response?.status === 204) {
+        const fetchedAtHeader = String(response.headers?.get("x-md-rt-fetched-at") || "").trim();
+        if (fetchedAtHeader) {
+          appState.lastRtFetchedAt = fetchedAtHeader;
+        }
+        return {
+          __notModified: true,
+          __status: 204,
+          rt: {
+            fetchedAt: appState.lastRtFetchedAt || null,
+            cacheFetchedAt: appState.lastRtFetchedAt || null,
+            reason: "unchanged_since_rt",
+            applied: false,
+          },
+        };
+      }
+
+      if (!response?.ok) {
+        let body = "";
+        try {
+          body = await response.text();
+        } catch (_) {
+          body = "";
+        }
+        const err = new Error(
+          `HTTP ${response.status} ${response.statusText} for ${url}${body ? `\n${body.slice(0, 300)}` : ""}`
+        );
+        err.status = response.status;
+        err.statusText = response.statusText;
+        err.url = url;
+        err.body = body ? body.slice(0, 300) : "";
+        throw err;
+      }
+
+      const backendData = await response.json();
       const data = normalizeBackendStationboard(backendData);
+      data.__status = Number(response?.status || 200);
+      const fetchedAt =
+        String(data?.rt?.fetchedAt || data?.rt?.cacheFetchedAt || "").trim() || null;
+      if (fetchedAt) {
+        appState.lastRtFetchedAt = fetchedAt;
+      }
 
       const needsRetry =
         allowRetry &&
@@ -955,6 +1017,13 @@ export async function fetchStationboardRaw(options = {}) {
 
       return data;
     } catch (err) {
+      const invalidSinceRt =
+        Number(err?.status) === 400 &&
+        String(err?.body || "").toLowerCase().includes("invalid_since_rt");
+      if (invalidSinceRt && allowRetry) {
+        appState.lastRtFetchedAt = null;
+        return await fetchStationboardRaw({ allowRetry: false, bustCache });
+      }
       const canRetry =
         allowRetry &&
         appState.stationId &&

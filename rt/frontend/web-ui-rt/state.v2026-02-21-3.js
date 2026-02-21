@@ -20,7 +20,7 @@ export const MAX_TRAIN_ROWS = 20;
 export const CHRONO_VIEW_MIN_MINUTES = 15;
 
 // Refresh cadence (faster UI updates for responsiveness).
-export const REFRESH_DEPARTURES = 7_000;
+export const REFRESH_DEPARTURES = 15_000;
 
 // How far ahead we keep departures (client-side window).
 // Note: the upstream API may not return a full 3h horizon for every stop.
@@ -88,4 +88,8 @@ export const appState = {
 
   // Display prefs
   hideBusDeparture: false,
+
+  // RT poll state
+  lastRtFetchedAt: null,
+  lastStationboardHttpStatus: null,
 };
