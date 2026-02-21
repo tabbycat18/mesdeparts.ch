@@ -1,5 +1,23 @@
 import { performance } from "node:perf_hooks";
 
+const DEFAULT_STATIONBOARD_ROUTE_TIMEOUT_MS = 6500;
+const DEFAULT_STATIONBOARD_STALE_CACHE_MS = 90000;
+const stationboardResponseCache = new Map();
+
+function stationboardRouteTimeoutMs() {
+  return Math.max(
+    100,
+    Number(process.env.STATIONBOARD_ROUTE_TIMEOUT_MS || String(DEFAULT_STATIONBOARD_ROUTE_TIMEOUT_MS))
+  );
+}
+
+function stationboardStaleCacheMs() {
+  return Math.max(
+    5_000,
+    Number(process.env.STATIONBOARD_STALE_CACHE_MS || String(DEFAULT_STATIONBOARD_STALE_CACHE_MS))
+  );
+}
+
 function text(value) {
   return String(value || "").trim();
 }
@@ -40,6 +58,78 @@ function setResponseHeader(res, key, value) {
   }
   if (res.headers && typeof res.headers === "object") {
     res.headers[key] = val;
+  }
+}
+
+function withTimeout(promise, timeoutMs, code = "timeout") {
+  const effectiveTimeoutMs = Math.max(100, Math.trunc(Number(timeoutMs) || 0));
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      const err = new Error(code);
+      err.code = code;
+      reject(err);
+    }, effectiveTimeoutMs);
+
+    Promise.resolve(promise)
+      .then((value) => {
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+  });
+}
+
+function cacheKeyForRequest({
+  stopId,
+  stationId,
+  stationName,
+  lang,
+  limit,
+  windowMinutes,
+  includeAlerts,
+}) {
+  return [
+    text(stopId),
+    text(stationId),
+    text(stationName),
+    text(lang),
+    String(Number(limit) || 0),
+    String(Number(windowMinutes) || 0),
+    includeAlerts == null ? "auto" : includeAlerts ? "alerts1" : "alerts0",
+  ].join("|");
+}
+
+function cloneJson(value) {
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch {
+    return value;
+  }
+}
+
+function readCachedStationboard(key) {
+  const item = stationboardResponseCache.get(key);
+  if (!item || !item.payload) return null;
+  const ageMs = Date.now() - Number(item.ts || 0);
+  if (!Number.isFinite(ageMs) || ageMs < 0 || ageMs > stationboardStaleCacheMs()) {
+    stationboardResponseCache.delete(key);
+    return null;
+  }
+  return cloneJson(item.payload);
+}
+
+function storeCachedStationboard(key, payload) {
+  if (!key || !payload || typeof payload !== "object") return;
+  stationboardResponseCache.set(key, {
+    ts: Date.now(),
+    payload: cloneJson(payload),
+  });
+  if (stationboardResponseCache.size > 100) {
+    const oldest = stationboardResponseCache.keys().next().value;
+    if (oldest) stationboardResponseCache.delete(oldest);
   }
 }
 
@@ -152,6 +242,15 @@ export function createStationboardRouteHandler({
       const includeAlertsParsed = parseBooleanish(
         req.query.include_alerts ?? req.query.includeAlerts
       );
+      const responseCacheKey = cacheKeyForRequest({
+        stopId: effectiveStopId,
+        stationId: stationIdRaw,
+        stationName,
+        lang,
+        limit,
+        windowMinutes,
+        includeAlerts: includeAlertsParsed,
+      });
 
       logger?.log?.("[API] /api/stationboard params", {
         requestId,
@@ -216,19 +315,39 @@ export function createStationboardRouteHandler({
         }
       }
 
-      const result = await getStationboardLike({
-        stopId: effectiveStopId,
-        stationId: stationIdRaw,
-        stationName,
-        lang,
-        acceptLanguage: req.headers["accept-language"],
-        requestId,
-        limit,
-        windowMinutes,
-        includeAlerts: includeAlertsParsed == null ? undefined : includeAlertsParsed,
-        debug,
-        debugRt: debug ? debugRt : "",
-      });
+      let result;
+      try {
+        result = await withTimeout(
+          getStationboardLike({
+            stopId: effectiveStopId,
+            stationId: stationIdRaw,
+            stationName,
+            lang,
+            acceptLanguage: req.headers["accept-language"],
+            requestId,
+            limit,
+            windowMinutes,
+            includeAlerts: includeAlertsParsed == null ? undefined : includeAlertsParsed,
+            debug,
+            debugRt: debug ? debugRt : "",
+          }),
+          stationboardRouteTimeoutMs(),
+          "stationboard_timeout"
+        );
+      } catch (err) {
+        if (err?.code !== "stationboard_timeout") throw err;
+        const cached = readCachedStationboard(responseCacheKey);
+        if (!cached) throw err;
+        setResponseHeader(res, "x-md-stale", "1");
+        setResponseHeader(res, "x-md-stale-reason", "stationboard_timeout");
+        setResponseHeader(
+          res,
+          "x-md-backend-total-ms",
+          String(roundMs(performance.now() - routeStartedMs))
+        );
+        return res.json(cached);
+      }
+      storeCachedStationboard(responseCacheKey, result);
       setResponseHeader(
         res,
         "x-md-backend-total-ms",
@@ -261,6 +380,12 @@ export function createStationboardRouteHandler({
         return res.status(400).json({
           error: "unknown_stop",
           tried: Array.isArray(err?.tried) ? err.tried : [],
+        });
+      }
+      if (err?.code === "stationboard_timeout") {
+        return res.status(504).json({
+          error: "stationboard_timeout",
+          detail: "backend_stationboard_timeout",
         });
       }
       if (process.env.NODE_ENV !== "production") {

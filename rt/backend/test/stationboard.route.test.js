@@ -66,6 +66,15 @@ function makeMockRes() {
   return {
     statusCode: 200,
     body: null,
+    headers: {},
+    setHeader(key, value) {
+      this.headers[key] = String(value);
+      return this;
+    },
+    set(key, value) {
+      this.headers[key] = String(value);
+      return this;
+    },
     status(code) {
       this.statusCode = code;
       return this;
@@ -364,4 +373,69 @@ test("stationboard route preserves structured noService payload when departures 
   assert.ok(Array.isArray(res.body?.departures));
   assert.equal(res.body.departures.length, 0);
   assert.equal(res.body?.noService?.reason, "no_service_in_time_window");
+});
+
+test("stationboard route serves cached response when build times out", async () => {
+  await withEnv("STATIONBOARD_ROUTE_TIMEOUT_MS", "20", async () => {
+    let callCount = 0;
+    const handler = createStationboardRouteHandler({
+      getStationboardLike: async (input) => {
+        callCount += 1;
+        if (callCount === 1) {
+          return {
+            station: { id: input.stopId || "Parent8501120", name: "Lausanne" },
+            departures: [{ line: "R1", destination: "Renens" }],
+          };
+        }
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        return {
+          station: { id: input.stopId || "Parent8501120", name: "Lausanne" },
+          departures: [{ line: "R2", destination: "Morges" }],
+        };
+      },
+      resolveStopLike: makeResolveStopStub({
+        "stop:Parent8501120": { resolvedStopId: "Parent8501120", resolvedRootId: "Parent8501120" },
+      }),
+      dbQueryLike: async () => ({ rows: [] }),
+      logger: { log() {}, error() {} },
+    });
+
+    const first = await invokeRoute(handler, { query: { stop_id: "Parent8501120", lang: "fr" } });
+    assert.equal(first.statusCode, 200);
+    assert.equal(first.body?.departures?.[0]?.line, "R1");
+
+    const second = await invokeRoute(handler, { query: { stop_id: "Parent8501120", lang: "fr" } });
+    assert.equal(second.statusCode, 200);
+    assert.equal(second.body?.departures?.[0]?.line, "R1");
+    assert.equal(second.headers["x-md-stale"], "1");
+    assert.equal(second.headers["x-md-stale-reason"], "stationboard_timeout");
+  });
+});
+
+test("stationboard route returns 504 when build times out and no cache exists", async () => {
+  await withEnv("STATIONBOARD_ROUTE_TIMEOUT_MS", "20", async () => {
+    const handler = createStationboardRouteHandler({
+      getStationboardLike: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        return {
+          station: { id: "Parent8501120", name: "Lausanne" },
+          departures: [{ line: "R1", destination: "Renens" }],
+        };
+      },
+      resolveStopLike: makeResolveStopStub({
+        "stop:Parent8501120": { resolvedStopId: "Parent8501120", resolvedRootId: "Parent8501120" },
+      }),
+      dbQueryLike: async () => ({ rows: [] }),
+      logger: { log() {}, error() {} },
+    });
+
+    const res = await invokeRoute(handler, {
+      query: {
+        stop_id: "Parent8501120",
+        lang: "fr",
+      },
+    });
+    assert.equal(res.statusCode, 504);
+    assert.equal(res.body?.error, "stationboard_timeout");
+  });
 });

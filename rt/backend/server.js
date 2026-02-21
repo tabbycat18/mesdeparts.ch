@@ -75,6 +75,18 @@ const OTD_FETCH_TIMEOUT_MS = Math.max(
   1000,
   Number(process.env.OTD_FETCH_TIMEOUT_MS || "8000")
 );
+const STOPS_SEARCH_QUERY_TIMEOUT_MS = Math.max(
+  120,
+  Number(process.env.STOPS_SEARCH_QUERY_TIMEOUT_MS || "700")
+);
+const STOPS_SEARCH_TOTAL_TIMEOUT_MS = Math.max(
+  300,
+  Number(process.env.STOPS_SEARCH_TOTAL_TIMEOUT_MS || "1800")
+);
+const STOPS_SEARCH_FALLBACK_QUERY_TIMEOUT_MS = Math.max(
+  80,
+  Number(process.env.STOPS_SEARCH_FALLBACK_QUERY_TIMEOUT_MS || "350")
+);
 
 function resolveOtdApiKey() {
   return (
@@ -203,8 +215,122 @@ app.use((req, _res, next) => {
   next();
 });
 
+function createTimedSearchDb() {
+  return {
+    query(sql, params = []) {
+      return pool.query({
+        text: String(sql || ""),
+        values: params,
+        query_timeout: STOPS_SEARCH_QUERY_TIMEOUT_MS,
+      });
+    },
+    queryWithTimeout(sql, params = [], timeoutMs = STOPS_SEARCH_QUERY_TIMEOUT_MS) {
+      const effectiveTimeout = Math.max(
+        80,
+        Math.min(STOPS_SEARCH_QUERY_TIMEOUT_MS, Math.trunc(Number(timeoutMs) || 0))
+      );
+      return pool.query({
+        text: String(sql || ""),
+        values: params,
+        query_timeout: effectiveTimeout,
+      });
+    },
+  };
+}
+
 async function searchStopsPrefix(query, limit) {
-  return searchStops(pool, query, limit);
+  const timedDb = createTimedSearchDb();
+  return searchStops(timedDb, query, limit);
+}
+
+function withTimeout(promise, timeoutMs, code = "timeout") {
+  const effectiveTimeout = Math.max(100, Math.trunc(Number(timeoutMs) || 0));
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      const err = new Error(code);
+      err.code = code;
+      reject(err);
+    }, effectiveTimeout);
+    Promise.resolve(promise)
+      .then((value) => {
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+  });
+}
+
+async function fastStopsSearchFallback(query, limit) {
+  const q = String(query || "").trim().toLowerCase();
+  if (q.length < 2) return [];
+  const lim = Math.max(1, Math.min(Number(limit) || 20, 50));
+  const res = await pool.query({
+    text: `
+      WITH base AS (
+        SELECT
+          COALESCE(NULLIF(to_jsonb(s) ->> 'parent_station', ''), s.stop_id) AS group_id,
+          s.stop_id,
+          s.stop_name,
+          NULLIF(to_jsonb(s) ->> 'parent_station', '') AS parent_station,
+          COALESCE(NULLIF(to_jsonb(s) ->> 'location_type', ''), '') AS location_type
+        FROM public.gtfs_stops s
+        WHERE lower(s.stop_name) LIKE $1 || '%'
+           OR lower(s.stop_name) LIKE '%' || $1 || '%'
+      ),
+      per_group AS (
+        SELECT DISTINCT ON (group_id)
+          group_id,
+          stop_id,
+          stop_name,
+          parent_station,
+          location_type
+        FROM base
+        ORDER BY group_id, stop_name
+      )
+      SELECT
+        group_id,
+        stop_id,
+        stop_name,
+        parent_station,
+        location_type
+      FROM per_group
+      ORDER BY
+        CASE
+          WHEN lower(stop_name) = $1 THEN 0
+          WHEN lower(stop_name) LIKE $1 || '%' THEN 1
+          ELSE 2
+        END,
+        stop_name
+      LIMIT $2
+    `,
+    values: [q, lim],
+    query_timeout: STOPS_SEARCH_FALLBACK_QUERY_TIMEOUT_MS,
+  });
+
+  return (res.rows || []).map((row) => {
+    const stationId = row.group_id || row.stop_id;
+    return {
+      id: row.stop_id,
+      name: row.stop_name,
+      stop_id: row.stop_id,
+      stationId,
+      stationName: row.stop_name,
+      group_id: stationId,
+      raw_stop_id: row.stop_id,
+      stop_name: row.stop_name,
+      parent_station: row.parent_station || null,
+      location_type: row.location_type || "",
+      isParent:
+        !row.parent_station ||
+        String(row.location_type || "").trim() === "1" ||
+        String(row.stop_id || "").startsWith("Parent"),
+      isPlatform: !!row.parent_station && String(row.location_type || "").trim() !== "1",
+      aliasesMatched: [],
+    };
+  });
 }
 
 function parseBooleanish(value) {
@@ -341,9 +467,30 @@ app.get("/api/stops/search", async (req, res) => {
     const debug = parseBooleanish(req.query.debug);
     console.log("[API] /api/stops/search params", { q, limit, debug });
 
-    const searchResult = debug
-      ? await searchStopsWithDebug(pool, q, limit)
-      : await searchStopsPrefix(q, limit);
+    let searchResult;
+    try {
+      searchResult = await withTimeout(
+        debug
+          ? searchStopsWithDebug(createTimedSearchDb(), q, limit)
+          : searchStopsPrefix(q, limit),
+        STOPS_SEARCH_TOTAL_TIMEOUT_MS,
+        "stops_search_timeout"
+      );
+    } catch (err) {
+      if (err?.code !== "stops_search_timeout") throw err;
+      console.warn("[API] /api/stops/search timed out; returning fast fallback", {
+        q,
+        limit,
+      });
+      const fallbackStops = await fastStopsSearchFallback(q, limit).catch(() => []);
+      if (typeof res.setHeader === "function") {
+        res.setHeader("x-md-search-fallback", "1");
+      } else if (typeof res.set === "function") {
+        res.set("x-md-search-fallback", "1");
+      }
+      return res.json({ stops: fallbackStops });
+    }
+
     const stops = Array.isArray(searchResult) ? searchResult : searchResult?.stops || [];
 
     if (debug && searchResult?.debug) {

@@ -101,7 +101,7 @@ LIMIT $4
 `;
 
 async function runTimedQuery(sql, params, timeoutMs) {
-  const effectiveTimeoutMs = Math.max(500, Math.trunc(Number(timeoutMs) || 0));
+  const effectiveTimeoutMs = Math.max(120, Math.trunc(Number(timeoutMs) || 0));
   return pool.query({
     text: sql,
     values: params,
@@ -271,16 +271,20 @@ export async function buildStationboard(locationId, options = {}) {
   // realtime/past-window filter afterwards.
   const queryLimit = Math.min(800, Math.max(requestedLimit * 6, requestedLimit + 80));
   const mainQueryTimeoutMs = Math.max(
-    1000,
-    Number(process.env.STATIONBOARD_MAIN_QUERY_TIMEOUT_MS || "8000")
+    400,
+    Number(process.env.STATIONBOARD_MAIN_QUERY_TIMEOUT_MS || "3500")
   );
   const fallbackQueryTimeoutMs = Math.max(
-    1000,
-    Number(process.env.STATIONBOARD_FALLBACK_QUERY_TIMEOUT_MS || "4000")
+    250,
+    Number(process.env.STATIONBOARD_FALLBACK_QUERY_TIMEOUT_MS || "1200")
   );
   const terminusQueryTimeoutMs = Math.max(
-    300,
-    Number(process.env.STATIONBOARD_TERMINUS_QUERY_TIMEOUT_MS || "1500")
+    180,
+    Number(process.env.STATIONBOARD_TERMINUS_QUERY_TIMEOUT_MS || "700")
+  );
+  const stopScopeQueryTimeoutMs = Math.max(
+    150,
+    Number(process.env.STATIONBOARD_STOP_SCOPE_QUERY_TIMEOUT_MS || "800")
   );
   const rtLoadTimeoutMs = Math.max(
     100,
@@ -411,7 +415,7 @@ export async function buildStationboard(locationId, options = {}) {
       });
     }
   } else {
-    const stopRes = await pool.query(
+    const stopRes = await runTimedQuery(
       `
       SELECT
         stop_id,
@@ -427,7 +431,8 @@ export async function buildStationboard(locationId, options = {}) {
         stop_name
       LIMIT 1;
       `,
-      [locationId]
+      [locationId],
+      stopScopeQueryTimeoutMs
     );
 
     if (debugEnabled) {
@@ -472,7 +477,7 @@ export async function buildStationboard(locationId, options = {}) {
     stationGroupId = primaryStop.parent_station || primaryStop.stop_id;
     stationName = primaryStop.stop_name || locationId || primaryStop.stop_id;
 
-    const groupRes = await pool.query(
+    const groupRes = await runTimedQuery(
       `
       SELECT
         stop_id,
@@ -482,7 +487,8 @@ export async function buildStationboard(locationId, options = {}) {
       WHERE COALESCE(s.parent_station, s.stop_id) = $1
       ORDER BY platform_code, stop_name;
       `,
-      [stationGroupId]
+      [stationGroupId],
+      stopScopeQueryTimeoutMs
     );
 
     childStops = groupRes.rows || [];

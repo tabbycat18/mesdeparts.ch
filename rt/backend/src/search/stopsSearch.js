@@ -8,6 +8,26 @@ const CANDIDATE_MAX = 320;
 const CANDIDATE_MULTIPLIER = 20;
 
 const CAPABILITY_CACHE_MS = 60_000;
+const STOP_SEARCH_TOTAL_BUDGET_MS = Math.max(
+  300,
+  Number(process.env.STOP_SEARCH_TOTAL_BUDGET_MS || "1800")
+);
+const STOP_SEARCH_CAPS_TIMEOUT_MS = Math.max(
+  100,
+  Number(process.env.STOP_SEARCH_CAPS_TIMEOUT_MS || "250")
+);
+const STOP_SEARCH_PRIMARY_TIMEOUT_MS = Math.max(
+  200,
+  Number(process.env.STOP_SEARCH_PRIMARY_TIMEOUT_MS || "700")
+);
+const STOP_SEARCH_FALLBACK_TIMEOUT_MS = Math.max(
+  120,
+  Number(process.env.STOP_SEARCH_FALLBACK_TIMEOUT_MS || "450")
+);
+const STOP_SEARCH_ALIAS_TIMEOUT_MS = Math.max(
+  100,
+  Number(process.env.STOP_SEARCH_ALIAS_TIMEOUT_MS || "300")
+);
 
 const GENERIC_STOP_WORDS = new Set([
   "gare",
@@ -57,6 +77,38 @@ function warnOnce(key, message, details = null) {
     return;
   }
   console.warn(message);
+}
+
+function createBudget(totalMs = STOP_SEARCH_TOTAL_BUDGET_MS) {
+  const effective = Math.max(200, Math.trunc(Number(totalMs) || STOP_SEARCH_TOTAL_BUDGET_MS));
+  return {
+    deadlineMs: Date.now() + effective,
+  };
+}
+
+function budgetRemainingMs(budget) {
+  if (!budget || !Number.isFinite(Number(budget.deadlineMs))) return Number.POSITIVE_INFINITY;
+  return Number(budget.deadlineMs) - Date.now();
+}
+
+function timeoutWithinBudget({ budget, maxMs, minMs = 80 }) {
+  const maxTimeout = Math.max(minMs, Math.trunc(Number(maxMs) || minMs));
+  const remaining = budgetRemainingMs(budget);
+  if (!Number.isFinite(remaining)) return maxTimeout;
+  if (remaining < minMs) return 0;
+  return Math.max(minMs, Math.min(maxTimeout, Math.trunc(remaining)));
+}
+
+async function runDbQuery(db, sql, params = [], timeoutMs = 0) {
+  if (!db || typeof db.query !== "function") {
+    throw new Error("stop_search_invalid_db");
+  }
+
+  if (typeof db.queryWithTimeout === "function" && Number(timeoutMs) > 0) {
+    return db.queryWithTimeout(sql, params, timeoutMs);
+  }
+
+  return db.query(sql, params);
 }
 
 export function normalizeSearchText(value) {
@@ -570,7 +622,15 @@ export async function detectSearchCapabilities(db, options = {}) {
 
   let caps = emptyCapabilities();
   try {
-    const result = await db.query(`
+    const capsTimeoutMs = timeoutWithinBudget({
+      budget: options?.budget,
+      maxMs: STOP_SEARCH_CAPS_TIMEOUT_MS,
+      minMs: 60,
+    });
+    if (capsTimeoutMs <= 0) return caps;
+    const result = await runDbQuery(
+      db,
+      `
       SELECT
         to_regclass('public.stop_search_index') IS NOT NULL AS has_stop_search_index,
         to_regclass('public.stop_aliases') IS NOT NULL AS has_stop_aliases,
@@ -579,7 +639,10 @@ export async function detectSearchCapabilities(db, options = {}) {
         to_regprocedure('public.strip_stop_search_terms(text)') IS NOT NULL AS has_strip_fn,
         EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_trgm') AS has_pg_trgm,
         EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'unaccent') AS has_unaccent
-    `);
+    `,
+      [],
+      capsTimeoutMs
+    );
 
     const row = result.rows?.[0] || {};
     caps = {
@@ -1030,43 +1093,84 @@ ORDER BY
 LIMIT $2;
 `;
 
-async function fetchPrimaryRows(db, qRaw, candidateLimit) {
-  const result = await db.query(PRIMARY_SQL, [qRaw, candidateLimit]);
+async function fetchPrimaryRows(db, qRaw, candidateLimit, options = {}) {
+  const timeoutMs = timeoutWithinBudget({
+    budget: options?.budget,
+    maxMs: STOP_SEARCH_PRIMARY_TIMEOUT_MS,
+    minMs: 120,
+  });
+  if (timeoutMs <= 0) return [];
+  const result = await runDbQuery(db, PRIMARY_SQL, [qRaw, candidateLimit], timeoutMs);
   return result.rows || [];
 }
 
-async function fetchFallbackAliasRows(db, queryNorm, candidateLimit, caps) {
+async function fetchFallbackAliasRows(db, queryNorm, candidateLimit, caps, options = {}) {
   const rows = [];
   const forcePrefixOnly = caps.hasUnaccent !== true;
 
   if (caps.hasStopAliases) {
+    const stopAliasTimeoutMs = timeoutWithinBudget({
+      budget: options?.budget,
+      maxMs: STOP_SEARCH_ALIAS_TIMEOUT_MS,
+      minMs: 80,
+    });
+    if (stopAliasTimeoutMs > 0) {
     const stopAliasSql = !forcePrefixOnly && caps.hasPgTrgm
       ? FALLBACK_STOP_ALIASES_TRGM_SQL
       : FALLBACK_STOP_ALIASES_PLAIN_SQL;
-    const stopAliasRes = await db.query(stopAliasSql, [queryNorm, candidateLimit]);
-    rows.push(...(stopAliasRes.rows || []));
+      const stopAliasRes = await runDbQuery(
+        db,
+        stopAliasSql,
+        [queryNorm, candidateLimit],
+        stopAliasTimeoutMs
+      );
+      rows.push(...(stopAliasRes.rows || []));
+    }
   }
 
   if (caps.hasAppStopAliases) {
+    const appAliasTimeoutMs = timeoutWithinBudget({
+      budget: options?.budget,
+      maxMs: STOP_SEARCH_ALIAS_TIMEOUT_MS,
+      minMs: 80,
+    });
+    if (appAliasTimeoutMs > 0) {
     const appAliasSql = !forcePrefixOnly && caps.hasPgTrgm
       ? FALLBACK_APP_ALIASES_TRGM_SQL
       : FALLBACK_APP_ALIASES_PLAIN_SQL;
-    const appAliasRes = await db.query(appAliasSql, [queryNorm, candidateLimit]);
-    rows.push(...(appAliasRes.rows || []));
+      const appAliasRes = await runDbQuery(
+        db,
+        appAliasSql,
+        [queryNorm, candidateLimit],
+        appAliasTimeoutMs
+      );
+      rows.push(...(appAliasRes.rows || []));
+    }
   }
 
   return rows;
 }
 
-async function runFallbackSearch(db, queryNorm, candidateLimit, caps) {
+async function runFallbackSearch(db, queryNorm, candidateLimit, caps, options = {}) {
   const forcePrefixOnly = caps.hasUnaccent !== true;
   const fallbackSql = !forcePrefixOnly && caps.hasPgTrgm ? FALLBACK_TRGM_SQL : FALLBACK_PLAIN_SQL;
-  const baseRes = await db.query(fallbackSql, [queryNorm, candidateLimit]);
+  const fallbackTimeoutMs = timeoutWithinBudget({
+    budget: options?.budget,
+    maxMs: STOP_SEARCH_FALLBACK_TIMEOUT_MS,
+    minMs: 100,
+  });
+  if (fallbackTimeoutMs <= 0) return [];
+  const baseRes = await runDbQuery(
+    db,
+    fallbackSql,
+    [queryNorm, candidateLimit],
+    fallbackTimeoutMs
+  );
   const baseRows = baseRes.rows || [];
 
   let aliasRows = [];
   try {
-    aliasRows = await fetchFallbackAliasRows(db, queryNorm, candidateLimit, caps);
+    aliasRows = await fetchFallbackAliasRows(db, queryNorm, candidateLimit, caps, options);
   } catch (err) {
     warnOnce("stop_search_alias_fallback_error", "[stop-search] alias fallback unavailable", {
       error: String(err?.message || err),
@@ -1087,7 +1191,9 @@ async function runStopSearch(db, query, limit = DEFAULT_LIMIT, options = {}) {
   const lim = clampLimit(limit);
   const candidateLimit = candidateLimitFor(lim);
 
-  const caps = await detectSearchCapabilities(db);
+  const budget = createBudget(options?.budgetMs);
+
+  const caps = await detectSearchCapabilities(db, { budget });
   const primarySupported = supportsPrimarySearch(caps);
 
   if (!primarySupported) {
@@ -1106,7 +1212,7 @@ async function runStopSearch(db, query, limit = DEFAULT_LIMIT, options = {}) {
 
   if (primarySupported) {
     try {
-      rows = await fetchPrimaryRows(db, qRaw, candidateLimit);
+      rows = await fetchPrimaryRows(db, qRaw, candidateLimit, { budget });
     } catch (err) {
       primaryError = err;
       warnOnce("stop_search_primary_error", "[stop-search] primary query failed; falling back", {
@@ -1117,7 +1223,7 @@ async function runStopSearch(db, query, limit = DEFAULT_LIMIT, options = {}) {
 
   if (!primarySupported || primaryError || rows.length < Math.min(candidateLimit, lim * 3)) {
     try {
-      const fallbackRows = await runFallbackSearch(db, qNorm, candidateLimit, caps);
+      const fallbackRows = await runFallbackSearch(db, qNorm, candidateLimit, caps, { budget });
       rows = rows.concat(fallbackRows);
     } catch (fallbackErr) {
       if (primaryError) {

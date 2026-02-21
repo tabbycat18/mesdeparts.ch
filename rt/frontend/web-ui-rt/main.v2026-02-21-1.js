@@ -604,15 +604,10 @@ async function refreshDepartures({ retried, showLoadingHint = true } = {}) {
       return;
     }
     if (isTransient && lastStationboardData) {
-      if (DEBUG_PERF) {
-        console.warn("[MesDeparts] refresh transient error (kept last board):", err);
-      }
       return;
     }
     if (isTransient) {
-      if (DEBUG_PERF) {
-        console.warn("[MesDeparts] refresh transient error:", err);
-      }
+      return;
     } else {
       console.error("[MesDeparts] refresh error:", err);
     }
