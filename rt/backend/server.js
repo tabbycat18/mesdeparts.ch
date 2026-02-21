@@ -57,6 +57,7 @@ const { getStationboard } = await import("./src/api/stationboard.js");
 const { resolveStop } = await import("./src/resolve/resolveStop.js");
 const { searchStops, searchStopsWithDebug } = await import("./src/search/stopsSearch.js");
 const { createStationboardRouteHandler } = await import("./src/api/stationboardRoute.js");
+const { createStopSearchRouteHandler } = await import("./src/api/stopSearchRoute.js");
 const { fetchServiceAlerts } = await import("./src/loaders/fetchServiceAlerts.js");
 const { fetchTripUpdates } = await import("./src/loaders/fetchTripUpdates.js");
 const { summarizeTripUpdates } = await import("./src/loaders/tripUpdatesSummary.js");
@@ -488,12 +489,6 @@ async function safeStopsSearchFallback(query, limit, reason = "error") {
   }
 }
 
-function parseBooleanish(value) {
-  const raw = String(value || "").trim().toLowerCase();
-  if (!raw) return false;
-  return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
-}
-
 async function searchStopsNearby(lat, lon, limit) {
   const latNum = Number(lat);
   const lonNum = Number(lon);
@@ -615,67 +610,18 @@ async function searchStopsNearby(lat, lon, limit) {
   }));
 }
 
-app.get("/api/stops/search", async (req, res) => {
-  try {
-    const q = String(req.query.q || req.query.query || "").trim();
-    const limit = Number(req.query.limit || "20");
-    const debug = parseBooleanish(req.query.debug);
-    console.log("[API] /api/stops/search params", { q, limit, debug });
-
-    let searchResult;
-    try {
-      searchResult = await withTimeout(
-        debug
-          ? searchStopsWithDebug(createTimedSearchDb(), q, limit)
-          : searchStopsPrefix(q, limit),
-        STOPS_SEARCH_TOTAL_TIMEOUT_MS,
-        "stops_search_timeout"
-      );
-    } catch (err) {
-      const reason = String(err?.code || err?.message || "error");
-      console.warn("[API] /api/stops/search degraded fallback", {
-        q,
-        limit,
-        reason,
-      });
-      const fallbackStops = await safeStopsSearchFallback(q, limit, reason);
-      setSearchFallbackHeaders(res, reason);
-      return res.json({ stops: fallbackStops });
-    }
-
-    let stops = Array.isArray(searchResult) ? searchResult : searchResult?.stops || [];
-    if (stops.length === 0 && q.length >= 2) {
-      const fallbackStops = await safeStopsSearchFallback(q, limit, "empty_primary");
-      if (fallbackStops.length > 0) {
-        setSearchFallbackHeaders(res, "empty_primary");
-        stops = fallbackStops;
-      }
-    }
-
-    if (debug && searchResult?.debug) {
-      const rankedTop = Array.isArray(searchResult.debug.rankedTop)
-        ? searchResult.debug.rankedTop
-        : [];
-      console.log("[API] /api/stops/search debug top_candidates", {
-        query: searchResult.debug.query || q,
-        queryNorm: searchResult.debug.queryNorm || null,
-        candidateLimit: searchResult.debug.candidateLimit || null,
-        rawRows: searchResult.debug.rawRows || 0,
-        top: rankedTop.slice(0, 10),
-      });
-    }
-
-    return res.json({ stops });
-  } catch (err) {
-    console.error("[API] /api/stops/search failed:", err);
-    const q = String(req.query.q || req.query.query || "").trim();
-    const limit = Number(req.query.limit || "20");
-    const reason = String(err?.code || err?.message || "unexpected_error");
-    const fallbackStops = await safeStopsSearchFallback(q, limit, reason);
-    setSearchFallbackHeaders(res, reason);
-    return res.json({ stops: fallbackStops });
-  }
-});
+app.get(
+  "/api/stops/search",
+  createStopSearchRouteHandler({
+    searchFn: (q, limit) => searchStopsPrefix(q, limit),
+    searchDebugFn: (q, limit) => searchStopsWithDebug(createTimedSearchDb(), q, limit),
+    fallbackFn: safeStopsSearchFallback,
+    setFallbackHeadersFn: setSearchFallbackHeaders,
+    wrapWithTimeoutFn: (promise) =>
+      withTimeout(promise, STOPS_SEARCH_TOTAL_TIMEOUT_MS, "stops_search_timeout"),
+    logger: console,
+  })
+);
 
 app.get("/api/search", async (req, res) => {
   try {
