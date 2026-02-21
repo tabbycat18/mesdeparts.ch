@@ -309,6 +309,58 @@ test("applyTripUpdates matches stop variant without sequence as stop_noseq", () 
   assert.equal(merged[0]._rawRtDelaySecUsed, 126);
 });
 
+test("applyTripUpdates marks platformChanged when RT stop_id points to another platform", () => {
+  const baseRows = [
+    {
+      trip_id: "trip-platform-change",
+      stop_id: "8501120:0:3",
+      stop_sequence: 5,
+      scheduledDeparture: "2026-02-20T10:00:00.000Z",
+      realtimeDeparture: "2026-02-20T10:00:00.000Z",
+      delayMin: 0,
+      platform: "3",
+      platformChanged: false,
+      source: "scheduled",
+      tags: [],
+    },
+  ];
+
+  const tripUpdates = {
+    entities: [
+      {
+        tripUpdate: {
+          trip: {
+            tripId: "trip-platform-change",
+            scheduleRelationship: "SCHEDULED",
+            startDate: "20260220",
+          },
+          stopTimeUpdate: [
+            {
+              stopId: "8501120:0:4",
+              stopSequence: 5,
+              departure: {
+                time: Math.floor(Date.parse("2026-02-20T10:02:00.000Z") / 1000),
+              },
+            },
+          ],
+        },
+      },
+    ],
+  };
+
+  const platformByStopId = new Map([
+    ["8501120:0:3", "3"],
+    ["8501120:0:4", "4"],
+  ]);
+
+  const merged = applyTripUpdates(baseRows, tripUpdates, { platformByStopId });
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0]._rtMatched, true);
+  assert.equal(merged[0].platform, "4");
+  assert.equal(merged[0].platformChanged, true);
+  assert.equal(merged[0].source, "tripupdate");
+});
+
 test("applyTripUpdates preserves realtimeDeparture for early/jitter while keeping display delay clamped", () => {
   const baseRows = [
     {

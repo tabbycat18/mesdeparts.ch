@@ -913,7 +913,9 @@ export async function buildStationboard(locationId, options = {}) {
   };
 
   const rtMergeStartedMs = performance.now();
-  const mergedScheduledRows = applyTripUpdates(baseRows, scopedTripUpdates);
+  const mergedScheduledRows = applyTripUpdates(baseRows, scopedTripUpdates, {
+    platformByStopId,
+  });
   traceCancellation("after_apply_trip_updates", mergedScheduledRows);
   debugMeta.stageCounts.push({
     stage: "after_trip_updates_applied",

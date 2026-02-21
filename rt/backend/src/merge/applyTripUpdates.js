@@ -320,6 +320,7 @@ function buildRealtimeIndex(tripUpdates) {
           byKey[key] = {
             tripId,
             stopId,
+            rtStopId: rawStopId,
             stopSequence: seqPart === "" ? null : Number(seqPart),
             delaySec,
             delayMin: delayDisplay.delayMinAfterClamp,
@@ -687,10 +688,13 @@ function getStopStatusForRow(
   return null;
 }
 
-export function applyTripUpdates(baseRows, tripUpdates) {
+export function applyTripUpdates(baseRows, tripUpdates, options = {}) {
   if (!Array.isArray(baseRows) || baseRows.length === 0) {
     return [];
   }
+  const platformByStopId = options?.platformByStopId instanceof Map
+    ? options.platformByStopId
+    : null;
 
   const realtimeIndex = buildRealtimeIndex(tripUpdates);
   const delayByKey =
@@ -824,6 +828,21 @@ export function applyTripUpdates(baseRows, tripUpdates) {
         )
       ) {
         delayMin = null;
+      }
+
+      if (platformByStopId) {
+        const scheduledStopId = String(row?.stop_id || "").trim();
+        const realtimeStopId = String(delay?.rtStopId || "").trim();
+        if (scheduledStopId && realtimeStopId && scheduledStopId !== realtimeStopId) {
+          const realtimePlatform = platformByStopId.get(realtimeStopId);
+          if (realtimePlatform !== undefined) {
+            const currentPlatform = merged?.platform ?? "";
+            if (String(currentPlatform) !== String(realtimePlatform)) {
+              merged.platform = realtimePlatform;
+              merged.platformChanged = true;
+            }
+          }
+        }
       }
     } else if (tripFallbackDelay) {
       const fallbackDelaySec = Number.isFinite(tripFallbackDelay?.delaySec)
