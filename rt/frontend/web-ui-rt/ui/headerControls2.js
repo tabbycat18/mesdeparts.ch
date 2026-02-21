@@ -1281,6 +1281,11 @@ function getCachedSuggestions(query) {
 
 function setCachedSuggestions(query, items) {
   const key = String(query || "").toLowerCase().trim();
+  if (!key) return;
+  if (!Array.isArray(items) || items.length === 0) {
+    delete state.suggestionCache[key];
+    return;
+  }
   state.suggestionCache[key] = { items, ts: Date.now() };
 }
 

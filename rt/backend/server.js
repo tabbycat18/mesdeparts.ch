@@ -267,8 +267,22 @@ function withTimeout(promise, timeoutMs, code = "timeout") {
   });
 }
 
+function foldSearchText(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/\p{M}+/gu, "")
+    .replace(/[\u2010-\u2015]/g, "-")
+    .replace(/[-_.\/’'`]+/g, " ")
+    .replace(/[^a-z0-9\s,]+/g, " ")
+    .replace(/\s*,\s*/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 async function fastStopsSearchFallback(query, limit) {
-  const q = String(query || "").trim().toLowerCase();
+  const q = foldSearchText(query);
   if (q.length < 2) return [];
   const lim = Math.max(1, Math.min(Number(limit) || 20, 50));
   const res = await pool.query({
@@ -279,10 +293,45 @@ async function fastStopsSearchFallback(query, limit) {
           s.stop_id,
           s.stop_name,
           NULLIF(to_jsonb(s) ->> 'parent_station', '') AS parent_station,
-          COALESCE(NULLIF(to_jsonb(s) ->> 'location_type', ''), '') AS location_type
+          COALESCE(NULLIF(to_jsonb(s) ->> 'location_type', ''), '') AS location_type,
+          trim(
+            regexp_replace(
+              translate(
+                lower(s.stop_name),
+                'àáâãäåçèéêëìíîïñòóôõöøùúûüýÿ',
+                'aaaaaaceeeeiiiinoooooouuuuyy'
+              ),
+              '[^a-z0-9]+',
+              ' ',
+              'g'
+            )
+          ) AS stop_fold
         FROM public.gtfs_stops s
-        WHERE lower(s.stop_name) LIKE $1 || '%'
-           OR lower(s.stop_name) LIKE '%' || $1 || '%'
+        WHERE
+          trim(
+            regexp_replace(
+              translate(
+                lower(s.stop_name),
+                'àáâãäåçèéêëìíîïñòóôõöøùúûüýÿ',
+                'aaaaaaceeeeiiiinoooooouuuuyy'
+              ),
+              '[^a-z0-9]+',
+              ' ',
+              'g'
+            )
+          ) LIKE $1 || '%'
+          OR trim(
+            regexp_replace(
+              translate(
+                lower(s.stop_name),
+                'àáâãäåçèéêëìíîïñòóôõöøùúûüýÿ',
+                'aaaaaaceeeeiiiinoooooouuuuyy'
+              ),
+              '[^a-z0-9]+',
+              ' ',
+              'g'
+            )
+          ) LIKE '%' || $1 || '%'
       ),
       per_group AS (
         SELECT DISTINCT ON (group_id)
@@ -290,7 +339,8 @@ async function fastStopsSearchFallback(query, limit) {
           stop_id,
           stop_name,
           parent_station,
-          location_type
+          location_type,
+          stop_fold
         FROM base
         ORDER BY group_id, stop_name
       )
@@ -299,12 +349,13 @@ async function fastStopsSearchFallback(query, limit) {
         stop_id,
         stop_name,
         parent_station,
-        location_type
+        location_type,
+        stop_fold
       FROM per_group
       ORDER BY
         CASE
-          WHEN lower(stop_name) = $1 THEN 0
-          WHEN lower(stop_name) LIKE $1 || '%' THEN 1
+          WHEN stop_fold = $1 THEN 0
+          WHEN stop_fold LIKE $1 || '%' THEN 1
           ELSE 2
         END,
         stop_name
@@ -523,7 +574,14 @@ app.get("/api/stops/search", async (req, res) => {
       return res.json({ stops: fallbackStops });
     }
 
-    const stops = Array.isArray(searchResult) ? searchResult : searchResult?.stops || [];
+    let stops = Array.isArray(searchResult) ? searchResult : searchResult?.stops || [];
+    if (stops.length === 0 && q.length >= 2) {
+      const fallbackStops = await safeStopsSearchFallback(q, limit, "empty_primary");
+      if (fallbackStops.length > 0) {
+        setSearchFallbackHeaders(res, "empty_primary");
+        stops = fallbackStops;
+      }
+    }
 
     if (debug && searchResult?.debug) {
       const rankedTop = Array.isArray(searchResult.debug.rankedTop)
