@@ -58,7 +58,11 @@ AS $$
         regexp_replace(
           regexp_replace(
             regexp_replace(
-              lower(public.md_unaccent(input)),
+              translate(
+                lower(public.md_unaccent(input)),
+                'àáâãäåçèéêëìíîïñòóôõöøùúûüýÿ',
+                'aaaaaaceeeeiiiinoooooouuuuyy'
+              ),
               '[-_./''’`]+',
               ' ',
               'g'

@@ -198,6 +198,22 @@ function fixtureRows() {
       has_hub_token: false,
     },
     {
+      group_id: "Parent8591888",
+      stop_id: "Parent8591888",
+      stop_name: "Lausanne, Forêt",
+      parent_station: "",
+      location_type: "0",
+      city_name: "Lausanne",
+      aliases_matched: ["foret", "lausanne foret"],
+      alias_weight: 7.2,
+      alias_similarity: 0.86,
+      name_similarity: 0.82,
+      core_similarity: 0.82,
+      nb_stop_times: 21000,
+      is_parent: true,
+      has_hub_token: false,
+    },
+    {
       group_id: "Parent8591999",
       stop_id: "Parent8591999",
       stop_name: "Lausanne, Grand-Pont",
@@ -269,6 +285,7 @@ test("normalizeSearchText strips diacritics, punctuation and abbreviations", () 
   assert.equal(normalizeSearchText("Zürich"), "zurich");
   assert.equal(normalizeSearchText("St. Gallen"), "saint gallen");
   assert.equal(normalizeSearchText("Zürich Hauptbahnhof"), "zurich hb");
+  assert.equal(normalizeSearchText("Lausanne, Forêt"), "lausanne foret");
 });
 
 test("Zurich includes Zürich HB in top 3", () => {
@@ -314,10 +331,22 @@ test("bel air matches Genève, Bel-Air", () => {
   assert.ok(topIds.includes("Parent8587387") || topIds.includes("Parent8587055"));
 });
 
+test("foret matches Lausanne, Forêt", () => {
+  const ranked = rankStopCandidates(fixtureRows(), "foret", 10);
+  const topIds = ranked.slice(0, 10).map((row) => row.stop_id);
+  assert.ok(topIds.includes("Parent8591888"));
+});
+
+test("lausanne foret matches Lausanne, Forêt", () => {
+  const ranked = rankStopCandidates(fixtureRows(), "lausanne foret", 10);
+  const topIds = ranked.slice(0, 10).map((row) => row.stop_id);
+  assert.ok(topIds.includes("Parent8591888"));
+});
+
 test("Lausanne, Bel-Air ranks specific stop ahead of generic Lausanne parent", () => {
   const ranked = rankStopCandidates(fixtureRows(), "Lausanne, Bel-Air", 10);
   const belAirIdx = ranked.findIndex((row) =>
-    normalizeSearchText(row.stop_name).includes("lausanne, bel air")
+    normalizeSearchText(row.stop_name).includes("lausanne bel air")
   );
   const lausanneIdx = ranked.findIndex(
     (row) => normalizeSearchText(row.stop_name) === "lausanne"
@@ -357,6 +386,19 @@ test("partial grande bor query ranks Lausanne, Grande-Borde first", () => {
   assert.equal(ranked[0].stop_id, "Parent8591979");
 });
 
+test("bel air includes Lausanne and Geneve Bel-Air in top 10", () => {
+  const ranked = rankStopCandidates(fixtureRows(), "bel air", 10);
+  const topIds = ranked.slice(0, 10).map((row) => row.stop_id);
+  assert.ok(topIds.includes("Parent8587055"));
+  assert.ok(topIds.includes("Parent8587387"));
+});
+
+test("bel aie typo still returns Bel-Air in top 10", () => {
+  const ranked = rankStopCandidates(fixtureRows(), "bel aie", 10);
+  const topIds = ranked.slice(0, 10).map((row) => row.stop_id);
+  assert.ok(topIds.includes("Parent8587055") || topIds.includes("Parent8587387"));
+});
+
 test("golden variants keep stable top result and canonical fields", () => {
   const cases = [
     { query: "Zurich", expectedTop: "zurich hb" },
@@ -365,9 +407,9 @@ test("golden variants keep stable top result and canonical fields", () => {
     { query: "Zürich Hbf", expectedTop: "zurich hb" },
     { query: "St Gallen", expectedTop: "saint gallen" },
     { query: "St. Gallen", expectedTop: "saint gallen" },
-    { query: "geneve", expectedTopAny: ["geneve", "geneve, gare cornavin"] },
-    { query: "Genève Cornavin", expectedTop: "geneve, gare cornavin" },
-    { query: "Lausanne, Bel-Air", expectedTop: "lausanne, bel air" },
+    { query: "geneve", expectedTopAny: ["geneve", "geneve gare cornavin"] },
+    { query: "Genève Cornavin", expectedTop: "geneve gare cornavin" },
+    { query: "Lausanne, Bel-Air", expectedTop: "lausanne bel air" },
   ];
 
   for (const item of cases) {
@@ -474,6 +516,6 @@ test("generic query diversifies duplicate stop names", () => {
   const names = ranked.map((row) => normalizeSearchText(row.stop_name));
   assert.equal(names[0], "bern");
   assert.equal(names.filter((name) => name === "bern").length, 1);
-  assert.ok(names.includes("bern, bahnhof"));
-  assert.ok(names.includes("bern, bundesplatz"));
+  assert.ok(names.includes("bern bahnhof"));
+  assert.ok(names.includes("bern bundesplatz"));
 });

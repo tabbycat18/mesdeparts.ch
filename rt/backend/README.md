@@ -183,3 +183,39 @@ curl "http://localhost:3001/api/stationboard?stop_id=<returned_id>&limit=20&debu
 ### Schema
 
 - Canonical JSON schema: `rt/backend/docs/stationboard.schema.json`
+
+## Stop Search Normalization and Ranking (Developer Note)
+
+The stop search pipeline uses one shared normalization contract for user queries and indexed stop text.
+
+Normalization steps:
+- lowercase
+- accent fold (DB: `public.md_unaccent(...)` with deterministic `translate(...)` fallback; JS: NFKD + combining-mark strip)
+- punctuation/separators to spaces (comma, hyphen, apostrophes, dots, slashes, underscores, and other symbols)
+- normalize common abbreviations (`st|saint -> saint`, `hauptbahnhof|hbf|hb -> hb`)
+- collapse repeated whitespace, then trim
+
+Primary indexed source:
+- materialized view `public.stop_search_index` (built by `sql/optimize_stop_search.sql`)
+- key normalized columns:
+  - `name_norm` (normalized full stop name)
+  - `name_core` (normalized stop name with generic station terms stripped)
+  - `search_text` (combined normalized text for contains/fuzzy)
+
+Indexes used for speed:
+- prefix/typeahead:
+  - `idx_stop_search_index_name_norm_prefix` on `name_norm text_pattern_ops`
+  - `idx_stop_aliases_alias_norm_prefix` on `stop_aliases.alias_norm text_pattern_ops`
+- fuzzy fallback:
+  - `idx_stop_search_index_search_text_trgm`, `idx_stop_search_index_name_norm_trgm`, `idx_stop_search_index_name_core_trgm`
+  - `idx_stop_aliases_alias_norm_trgm`
+
+Ranking order in `src/search/stopsSearch.js`:
+1. exact/prefix normalized matches (highest)
+2. token-contained and city/head-token aware matches
+3. trigram/fuzzy similarity fallback
+
+Why typos like `bel aie` still match `Bel-Air`:
+- query normalization turns `bel aie` into stable tokens
+- candidates that do not pass exact/prefix still get fuzzy scores from trigram similarity on normalized `name_norm`/aliases
+- fuzzy tier is retained in top results, so close strings (`aie` vs `air`) remain discoverable.

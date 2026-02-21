@@ -101,15 +101,11 @@ test("searchStops degrades to fallback when primary query throws", async () => {
         };
       }
 
-      if (text.includes("FROM public.stop_search_index b")) {
+      if (text.includes("alias_hits AS")) {
         throw new Error("primary_query_failed");
       }
 
-      if (text.includes("FROM public.stop_aliases sa")) {
-        return { rows: [] };
-      }
-
-      if (text.includes("FROM public.gtfs_stops s")) {
+      if (text.includes("FROM public.stop_search_index b")) {
         return {
           rows: [
             {
@@ -119,6 +115,8 @@ test("searchStops degrades to fallback when primary query throws", async () => {
               parent_station: null,
               location_type: "",
               city_name: "Bad Zurzach",
+              name_norm: "bad zurzach",
+              name_core: "bad zurzach",
               aliases_matched: [],
               alias_weight: 0,
               alias_similarity: 0,
@@ -135,6 +133,8 @@ test("searchStops degrades to fallback when primary query throws", async () => {
               parent_station: null,
               location_type: "",
               city_name: "Zürich",
+              name_norm: "zurich hb",
+              name_core: "zurich hb",
               aliases_matched: [],
               alias_weight: 0,
               alias_similarity: 0,
@@ -182,12 +182,12 @@ test("searchStops forces degraded prefix fallback when unaccent extension is una
         };
       }
 
-      if (text.includes("FROM public.stop_search_index b")) {
+      if (text.includes("alias_hits AS")) {
         primaryCalled = true;
         throw new Error("primary_should_not_run_without_unaccent");
       }
 
-      if (text.includes("FROM public.gtfs_stops s")) {
+      if (text.includes("FROM public.stop_search_index b")) {
         return {
           rows: [
             {
@@ -197,6 +197,8 @@ test("searchStops forces degraded prefix fallback when unaccent extension is una
               parent_station: null,
               location_type: "",
               city_name: "Bad Zurzach",
+              name_norm: "bad zurzach",
+              name_core: "bad zurzach",
               aliases_matched: [],
               alias_weight: 0,
               alias_similarity: 0,
@@ -213,6 +215,8 @@ test("searchStops forces degraded prefix fallback when unaccent extension is una
               parent_station: null,
               location_type: "",
               city_name: "Zürich",
+              name_norm: "zurich hb",
+              name_core: "zurich hb",
               aliases_matched: [],
               alias_weight: 0,
               alias_similarity: 0,
@@ -334,7 +338,7 @@ test("degraded fallback SQL supports non-leading substring matches", async () =>
   assert.equal(rows[0].stop_name, "Lausanne, Grande-Borde");
 });
 
-test("degraded fallback SQL folds accents/comma for Geneve, Poterie queries", async () => {
+test("degraded fallback SQL folds accents/punctuation for Geneve, Poterie queries", async () => {
   __resetSearchCapabilitiesCacheForTests();
 
   let sawFoldClause = false;
@@ -353,7 +357,7 @@ test("degraded fallback SQL folds accents/comma for Geneve, Poterie queries", as
           text.includes("b.name_fold LIKE '%' || p.q_fold || '%'");
 
         const qNorm = String(params?.[0] || "");
-        if (qNorm !== "geneve, poterie") return { rows: [] };
+        if (qNorm !== "geneve poterie") return { rows: [] };
         return {
           rows: [
             {

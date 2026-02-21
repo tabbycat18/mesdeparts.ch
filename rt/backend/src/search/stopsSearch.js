@@ -1,3 +1,5 @@
+import { normalizeStopSearchText } from "../util/searchNormalize.js";
+
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 50;
 const MIN_LIMIT = 1;
@@ -18,15 +20,15 @@ const STOP_SEARCH_CAPS_TIMEOUT_MS = Math.max(
 );
 const STOP_SEARCH_PRIMARY_TIMEOUT_MS = Math.max(
   200,
-  Number(process.env.STOP_SEARCH_PRIMARY_TIMEOUT_MS || "700")
+  Number(process.env.STOP_SEARCH_PRIMARY_TIMEOUT_MS || "1100")
 );
 const STOP_SEARCH_FALLBACK_TIMEOUT_MS = Math.max(
   120,
-  Number(process.env.STOP_SEARCH_FALLBACK_TIMEOUT_MS || "450")
+  Number(process.env.STOP_SEARCH_FALLBACK_TIMEOUT_MS || "900")
 );
 const STOP_SEARCH_ALIAS_TIMEOUT_MS = Math.max(
   100,
-  Number(process.env.STOP_SEARCH_ALIAS_TIMEOUT_MS || "300")
+  Number(process.env.STOP_SEARCH_ALIAS_TIMEOUT_MS || "500")
 );
 
 const GENERIC_STOP_WORDS = new Set([
@@ -120,21 +122,7 @@ async function runDbQuery(db, sql, params = [], timeoutMs = 0) {
 }
 
 export function normalizeSearchText(value) {
-  const raw = toString(value).trim().toLowerCase();
-  if (!raw) return "";
-
-  return raw
-    .normalize("NFKD")
-    .replace(/\p{M}+/gu, "")
-    .replace(/[\u2010-\u2015]/g, "-")
-    .replace(/[-_.\/’'`]+/g, " ")
-    .replace(/[,]+/g, " , ")
-    .replace(/[^\p{L}\p{N}\s,]+/gu, " ")
-    .replace(/\b(st|saint)\b/g, "saint")
-    .replace(/\b(hauptbahnhof|hbf|hb)\b/g, "hb")
-    .replace(/\s*,\s*/g, ", ")
-    .replace(/\s+/g, " ")
-    .trim();
+  return normalizeStopSearchText(value);
 }
 
 export function stripStopWords(normalizedText) {
@@ -156,12 +144,17 @@ function tokenize(normalizedText) {
 }
 
 function splitCommaParts(normalizedText) {
-  const text = normalizeSearchText(normalizedText);
-  if (!text) return [];
-  return text
+  const raw = toString(normalizedText).trim();
+  if (!raw) return [];
+
+  const parts = raw
     .split(",")
-    .map((part) => part.trim())
+    .map((part) => normalizeSearchText(part))
     .filter(Boolean);
+  if (parts.length > 0) return parts;
+
+  const normalized = normalizeSearchText(raw);
+  return normalized ? [normalized] : [];
 }
 
 function hasHubWord(tokens) {
@@ -338,7 +331,7 @@ function scoreCandidate(row, queryCtx) {
   const nameTokens = tokenize(nameNorm);
   const coreTokens = tokenize(coreNorm);
   const candidateTokens = coreTokens.length > 0 ? coreTokens : nameTokens;
-  const nameParts = splitCommaParts(nameNorm);
+  const nameParts = splitCommaParts(stopName);
   const candidateHeadTokens = tokenize(nameParts[0] || nameNorm);
   const candidatePostCommaTokens = tokenize(nameParts.slice(1).join(" "));
 
@@ -382,7 +375,7 @@ function scoreCandidate(row, queryCtx) {
   const headCityMatch =
     queryCtx.queryHeadTokens.length > 0 &&
     tokenContainmentMatch(queryCtx.queryHeadTokens, candidateHeadTokens);
-  const commaStructureMatch = queryCtx.queryHasComma && nameNorm.includes(",");
+  const commaStructureMatch = queryCtx.queryHasComma && stopName.includes(",");
 
   const fuzzySimilarity = computeFuzzySimilarity({
     queryNorm: queryCtx.queryNorm,
@@ -527,7 +520,7 @@ export function rankStopCandidatesDetailed(rows, query, limit = DEFAULT_LIMIT) {
 
   const queryCore = stripStopWords(queryNorm);
   const queryTokens = tokenize(queryCore || queryNorm);
-  const queryCommaParts = splitCommaParts(queryNorm);
+  const queryCommaParts = splitCommaParts(query);
   const queryHasComma = queryCommaParts.length > 1;
   const queryHeadTokens = tokenize(queryCommaParts[0] || queryNorm);
   const queryPostCommaTokens = tokenize(queryCommaParts.slice(1).join(" "));
@@ -768,6 +761,105 @@ ORDER BY
   ) DESC,
   b.is_parent DESC,
   b.has_hub_token DESC,
+  b.nb_stop_times DESC,
+  b.stop_name ASC
+LIMIT $2;
+`;
+
+const FALLBACK_INDEX_TRGM_SQL = `
+WITH params AS (
+  SELECT
+    $1::text AS q_norm,
+    CASE
+      WHEN char_length($1::text) <= 4 THEN 0.48
+      WHEN char_length($1::text) <= 6 THEN 0.40
+      WHEN char_length($1::text) <= 8 THEN 0.34
+      ELSE 0.28
+    END AS sim_threshold
+)
+SELECT
+  b.group_id,
+  b.stop_id,
+  b.stop_name,
+  b.parent_station,
+  b.location_type,
+  b.city_name,
+  b.name_norm,
+  b.name_core,
+  ARRAY[]::text[] AS aliases_matched,
+  0::float8 AS alias_weight,
+  0::float8 AS alias_similarity,
+  similarity(b.name_norm, p.q_norm)::float8 AS name_similarity,
+  0::float8 AS core_similarity,
+  b.is_parent,
+  b.has_hub_token,
+  b.nb_stop_times
+FROM public.stop_search_index b
+CROSS JOIN params p
+WHERE
+  p.q_norm <> ''
+  AND (
+    b.name_norm = p.q_norm
+    OR b.name_norm LIKE p.q_norm || '%'
+    OR b.search_text LIKE '%' || p.q_norm || '%'
+    OR b.search_text % p.q_norm
+  )
+ORDER BY
+  CASE
+    WHEN b.name_norm = p.q_norm THEN 4
+    WHEN b.name_norm LIKE p.q_norm || '%' THEN 3
+    WHEN b.search_text LIKE '%' || p.q_norm || '%' THEN 2
+    ELSE 1
+  END DESC,
+  similarity(b.name_norm, p.q_norm) DESC,
+  b.is_parent DESC,
+  b.nb_stop_times DESC,
+  b.stop_name ASC
+LIMIT $2;
+`;
+
+const FALLBACK_INDEX_PLAIN_SQL = `
+WITH params AS (
+  SELECT
+    $1::text AS q_norm,
+    split_part($1::text, ' ', 1) AS q_head,
+    left($1::text, 1) AS q_first
+)
+SELECT
+  b.group_id,
+  b.stop_id,
+  b.stop_name,
+  b.parent_station,
+  b.location_type,
+  b.city_name,
+  b.name_norm,
+  b.name_core,
+  ARRAY[]::text[] AS aliases_matched,
+  0::float8 AS alias_weight,
+  0::float8 AS alias_similarity,
+  0::float8 AS name_similarity,
+  0::float8 AS core_similarity,
+  b.is_parent,
+  b.has_hub_token,
+  b.nb_stop_times
+FROM public.stop_search_index b
+CROSS JOIN params p
+WHERE
+  p.q_norm <> ''
+  AND (
+    b.name_norm LIKE p.q_norm || '%'
+    OR b.search_text LIKE '%' || p.q_norm || '%'
+    OR (p.q_head <> '' AND b.name_norm LIKE p.q_head || '%')
+    OR (p.q_first <> '' AND b.name_norm LIKE p.q_first || '%')
+  )
+ORDER BY
+  CASE
+    WHEN b.name_norm = p.q_norm THEN 4
+    WHEN b.name_norm LIKE p.q_norm || '%' THEN 3
+    WHEN b.search_text LIKE '%' || p.q_norm || '%' THEN 2
+    ELSE 1
+  END DESC,
+  b.is_parent DESC,
   b.nb_stop_times DESC,
   b.stop_name ASC
 LIMIT $2;
@@ -1188,7 +1280,14 @@ async function fetchFallbackAliasRows(db, queryNorm, candidateLimit, caps, optio
 
 async function runFallbackSearch(db, queryNorm, candidateLimit, caps, options = {}) {
   const forcePrefixOnly = caps.hasUnaccent !== true;
-  const fallbackSql = !forcePrefixOnly && caps.hasPgTrgm ? FALLBACK_TRGM_SQL : FALLBACK_PLAIN_SQL;
+  const useIndexedFallback = caps.hasStopSearchIndex === true;
+  const fallbackSql = useIndexedFallback
+    ? !forcePrefixOnly && caps.hasPgTrgm
+      ? FALLBACK_INDEX_TRGM_SQL
+      : FALLBACK_INDEX_PLAIN_SQL
+    : !forcePrefixOnly && caps.hasPgTrgm
+      ? FALLBACK_TRGM_SQL
+      : FALLBACK_PLAIN_SQL;
   const fallbackTimeoutMs = timeoutWithinBudget({
     budget: options?.budget,
     maxMs: STOP_SEARCH_FALLBACK_TIMEOUT_MS,
@@ -1268,6 +1367,8 @@ async function runStopSearch(db, query, limit = DEFAULT_LIMIT, options = {}) {
     }
   }
 
+  // Ranking is intentionally simple and stable:
+  // prefix/exact > token-contained > fuzzy similarity fallback.
   const ranked = rankStopCandidates(rows, qNorm, lim);
   if (ranked.length > 0 || options?.disableBackoff === true) {
     if (options?.debug !== true) {

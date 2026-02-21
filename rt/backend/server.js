@@ -63,6 +63,7 @@ const { summarizeTripUpdates } = await import("./src/loaders/tripUpdatesSummary.
 const { readTripUpdatesFeedFromCache } = await import("./loaders/loadRealtime.js");
 const { normalizeStopId } = await import("./src/util/stopScope.js");
 const { informedStopMatchesForDebug } = await import("./src/util/alertDebugScope.js");
+const { normalizeStopSearchText } = await import("./src/util/searchNormalize.js");
 
 const app = express();
 const PORT = Number(process.env.PORT || 3001);
@@ -77,19 +78,19 @@ const OTD_FETCH_TIMEOUT_MS = Math.max(
 );
 const STOPS_SEARCH_QUERY_TIMEOUT_MS = Math.max(
   120,
-  Number(process.env.STOPS_SEARCH_QUERY_TIMEOUT_MS || "700")
+  Number(process.env.STOPS_SEARCH_QUERY_TIMEOUT_MS || "1100")
 );
 const STOPS_SEARCH_TOTAL_TIMEOUT_MS = Math.max(
   300,
-  Number(process.env.STOPS_SEARCH_TOTAL_TIMEOUT_MS || "1800")
+  Number(process.env.STOPS_SEARCH_TOTAL_TIMEOUT_MS || "2600")
 );
 const STOPS_SEARCH_FALLBACK_QUERY_TIMEOUT_MS = Math.max(
   80,
-  Number(process.env.STOPS_SEARCH_FALLBACK_QUERY_TIMEOUT_MS || "350")
+  Number(process.env.STOPS_SEARCH_FALLBACK_QUERY_TIMEOUT_MS || "900")
 );
 const STOPS_SEARCH_DEGRADED_TIMEOUT_MS = Math.max(
   120,
-  Number(process.env.STOPS_SEARCH_DEGRADED_TIMEOUT_MS || "700")
+  Number(process.env.STOPS_SEARCH_DEGRADED_TIMEOUT_MS || "1500")
 );
 
 function resolveOtdApiKey() {
@@ -268,102 +269,170 @@ function withTimeout(promise, timeoutMs, code = "timeout") {
 }
 
 function foldSearchText(value) {
-  return String(value || "")
-    .trim()
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/\p{M}+/gu, "")
-    .replace(/[\u2010-\u2015]/g, "-")
-    .replace(/[-_.\/’'`]+/g, " ")
-    .replace(/[^a-z0-9\s,]+/g, " ")
-    .replace(/\s*,\s*/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  return normalizeStopSearchText(value);
 }
 
 async function fastStopsSearchFallback(query, limit) {
   const q = foldSearchText(query);
   if (q.length < 2) return [];
   const lim = Math.max(1, Math.min(Number(limit) || 20, 50));
-  const res = await pool.query({
-    text: `
-      WITH base AS (
+  let res;
+  try {
+    res = await pool.query({
+      text: `
+        WITH params AS (
+          SELECT $1::text AS q_norm
+        ),
+        ranked AS (
+          SELECT
+            b.group_id,
+            b.stop_id,
+            b.stop_name,
+            b.parent_station,
+            b.location_type,
+            b.name_norm,
+            b.is_parent,
+            b.nb_stop_times,
+            similarity(b.name_norm, p.q_norm)::float8 AS sim,
+            CASE
+              WHEN b.name_norm = p.q_norm THEN 4
+              WHEN b.name_norm LIKE p.q_norm || '%' THEN 3
+              WHEN b.search_text LIKE '%' || p.q_norm || '%' THEN 2
+              WHEN b.search_text % p.q_norm THEN 1
+              ELSE 0
+            END AS tier
+          FROM public.stop_search_index b
+          CROSS JOIN params p
+          WHERE
+            p.q_norm <> ''
+            AND (
+              b.name_norm LIKE p.q_norm || '%'
+              OR b.search_text LIKE '%' || p.q_norm || '%'
+              OR b.search_text % p.q_norm
+            )
+        ),
+        per_group AS (
+          SELECT DISTINCT ON (group_id)
+            group_id,
+            stop_id,
+            stop_name,
+            parent_station,
+            location_type,
+            name_norm,
+            is_parent,
+            nb_stop_times,
+            sim,
+            tier
+          FROM ranked
+          WHERE tier > 0
+          ORDER BY
+            group_id,
+            tier DESC,
+            sim DESC,
+            is_parent DESC,
+            nb_stop_times DESC,
+            stop_name ASC
+        )
         SELECT
-          COALESCE(NULLIF(to_jsonb(s) ->> 'parent_station', ''), s.stop_id) AS group_id,
-          s.stop_id,
-          s.stop_name,
-          NULLIF(to_jsonb(s) ->> 'parent_station', '') AS parent_station,
-          COALESCE(NULLIF(to_jsonb(s) ->> 'location_type', ''), '') AS location_type,
-          trim(
-            regexp_replace(
-              translate(
-                lower(s.stop_name),
-                'àáâãäåçèéêëìíîïñòóôõöøùúûüýÿ',
-                'aaaaaaceeeeiiiinoooooouuuuyy'
-              ),
-              '[^a-z0-9]+',
-              ' ',
-              'g'
-            )
-          ) AS stop_fold
-        FROM public.gtfs_stops s
-        WHERE
-          trim(
-            regexp_replace(
-              translate(
-                lower(s.stop_name),
-                'àáâãäåçèéêëìíîïñòóôõöøùúûüýÿ',
-                'aaaaaaceeeeiiiinoooooouuuuyy'
-              ),
-              '[^a-z0-9]+',
-              ' ',
-              'g'
-            )
-          ) LIKE $1 || '%'
-          OR trim(
-            regexp_replace(
-              translate(
-                lower(s.stop_name),
-                'àáâãäåçèéêëìíîïñòóôõöøùúûüýÿ',
-                'aaaaaaceeeeiiiinoooooouuuuyy'
-              ),
-              '[^a-z0-9]+',
-              ' ',
-              'g'
-            )
-          ) LIKE '%' || $1 || '%'
-      ),
-      per_group AS (
-        SELECT DISTINCT ON (group_id)
           group_id,
           stop_id,
           stop_name,
           parent_station,
           location_type,
-          stop_fold
-        FROM base
-        ORDER BY group_id, stop_name
-      )
-      SELECT
-        group_id,
-        stop_id,
-        stop_name,
-        parent_station,
-        location_type,
-        stop_fold
-      FROM per_group
-      ORDER BY
-        CASE
-          WHEN stop_fold = $1 THEN 0
-          WHEN stop_fold LIKE $1 || '%' THEN 1
-          ELSE 2
-        END,
-        stop_name
-      LIMIT $2
-    `,
-    values: [q, lim],
-    query_timeout: STOPS_SEARCH_FALLBACK_QUERY_TIMEOUT_MS,
-  });
+          name_norm AS stop_fold
+        FROM per_group
+        ORDER BY
+          tier DESC,
+          sim DESC,
+          is_parent DESC,
+          nb_stop_times DESC,
+          stop_name ASC
+        LIMIT $2
+      `,
+      values: [q, lim],
+      query_timeout: STOPS_SEARCH_FALLBACK_QUERY_TIMEOUT_MS,
+    });
+  } catch (err) {
+    // Prefix-only, no trigram operator, still uses indexed normalized columns.
+    res = await pool.query({
+      text: `
+        WITH params AS (
+          SELECT
+            $1::text AS q_norm,
+            split_part($1::text, ' ', 1) AS q_head,
+            left($1::text, 1) AS q_first
+        ),
+        ranked AS (
+          SELECT
+            b.group_id,
+            b.stop_id,
+            b.stop_name,
+            b.parent_station,
+            b.location_type,
+            b.name_norm,
+            b.is_parent,
+            b.nb_stop_times,
+            CASE
+              WHEN b.name_norm = p.q_norm THEN 4
+              WHEN b.name_norm LIKE p.q_norm || '%' THEN 3
+              WHEN b.search_text LIKE '%' || p.q_norm || '%' THEN 2
+              WHEN p.q_head <> '' AND b.name_norm LIKE p.q_head || '%' THEN 1
+              WHEN p.q_first <> '' AND b.name_norm LIKE p.q_first || '%' THEN 1
+              ELSE 0
+            END AS tier
+          FROM public.stop_search_index b
+          CROSS JOIN params p
+          WHERE
+            p.q_norm <> ''
+            AND (
+              b.name_norm LIKE p.q_norm || '%'
+              OR b.search_text LIKE '%' || p.q_norm || '%'
+              OR (p.q_head <> '' AND b.name_norm LIKE p.q_head || '%')
+              OR (p.q_first <> '' AND b.name_norm LIKE p.q_first || '%')
+            )
+        ),
+        per_group AS (
+          SELECT DISTINCT ON (group_id)
+            group_id,
+            stop_id,
+            stop_name,
+            parent_station,
+            location_type,
+            name_norm,
+            is_parent,
+            nb_stop_times,
+            tier
+          FROM ranked
+          WHERE tier > 0
+          ORDER BY
+            group_id,
+            tier DESC,
+            is_parent DESC,
+            nb_stop_times DESC,
+            stop_name ASC
+        )
+        SELECT
+          group_id,
+          stop_id,
+          stop_name,
+          parent_station,
+          location_type,
+          name_norm AS stop_fold
+        FROM per_group
+        ORDER BY
+          tier DESC,
+          is_parent DESC,
+          nb_stop_times DESC,
+          stop_name ASC
+        LIMIT $2
+      `,
+      values: [q, lim],
+      query_timeout: STOPS_SEARCH_FALLBACK_QUERY_TIMEOUT_MS,
+    });
+    if (!res?.rows) {
+      throw err;
+    }
+  }
 
   return (res.rows || []).map((row) => {
     const stationId = row.group_id || row.stop_id;
