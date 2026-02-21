@@ -8,6 +8,8 @@ const DEFAULT_RT_FRESHNESS_THRESHOLD_MS = Math.max(
   Number(process.env.STATIONBOARD_RT_FRESH_MAX_AGE_MS || "45000")
 );
 const DEFAULT_RT_FEED_KEY = "la_tripupdates";
+const DEFAULT_200_CDN_CACHE_CONTROL = "public, max-age=12, stale-while-revalidate=24";
+const DEFAULT_204_CDN_CACHE_CONTROL = "public, max-age=2, stale-while-revalidate=4";
 const ROUTE_INSTANCE_ID = String(process.env.FLY_ALLOC_ID || os.hostname() || "local").trim();
 const ROUTE_BUILD = String(
   process.env.APP_VERSION ||
@@ -48,6 +50,31 @@ function parseBooleanish(value) {
   if (["1", "true", "yes", "on"].includes(raw)) return true;
   if (["0", "false", "no", "off"].includes(raw)) return false;
   return null;
+}
+
+function parseSinceRtMs(raw) {
+  const value = text(raw);
+  if (!value) return { ok: true, ms: null, raw: "" };
+
+  if (/^\d{12,16}$/.test(value)) {
+    const num = Number(value);
+    if (Number.isFinite(num) && num > 0) {
+      return { ok: true, ms: Math.trunc(num), raw: value };
+    }
+  }
+
+  const parsedMs = Date.parse(value);
+  if (Number.isFinite(parsedMs) && parsedMs > 0) {
+    return { ok: true, ms: Math.trunc(parsedMs), raw: value };
+  }
+
+  return { ok: false, ms: null, raw: value };
+}
+
+function toIsoOrNull(value) {
+  const ms = Number(value);
+  if (!Number.isFinite(ms) || ms <= 0) return null;
+  return new Date(ms).toISOString();
 }
 
 function randomRequestId() {
@@ -100,6 +127,18 @@ function toFiniteNumberOrNull(value) {
   return Number.isFinite(n) ? n : null;
 }
 
+function canonicalRtReason(rawReason, applied) {
+  if (applied === true) return "fresh";
+  const reason = text(rawReason).toLowerCase();
+  if (!reason) return "missing";
+  if (reason === "applied" || reason === "fresh" || reason === "fresh_cache") return "fresh";
+  if (reason.includes("stale")) return "stale";
+  if (reason === "disabled") return "disabled";
+  if (reason.includes("guard") || reason.includes("decode") || reason.includes("error")) return "guarded";
+  if (reason.includes("missing")) return "missing";
+  return "guarded";
+}
+
 function routeInstanceMeta(raw) {
   const src = raw && typeof raw === "object" ? raw : {};
   const id = text(src.id) || ROUTE_INSTANCE_ID || `${os.hostname()}:${process.pid}`;
@@ -115,7 +154,7 @@ function routeInstanceMeta(raw) {
 function ensureRtMeta(raw) {
   const src = raw && typeof raw === "object" ? raw : {};
   const applied = src.applied === true;
-  const reason = text(src.reason) || (applied ? "applied" : "missing_cache");
+  const reason = canonicalRtReason(text(src.reason), applied);
   const fetchedAt = text(src.cacheFetchedAt) || text(src.fetchedAt) || null;
   const ageMs =
     toFiniteNumberOrNull(src.cacheAgeMs) ??
@@ -137,12 +176,14 @@ function ensureRtMeta(raw) {
     fetchedAt,
     cacheFetchedAt: fetchedAt,
     cacheAgeMs: ageMs,
+    ageMs,
     ageSeconds:
       toFiniteNumberOrNull(src.ageSeconds) ??
       (ageMs != null ? Math.max(0, Math.floor(ageMs / 1000)) : null),
     freshnessThresholdMs,
     freshnessMaxAgeSeconds: Math.round(freshnessThresholdMs / 1000),
     cacheStatus: text(src.cacheStatus) || (applied ? "FRESH" : "MISS"),
+    status: toFiniteNumberOrNull(src.status) ?? toFiniteNumberOrNull(src.lastStatus),
     lastStatus: toFiniteNumberOrNull(src.lastStatus),
     lastError: text(src.lastError) || null,
     payloadBytes: toFiniteNumberOrNull(src.payloadBytes),
@@ -176,12 +217,16 @@ function ensureStationboardMetaPayload(payload) {
 function applyRtDiagnosticHeaders(res, payload, { cacheKey = "" } = {}) {
   const rt = payload?.rt && typeof payload.rt === "object" ? payload.rt : ensureRtMeta();
   const applied = rt.applied === true ? "1" : "0";
-  const reason = text(rt.reason) || (rt.applied === true ? "applied" : "missing_cache");
+  const reason = canonicalRtReason(rt.reason, rt.applied === true);
   const ageMs = toFiniteNumberOrNull(rt.cacheAgeMs);
+  const fetchedAt = text(rt.cacheFetchedAt) || text(rt.fetchedAt) || "";
+  const status = toFiniteNumberOrNull(rt.status) ?? toFiniteNumberOrNull(rt.lastStatus);
   const instanceId = text(rt.instance?.id) || ROUTE_INSTANCE_ID || `${os.hostname()}:${process.pid}`;
   setResponseHeader(res, "x-md-rt-applied", applied);
   setResponseHeader(res, "x-md-rt-reason", reason);
   setResponseHeader(res, "x-md-rt-age-ms", ageMs == null ? "-1" : String(Math.max(0, Math.round(ageMs))));
+  setResponseHeader(res, "x-md-rt-fetched-at", fetchedAt || "");
+  setResponseHeader(res, "x-md-rt-status", status == null ? "" : String(status));
   setResponseHeader(res, "x-md-instance", instanceId);
   if (cacheKey) setResponseHeader(res, "x-md-cache-key", cacheKey);
 }
@@ -205,6 +250,15 @@ function withTimeout(promise, timeoutMs, code = "timeout") {
         reject(err);
       });
   });
+}
+
+function emitStationboardDecisionLog(logger, payload = {}) {
+  logger?.log?.("[API] /api/stationboard decision", payload);
+}
+
+async function defaultGetRtCacheMeta(feedKey) {
+  const mod = await import("../db/rtCache.js");
+  return mod.getRtCacheMeta(feedKey);
 }
 
 function cacheKeyForRequest({
@@ -335,6 +389,7 @@ async function detectStopParamConflict({ stopId, stationId, stationName }, deps)
 
 export function createStationboardRouteHandler({
   getStationboardLike,
+  getRtCacheMetaLike = defaultGetRtCacheMeta,
   resolveStopLike,
   dbQueryLike,
   logger = console,
@@ -355,7 +410,7 @@ export function createStationboardRouteHandler({
     setResponseHeader(
       res,
       "CDN-Cache-Control",
-      "public, max-age=12, stale-while-revalidate=24"
+      DEFAULT_200_CDN_CACHE_CONTROL
     );
     appendVaryHeader(res, "Origin", "Accept-Encoding");
     setResponseHeader(res, "x-md-instance", ROUTE_INSTANCE_ID);
@@ -374,6 +429,21 @@ export function createStationboardRouteHandler({
       const includeAlertsParsed = parseBooleanish(
         req.query.include_alerts ?? req.query.includeAlerts
       );
+      const sinceRtParsed = parseSinceRtMs(req.query.since_rt);
+      if (!sinceRtParsed.ok) {
+        setResponseHeader(
+          res,
+          "x-md-backend-total-ms",
+          String(roundMs(performance.now() - routeStartedMs))
+        );
+        return res.status(400).json({
+          error: {
+            code: "invalid_since_rt",
+            message: "since_rt must be ISO timestamp or epoch ms",
+          },
+        });
+      }
+      const sinceRtMs = sinceRtParsed.ms;
       const responseCacheKey = cacheKeyForRequest({
         stopId: effectiveStopId,
         stationId: stationIdRaw,
@@ -396,6 +466,8 @@ export function createStationboardRouteHandler({
         debug,
         debugRt,
         includeAlerts: includeAlertsParsed,
+        sinceRt: sinceRtParsed.raw || null,
+        sinceRtMs,
       });
 
       if (!effectiveStopId) {
@@ -448,6 +520,73 @@ export function createStationboardRouteHandler({
         }
       }
 
+      const rtCacheMeta = await Promise.resolve(
+        typeof getRtCacheMetaLike === "function"
+          ? getRtCacheMetaLike(DEFAULT_RT_FEED_KEY)
+          : null
+      ).catch((err) => {
+        logger?.warn?.("[API] /api/stationboard rt_cache meta read failed", {
+          requestId,
+          error: String(err?.message || err),
+        });
+        return null;
+      });
+      const nowMs = Date.now();
+      const rtFetchedAtMs = rtCacheMeta?.fetched_at
+        ? Number(new Date(rtCacheMeta.fetched_at).getTime())
+        : null;
+      const rtFetchedAtIso = toIsoOrNull(rtFetchedAtMs);
+      const rtAgeMs =
+        Number.isFinite(rtFetchedAtMs) && rtFetchedAtMs > 0
+          ? Math.max(0, nowMs - rtFetchedAtMs)
+          : null;
+      const rtStatus =
+        toFiniteNumberOrNull(rtCacheMeta?.last_status) ??
+        (rtCacheMeta?.has_payload ? 200 : null);
+      const hasRtSnapshot =
+        Number.isFinite(rtFetchedAtMs) && rtFetchedAtMs > 0;
+
+      if (
+        Number.isFinite(sinceRtMs) &&
+        hasRtSnapshot &&
+        Number.isFinite(rtFetchedAtMs) &&
+        rtFetchedAtMs <= sinceRtMs
+      ) {
+        setResponseHeader(res, "CDN-Cache-Control", DEFAULT_204_CDN_CACHE_CONTROL);
+        setResponseHeader(res, "x-md-rt-applied", "0");
+        setResponseHeader(res, "x-md-rt-reason", "unchanged_since_rt");
+        setResponseHeader(res, "x-md-rt-fetched-at", rtFetchedAtIso || "");
+        setResponseHeader(
+          res,
+          "x-md-rt-age-ms",
+          rtAgeMs == null ? "-1" : String(Math.max(0, Math.round(rtAgeMs)))
+        );
+        setResponseHeader(res, "x-md-rt-status", rtStatus == null ? "" : String(rtStatus));
+        setResponseHeader(
+          res,
+          "x-md-backend-total-ms",
+          String(roundMs(performance.now() - routeStartedMs))
+        );
+        emitStationboardDecisionLog(logger, {
+          requestId,
+          stopId: effectiveStopId,
+          stationId: stationIdRaw || null,
+          sinceRtMs,
+          rtFetchedAtMs: Number.isFinite(rtFetchedAtMs) ? rtFetchedAtMs : null,
+          responded204: true,
+          rtApplied: false,
+          rtReason: "unchanged_since_rt",
+          totalMs: roundMs(performance.now() - routeStartedMs),
+        });
+        if (typeof res.status === "function") {
+          res.status(204);
+        } else {
+          res.statusCode = 204;
+        }
+        if (typeof res.end === "function") return res.end();
+        return;
+      }
+
       let result;
       try {
         result = await withTimeout(
@@ -482,6 +621,17 @@ export function createStationboardRouteHandler({
           "x-md-backend-total-ms",
           String(roundMs(performance.now() - routeStartedMs))
         );
+        emitStationboardDecisionLog(logger, {
+          requestId,
+          stopId: effectiveStopId,
+          stationId: stationIdRaw || null,
+          sinceRtMs,
+          rtFetchedAtMs: Number.isFinite(rtFetchedAtMs) ? rtFetchedAtMs : null,
+          responded204: false,
+          rtApplied: normalizedCached?.rt?.applied === true,
+          rtReason: normalizedCached?.rt?.reason || null,
+          totalMs: roundMs(performance.now() - routeStartedMs),
+        });
         if (debug) {
           normalizedCached.debug = {
             ...(normalizedCached.debug && typeof normalizedCached.debug === "object"
@@ -518,6 +668,17 @@ export function createStationboardRouteHandler({
         "x-md-backend-total-ms",
         String(roundMs(performance.now() - routeStartedMs))
       );
+      emitStationboardDecisionLog(logger, {
+        requestId,
+        stopId: effectiveStopId,
+        stationId: stationIdRaw || null,
+        sinceRtMs,
+        rtFetchedAtMs: Number.isFinite(rtFetchedAtMs) ? rtFetchedAtMs : null,
+        responded204: false,
+        rtApplied: normalizedResult?.rt?.applied === true,
+        rtReason: normalizedResult?.rt?.reason || null,
+        totalMs: roundMs(performance.now() - routeStartedMs),
+      });
       return res.json(normalizedResult);
     } catch (err) {
       const backendTotalMs = roundMs(performance.now() - routeStartedMs);
@@ -526,6 +687,17 @@ export function createStationboardRouteHandler({
         requestId,
         backendTotalMs,
         error: String(err?.message || err),
+      });
+      emitStationboardDecisionLog(logger, {
+        requestId,
+        stopId: text(req?.query?.stop_id) || text(req?.query?.stationId) || null,
+        stationId: text(req?.query?.stationId) || text(req?.query?.station_id) || null,
+        sinceRtMs: parseSinceRtMs(req?.query?.since_rt).ms,
+        rtFetchedAtMs: null,
+        responded204: false,
+        rtApplied: false,
+        rtReason: "request_failed",
+        totalMs: backendTotalMs,
       });
       if (err?.code === "stop_not_found" || Number(err?.status) === 404) {
         const payload = {

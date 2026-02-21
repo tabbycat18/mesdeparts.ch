@@ -674,6 +674,7 @@ function toRtTripUpdatesDebug(rtMeta, departureAuditRows) {
     0
   );
 
+  const normalizedReason = normalizeRtReason(base.reason, base.applied === true);
   return {
     cacheStatus: String(base.cacheStatus || "MISS"),
     fetchedAtUtc: base.fetchedAt || base.fetchedAtUtc || null,
@@ -693,17 +694,29 @@ function toRtTripUpdatesDebug(rtMeta, departureAuditRows) {
         ? Number(base.fetchMs)
         : null,
     entityCount: Number.isFinite(base.entityCount) ? Number(base.entityCount) : null,
-    hadError: base.hadError === true || !["applied", "stale_cache", "missing_cache", "disabled"].includes(String(base.reason || "")),
+    hadError: base.hadError === true || !["fresh", "stale", "missing", "disabled", "guarded"].includes(normalizedReason),
     error: base.error ? String(base.error) : base.lastError ? String(base.lastError) : null,
     applied: base.applied === true,
-    reason: String(base.reason || ""),
+    reason: normalizedReason,
     appliedToDeparturesCount,
   };
 }
 
+function normalizeRtReason(rawReason, applied) {
+  if (applied === true) return "fresh";
+  const reason = String(rawReason || "").trim().toLowerCase();
+  if (!reason) return "missing";
+  if (reason === "applied" || reason === "fresh" || reason === "fresh_cache") return "fresh";
+  if (reason.includes("stale")) return "stale";
+  if (reason === "disabled") return "disabled";
+  if (reason.includes("guard") || reason.includes("decode") || reason.includes("error")) return "guarded";
+  if (reason.includes("missing")) return "missing";
+  return "guarded";
+}
+
 function buildRtResponseMeta(rtMetaRaw) {
   const rtMeta = rtMetaRaw && typeof rtMetaRaw === "object" ? rtMetaRaw : {};
-  const reason = String(rtMeta.reason || (rtMeta.applied ? "applied" : "missing_cache"));
+  const reason = normalizeRtReason(rtMeta.reason, rtMeta.applied === true);
   const cacheFetchedAt =
     String(rtMeta.cacheFetchedAt || rtMeta.fetchedAt || "").trim() || null;
   const cacheAgeMs = Number.isFinite(rtMeta.cacheAgeMs)
@@ -741,6 +754,7 @@ function buildRtResponseMeta(rtMetaRaw) {
     fetchedAt: cacheFetchedAt,
     cacheFetchedAt,
     cacheAgeMs,
+    ageMs: cacheAgeMs,
     ageSeconds: Number.isFinite(rtMeta.ageSeconds)
       ? Number(rtMeta.ageSeconds)
       : Number.isFinite(cacheAgeMs)
@@ -749,6 +763,11 @@ function buildRtResponseMeta(rtMetaRaw) {
     freshnessThresholdMs,
     freshnessMaxAgeSeconds: Math.round(freshnessThresholdMs / 1000),
     cacheStatus: String(rtMeta.cacheStatus || "MISS"),
+    status: Number.isFinite(rtMeta.status)
+      ? Number(rtMeta.status)
+      : Number.isFinite(rtMeta.lastStatus)
+        ? Number(rtMeta.lastStatus)
+        : null,
     lastStatus: Number.isFinite(rtMeta.lastStatus) ? Number(rtMeta.lastStatus) : null,
     lastError: rtMeta.lastError ? String(rtMeta.lastError) : null,
     payloadBytes: Number.isFinite(rtMeta.payloadBytes) ? Number(rtMeta.payloadBytes) : null,

@@ -47,6 +47,17 @@ function rowToCacheRecord(row) {
   };
 }
 
+function rowToCacheMeta(row) {
+  if (!row) return null;
+  const payloadBytes = Number(row.payload_bytes);
+  return {
+    fetched_at: row.fetched_at || null,
+    last_status: Number.isFinite(Number(row.last_status)) ? Number(row.last_status) : null,
+    payload_bytes: Number.isFinite(payloadBytes) ? payloadBytes : 0,
+    has_payload: Number.isFinite(payloadBytes) ? payloadBytes > 0 : false,
+  };
+}
+
 export async function upsertRtCache(
   feed_key,
   payloadBytes,
@@ -103,4 +114,21 @@ export async function getRtCache(feed_key) {
     [feedKey]
   );
   return rowToCacheRecord(result.rows[0] || null);
+}
+
+export async function getRtCacheMeta(feed_key) {
+  const feedKey = normalizeFeedKey(feed_key);
+  const result = await query(
+    `
+      SELECT
+        fetched_at,
+        last_status,
+        octet_length(payload) AS payload_bytes
+      FROM public.rt_cache
+      WHERE feed_key = $1
+      LIMIT 1
+    `,
+    [feedKey]
+  );
+  return rowToCacheMeta(result.rows[0] || null);
 }

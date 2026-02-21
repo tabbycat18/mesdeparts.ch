@@ -45,13 +45,15 @@ function makeStationboardStub(calls) {
       rt: {
         available: false,
         applied: false,
-        reason: "missing_cache",
+        reason: "missing",
         feedKey: "la_tripupdates",
         fetchedAt: null,
         cacheFetchedAt: null,
         cacheAgeMs: null,
+        ageMs: null,
         freshnessThresholdMs: 45000,
         ageSeconds: null,
+        status: null,
         instance: {
           id: "test-instance",
           allocId: null,
@@ -87,6 +89,33 @@ function makeStationboardStub(calls) {
   };
 }
 
+function makeRtCacheMetaStub({
+  fetchedAt = "2026-02-21T15:00:00.000Z",
+  lastStatus = 200,
+  payloadBytes = 1024,
+  hasPayload = true,
+} = {}) {
+  return {
+    fetched_at: fetchedAt,
+    last_status: lastStatus,
+    payload_bytes: payloadBytes,
+    has_payload: hasPayload,
+  };
+}
+
+function createRouteHandler(options = {}) {
+  return createStationboardRouteHandler({
+    getRtCacheMetaLike: async () =>
+      makeRtCacheMetaStub({
+        fetchedAt: null,
+        lastStatus: null,
+        payloadBytes: 0,
+        hasPayload: false,
+      }),
+    ...options,
+  });
+}
+
 function makeMockRes() {
   return {
     statusCode: 200,
@@ -100,12 +129,19 @@ function makeMockRes() {
       this.headers[key] = String(value);
       return this;
     },
+    getHeader(key) {
+      return this.headers[key];
+    },
     status(code) {
       this.statusCode = code;
       return this;
     },
     json(payload) {
       this.body = payload;
+      return this;
+    },
+    end(payload = "") {
+      this.body = payload || null;
       return this;
     },
   };
@@ -138,7 +174,7 @@ async function withEnv(name, value, run) {
 
 test("stationboard route returns 400 conflicting_stop_id when canonical roots differ", async () => {
   const calls = [];
-  const handler = createStationboardRouteHandler({
+  const handler = createRouteHandler({
     getStationboardLike: makeStationboardStub(calls),
     resolveStopLike: makeResolveStopStub({
       "stop:ParentAAA": { resolvedStopId: "ParentAAA", resolvedRootId: "ParentAAA" },
@@ -170,7 +206,7 @@ test("stationboard route returns 400 conflicting_stop_id when canonical roots di
 
 test("stationboard route does not conflict when params resolve to same canonical root", async () => {
   const calls = [];
-  const handler = createStationboardRouteHandler({
+  const handler = createRouteHandler({
     getStationboardLike: makeStationboardStub(calls),
     resolveStopLike: makeResolveStopStub({
       "stop:8501120:0:1": {
@@ -210,8 +246,10 @@ test("stationboard route does not conflict when params resolve to same canonical
     "Origin, Accept-Encoding"
   );
   assert.equal(res.headers["x-md-rt-applied"], "0");
-  assert.equal(res.headers["x-md-rt-reason"], "missing_cache");
+  assert.equal(res.headers["x-md-rt-reason"], "missing");
   assert.equal(res.headers["x-md-rt-age-ms"], "-1");
+  assert.equal(res.headers["x-md-rt-fetched-at"], "");
+  assert.equal(res.headers["x-md-rt-status"], "");
   assert.equal(typeof res.headers["x-md-instance"], "string");
   assert.ok(String(res.headers["x-md-instance"]).length > 0);
   assert.equal(typeof res.headers["x-md-cache-key"], "string");
@@ -225,7 +263,7 @@ test("stationboard route does not conflict when params resolve to same canonical
 
 test("stationboard route does not throw conflict when stationId fails resolve but stop_id resolves", async () => {
   const calls = [];
-  const handler = createStationboardRouteHandler({
+  const handler = createRouteHandler({
     getStationboardLike: makeStationboardStub(calls),
     resolveStopLike: makeResolveStopStub({
       "stop:ParentAAA": { resolvedStopId: "ParentAAA", resolvedRootId: "ParentAAA" },
@@ -252,7 +290,7 @@ test("stationboard route does not throw conflict when stationId fails resolve bu
 
 test("stationboard route does not throw conflict when stop_id fails resolve but stationId resolves", async () => {
   const calls = [];
-  const handler = createStationboardRouteHandler({
+  const handler = createRouteHandler({
     getStationboardLike: makeStationboardStub(calls),
     resolveStopLike: makeResolveStopStub({
       // stop:ParentMISSING intentionally omitted to force unknown_stop for that side
@@ -278,10 +316,131 @@ test("stationboard route does not throw conflict when stop_id fails resolve but 
   assert.equal(calls[0].stationId, "ParentBBB");
 });
 
+test("stationboard route returns 400 invalid_since_rt for malformed since_rt", async () => {
+  const calls = [];
+  const handler = createRouteHandler({
+    getStationboardLike: makeStationboardStub(calls),
+    resolveStopLike: makeResolveStopStub({
+      "stop:Parent8501120": { resolvedStopId: "Parent8501120", resolvedRootId: "Parent8501120" },
+    }),
+    dbQueryLike: async () => ({ rows: [] }),
+    logger: { log() {}, error() {} },
+  });
+
+  const res = await invokeRoute(handler, {
+    query: {
+      stop_id: "Parent8501120",
+      since_rt: "not-a-date",
+    },
+  });
+  assert.equal(res.statusCode, 400);
+  assert.equal(res.body?.error?.code, "invalid_since_rt");
+  assert.match(String(res.body?.error?.message || ""), /since_rt/i);
+  assert.equal(calls.length, 0);
+});
+
+test("stationboard route returns 204 when since_rt is unchanged", async () => {
+  const calls = [];
+  const fetchedAt = "2026-02-21T16:00:00.000Z";
+  const handler = createRouteHandler({
+    getStationboardLike: makeStationboardStub(calls),
+    getRtCacheMetaLike: async () =>
+      makeRtCacheMetaStub({
+        fetchedAt,
+        lastStatus: 200,
+        payloadBytes: 2048,
+        hasPayload: true,
+      }),
+    resolveStopLike: makeResolveStopStub({
+      "stop:Parent8501120": { resolvedStopId: "Parent8501120", resolvedRootId: "Parent8501120" },
+    }),
+    dbQueryLike: async () => ({ rows: [] }),
+    logger: { log() {}, error() {} },
+  });
+
+  const res = await invokeRoute(handler, {
+    query: {
+      stop_id: "Parent8501120",
+      since_rt: fetchedAt,
+    },
+  });
+  assert.equal(res.statusCode, 204);
+  assert.equal(res.body, null);
+  assert.equal(res.headers["CDN-Cache-Control"] || res.headers["cdn-cache-control"], "public, max-age=2, stale-while-revalidate=4");
+  assert.equal(res.headers["x-md-rt-reason"], "unchanged_since_rt");
+  assert.equal(res.headers["x-md-rt-fetched-at"], fetchedAt);
+  assert.equal(res.headers["x-md-rt-status"], "200");
+  assert.equal(calls.length, 0);
+});
+
+test("stationboard route returns 200 when since_rt is older than current cache", async () => {
+  const calls = [];
+  const fetchedAt = "2026-02-21T16:00:00.000Z";
+  const handler = createRouteHandler({
+    getStationboardLike: async (input) => {
+      calls.push(input);
+      return {
+        station: { id: input.stopId || "Parent8501120", name: "Lausanne" },
+        rt: {
+          available: true,
+          applied: true,
+          reason: "fresh",
+          feedKey: "la_tripupdates",
+          fetchedAt,
+          cacheFetchedAt: fetchedAt,
+          cacheAgeMs: 1000,
+          freshnessThresholdMs: 45000,
+          ageSeconds: 1,
+          status: 200,
+          lastStatus: 200,
+          instance: {
+            id: "test-instance",
+            allocId: null,
+            host: "localhost",
+            pid: 1,
+            build: "test",
+          },
+        },
+        alerts: {
+          available: false,
+          applied: false,
+          reason: "disabled",
+          fetchedAt: null,
+          ageSeconds: null,
+        },
+        departures: [],
+      };
+    },
+    getRtCacheMetaLike: async () =>
+      makeRtCacheMetaStub({
+        fetchedAt,
+        lastStatus: 200,
+        payloadBytes: 2048,
+        hasPayload: true,
+      }),
+    resolveStopLike: makeResolveStopStub({
+      "stop:Parent8501120": { resolvedStopId: "Parent8501120", resolvedRootId: "Parent8501120" },
+    }),
+    dbQueryLike: async () => ({ rows: [] }),
+    logger: { log() {}, error() {} },
+  });
+
+  const res = await invokeRoute(handler, {
+    query: {
+      stop_id: "Parent8501120",
+      since_rt: "2026-02-21T15:59:59.000Z",
+    },
+  });
+  assert.equal(res.statusCode, 200);
+  assert.equal(Array.isArray(res.body?.departures), true);
+  assert.equal(res.body?.rt?.fetchedAt, fetchedAt);
+  assert.equal(calls.length, 1);
+});
+
 test("stationboard route include_alerts=1 with STATIONBOARD_ENABLE_M2=0 keeps requested=true and applied=false in debug", async () => {
   await withEnv("STATIONBOARD_ENABLE_M2", "0", async () => {
     const calls = [];
-    const handler = createStationboardRouteHandler({
+    const handler = createRouteHandler({
       getStationboardLike: makeStationboardStub(calls),
       resolveStopLike: makeResolveStopStub({
         "stop:ParentAAA": { resolvedStopId: "ParentAAA", resolvedRootId: "ParentAAA" },
@@ -310,7 +469,7 @@ test("stationboard route include_alerts=1 with STATIONBOARD_ENABLE_M2=0 keeps re
 test("stationboard route includeAlerts=1 camel-case also maps to requested=true with M2 gate off", async () => {
   await withEnv("STATIONBOARD_ENABLE_M2", "0", async () => {
     const calls = [];
-    const handler = createStationboardRouteHandler({
+    const handler = createRouteHandler({
       getStationboardLike: makeStationboardStub(calls),
       resolveStopLike: makeResolveStopStub({
         "stop:ParentAAA": { resolvedStopId: "ParentAAA", resolvedRootId: "ParentAAA" },
@@ -338,7 +497,7 @@ test("stationboard route includeAlerts=1 camel-case also maps to requested=true 
 test("stationboard route accepts include_alerts when M2 is enabled", async () => {
   await withEnv("STATIONBOARD_ENABLE_M2", "1", async () => {
     const calls = [];
-    const handler = createStationboardRouteHandler({
+    const handler = createRouteHandler({
       getStationboardLike: makeStationboardStub(calls),
       resolveStopLike: makeResolveStopStub({
         "stop:ParentAAA": { resolvedStopId: "ParentAAA", resolvedRootId: "ParentAAA" },
@@ -362,7 +521,7 @@ test("stationboard route accepts include_alerts when M2 is enabled", async () =>
 });
 
 test("stationboard route returns structured 404 stop_not_found with debug payload", async () => {
-  const handler = createStationboardRouteHandler({
+  const handler = createRouteHandler({
     getStationboardLike: async () => {
       throw makeStopNotFoundError({
         tried: ["Parent9999999"],
@@ -397,7 +556,7 @@ test("stationboard route returns structured 404 stop_not_found with debug payloa
 });
 
 test("stationboard route normalizes rt/alerts metadata when omitted by builder", async () => {
-  const handler = createStationboardRouteHandler({
+  const handler = createRouteHandler({
     getStationboardLike: async (input) => ({
       station: { id: input.stopId || "Parent8501120", name: "Lausanne" },
       departures: [{ line: "R1", destination: "Renens", scheduledDeparture: "2026-02-17T04:49:00.000Z", cancelled: false }],
@@ -425,8 +584,48 @@ test("stationboard route normalizes rt/alerts metadata when omitted by builder",
   assert.equal(typeof res.headers["x-md-rt-reason"], "string");
 });
 
+test("stationboard route maps stale cache RT reason to canonical 'stale'", async () => {
+  const handler = createRouteHandler({
+    getStationboardLike: async (input) => ({
+      station: { id: input.stopId || "Parent8501120", name: "Lausanne" },
+      rt: {
+        available: true,
+        applied: false,
+        reason: "stale_cache",
+        fetchedAt: "2026-02-21T15:59:00.000Z",
+        cacheAgeMs: 75_000,
+        freshnessThresholdMs: 45_000,
+        lastStatus: 200,
+      },
+      alerts: {
+        available: false,
+        applied: false,
+        reason: "disabled",
+        fetchedAt: null,
+        ageSeconds: null,
+      },
+      departures: [],
+    }),
+    resolveStopLike: makeResolveStopStub({
+      "stop:Parent8501120": { resolvedStopId: "Parent8501120", resolvedRootId: "Parent8501120" },
+    }),
+    dbQueryLike: async () => ({ rows: [] }),
+    logger: { log() {}, error() {} },
+  });
+
+  const res = await invokeRoute(handler, {
+    query: {
+      stop_id: "Parent8501120",
+    },
+  });
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body?.rt?.applied, false);
+  assert.equal(res.body?.rt?.reason, "stale");
+  assert.equal(res.headers["x-md-rt-reason"], "stale");
+});
+
 test("stationboard route preserves structured noService payload when departures are empty", async () => {
-  const handler = createStationboardRouteHandler({
+  const handler = createRouteHandler({
     getStationboardLike: async (input) => ({
       station: { id: input.stopId || "Parent8501120", name: "Lausanne" },
       departures: [],
@@ -456,7 +655,7 @@ test("stationboard route preserves structured noService payload when departures 
 test("stationboard route serves cached response when build times out", async () => {
   await withEnv("STATIONBOARD_ROUTE_TIMEOUT_MS", "20", async () => {
     let callCount = 0;
-    const handler = createStationboardRouteHandler({
+    const handler = createRouteHandler({
       getStationboardLike: async (input) => {
         callCount += 1;
         if (callCount === 1) {
@@ -499,7 +698,7 @@ test("stationboard route does not call upstream fetch on request path", async ()
   };
   try {
     const calls = [];
-    const handler = createStationboardRouteHandler({
+    const handler = createRouteHandler({
       getStationboardLike: makeStationboardStub(calls),
       resolveStopLike: makeResolveStopStub({
         "stop:Parent8501120": { resolvedStopId: "Parent8501120", resolvedRootId: "Parent8501120" },
@@ -522,7 +721,7 @@ test("stationboard route does not call upstream fetch on request path", async ()
 
 test("stationboard route returns 504 when build times out and no cache exists", async () => {
   await withEnv("STATIONBOARD_ROUTE_TIMEOUT_MS", "20", async () => {
-    const handler = createStationboardRouteHandler({
+    const handler = createRouteHandler({
       getStationboardLike: async () => {
         await new Promise((resolve) => setTimeout(resolve, 200));
         return {
