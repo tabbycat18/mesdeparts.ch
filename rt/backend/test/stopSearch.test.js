@@ -230,6 +230,22 @@ function fixtureRows() {
       has_hub_token: false,
     },
     {
+      group_id: "Parent8591191",
+      stop_id: "Parent8591191",
+      stop_name: "Lausanne, St-François",
+      parent_station: "",
+      location_type: "0",
+      city_name: "Lausanne",
+      aliases_matched: ["saint francois", "lausanne saint francois"],
+      alias_weight: 7.8,
+      alias_similarity: 0.91,
+      name_similarity: 0.88,
+      core_similarity: 0.88,
+      nb_stop_times: 27000,
+      is_parent: true,
+      has_hub_token: false,
+    },
+    {
       group_id: "Parent8506302",
       stop_id: "Parent8506302",
       stop_name: "St. Gallen",
@@ -399,6 +415,55 @@ test("bel aie typo still returns Bel-Air in top 10", () => {
   assert.ok(topIds.includes("Parent8587055") || topIds.includes("Parent8587387"));
 });
 
+test("normalizeSearchText expands sr as st typo", () => {
+  assert.equal(normalizeSearchText("sr francois"), "saint francois");
+  assert.equal(normalizeSearchText("sr gallen"), "saint gallen");
+  // "sr" inside a word must NOT be affected
+  assert.equal(normalizeSearchText("airport"), "airport");
+  assert.equal(normalizeSearchText("lausanne"), "lausanne");
+});
+
+test("st francois matches Lausanne, St-François", () => {
+  const ranked = rankStopCandidates(fixtureRows(), "st francois", 10);
+  const topIds = ranked.slice(0, 10).map((r) => r.stop_id);
+  assert.ok(topIds.includes("Parent8591191"), `expected Parent8591191 in top 10, got: ${topIds.join(", ")}`);
+});
+
+test("lausanne st francois matches Lausanne, St-François", () => {
+  const ranked = rankStopCandidates(fixtureRows(), "lausanne st francois", 10);
+  const topIds = ranked.slice(0, 10).map((r) => r.stop_id);
+  assert.ok(topIds.includes("Parent8591191"), `expected Parent8591191 in top 10, got: ${topIds.join(", ")}`);
+});
+
+test("lausanne francois (missing st) still matches Lausanne, St-François", () => {
+  const ranked = rankStopCandidates(fixtureRows(), "lausanne francois", 10);
+  const topIds = ranked.slice(0, 10).map((r) => r.stop_id);
+  assert.ok(topIds.includes("Parent8591191"), `expected Parent8591191 in top 10, got: ${topIds.join(", ")}`);
+});
+
+test("sr francois typo matches Lausanne, St-François", () => {
+  const ranked = rankStopCandidates(fixtureRows(), "sr francois", 10);
+  const topIds = ranked.slice(0, 10).map((r) => r.stop_id);
+  assert.ok(topIds.includes("Parent8591191"), `expected Parent8591191 in top 10, got: ${topIds.join(", ")}`);
+});
+
+test("lausanne sr francois typo matches Lausanne, St-François", () => {
+  const ranked = rankStopCandidates(fixtureRows(), "lausanne sr francois", 10);
+  const topIds = ranked.slice(0, 10).map((r) => r.stop_id);
+  assert.ok(topIds.includes("Parent8591191"), `expected Parent8591191 in top 10, got: ${topIds.join(", ")}`);
+});
+
+test("single-word 'lausanne' still returns Lausanne stops in top results", () => {
+  const ranked = rankStopCandidates(fixtureRows(), "lausanne", 10);
+  assert.ok(ranked.length > 0, "expected non-empty results for 'lausanne'");
+  // The top result must be a Lausanne stop
+  const topNorm = normalizeSearchText(ranked[0].stop_name);
+  assert.ok(
+    topNorm.includes("lausanne"),
+    `expected top result to contain Lausanne, got: ${ranked[0].stop_name}`
+  );
+});
+
 test("acceptance criteria queries return expected stops in top 10", () => {
   const cases = [
     { query: "foret", expectAny: ["Parent8591888"] },
@@ -407,6 +472,10 @@ test("acceptance criteria queries return expected stops in top 10", () => {
     { query: "grande-borde", expectAny: ["Parent8591979"] },
     { query: "bel air", expectAll: ["Parent8587055", "Parent8587387"] },
     { query: "bel aie", expectAny: ["Parent8587055", "Parent8587387"] },
+    { query: "st francois", expectAny: ["Parent8591191"] },
+    { query: "lausanne st francois", expectAny: ["Parent8591191"] },
+    { query: "lausanne francois", expectAny: ["Parent8591191"] },
+    { query: "sr francois", expectAny: ["Parent8591191"] },
   ];
 
   for (const item of cases) {

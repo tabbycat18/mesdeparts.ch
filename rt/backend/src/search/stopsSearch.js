@@ -695,7 +695,13 @@ WITH params AS (
       WHEN char_length(public.normalize_stop_search_text($1::text)) <= 6 THEN 0.40
       WHEN char_length(public.normalize_stop_search_text($1::text)) <= 8 THEN 0.34
       ELSE 0.28
-    END AS sim_threshold
+    END AS sim_threshold,
+    position(' ' IN public.normalize_stop_search_text($1::text)) > 0 AS q_has_space,
+    ARRAY(
+      SELECT tok
+      FROM regexp_split_to_table(public.normalize_stop_search_text($1::text), '\s+') AS tok
+      WHERE length(tok) >= 4
+    ) AS q_sig_tokens
 ),
 alias_hits AS (
   SELECT
@@ -749,6 +755,14 @@ WHERE
     OR (p.q_core <> '' AND (b.name_core LIKE p.q_core || '%' OR b.name_core % p.q_core))
     OR GREATEST(COALESCE(ahs.alias_similarity, 0), COALESCE(ahg.alias_similarity, 0)) >= p.sim_threshold
     OR GREATEST(COALESCE(ahs.alias_weight, 0), COALESCE(ahg.alias_weight, 0)) > 0
+    OR (
+      p.q_has_space
+      AND cardinality(p.q_sig_tokens) BETWEEN 2 AND 4
+      AND NOT EXISTS (
+        SELECT 1 FROM unnest(p.q_sig_tokens) AS tok
+        WHERE b.search_text NOT LIKE '%' || tok || '%'
+      )
+    )
   )
 ORDER BY
   GREATEST(
@@ -775,7 +789,13 @@ WITH params AS (
       WHEN char_length($1::text) <= 6 THEN 0.40
       WHEN char_length($1::text) <= 8 THEN 0.34
       ELSE 0.28
-    END AS sim_threshold
+    END AS sim_threshold,
+    position(' ' IN $1::text) > 0 AS q_has_space,
+    ARRAY(
+      SELECT tok
+      FROM regexp_split_to_table($1::text, '\s+') AS tok
+      WHERE length(tok) >= 4
+    ) AS q_sig_tokens
 )
 SELECT
   b.group_id,
@@ -803,6 +823,14 @@ WHERE
     OR b.name_norm LIKE p.q_norm || '%'
     OR b.search_text LIKE '%' || p.q_norm || '%'
     OR b.search_text % p.q_norm
+    OR (
+      p.q_has_space
+      AND cardinality(p.q_sig_tokens) BETWEEN 2 AND 4
+      AND NOT EXISTS (
+        SELECT 1 FROM unnest(p.q_sig_tokens) AS tok
+        WHERE b.search_text NOT LIKE '%' || tok || '%'
+      )
+    )
   )
 ORDER BY
   CASE
@@ -886,15 +914,25 @@ base AS (
     COALESCE(NULLIF(to_jsonb(s) ->> 'location_type', ''), '') AS location_type,
     trim(split_part(s.stop_name, ',', 1)) AS city_name,
     lower(s.stop_name) AS name_lower,
-    lower(regexp_replace(s.stop_name, '[-_./''’]+', ' ', 'g')) AS name_simple,
+    lower(regexp_replace(s.stop_name, '[-_./''']+', ' ', 'g')) AS name_simple,
     trim(
       regexp_replace(
-        translate(
-          lower(s.stop_name),
-          'àáâãäåçèéêëìíîïñòóôõöøùúûüýÿ',
-          'aaaaaaceeeeiiiinoooooouuuuyy'
+        regexp_replace(
+          regexp_replace(
+            translate(
+              lower(s.stop_name),
+              'àáâãäåçèéêëìíîïñòóôõöøùúûüýÿ',
+              'aaaaaaceeeeiiiinoooooouuuuyy'
+            ),
+            '[^a-z0-9]+',
+            ' ',
+            'g'
+          ),
+          '\\m(st|saint)\\M',
+          'saint',
+          'g'
         ),
-        '[^a-z0-9]+',
+        '[[:space:]]+',
         ' ',
         'g'
       )
@@ -966,15 +1004,25 @@ base AS (
     COALESCE(NULLIF(to_jsonb(s) ->> 'location_type', ''), '') AS location_type,
     trim(split_part(s.stop_name, ',', 1)) AS city_name,
     lower(s.stop_name) AS name_lower,
-    lower(regexp_replace(s.stop_name, '[-_./''’]+', ' ', 'g')) AS name_simple,
+    lower(regexp_replace(s.stop_name, '[-_./''']+', ' ', 'g')) AS name_simple,
     trim(
       regexp_replace(
-        translate(
-          lower(s.stop_name),
-          'àáâãäåçèéêëìíîïñòóôõöøùúûüýÿ',
-          'aaaaaaceeeeiiiinoooooouuuuyy'
+        regexp_replace(
+          regexp_replace(
+            translate(
+              lower(s.stop_name),
+              'àáâãäåçèéêëìíîïñòóôõöøùúûüýÿ',
+              'aaaaaaceeeeiiiinoooooouuuuyy'
+            ),
+            '[^a-z0-9]+',
+            ' ',
+            'g'
+          ),
+          '\\m(st|saint)\\M',
+          'saint',
+          'g'
         ),
-        '[^a-z0-9]+',
+        '[[:space:]]+',
         ' ',
         'g'
       )
@@ -1346,7 +1394,10 @@ async function runStopSearch(db, query, limit = DEFAULT_LIMIT, options = {}) {
 
   if (primarySupported) {
     try {
-      rows = await fetchPrimaryRows(db, qRaw, candidateLimit, { budget });
+      // Pass the JS-normalized query so that typo corrections (sr→st→saint)
+      // reach the SQL layer. The SQL normalize function is idempotent on
+      // already-normalized input, so this is safe.
+      rows = await fetchPrimaryRows(db, qNorm, candidateLimit, { budget });
     } catch (err) {
       primaryError = err;
       warnOnce("stop_search_primary_error", "[stop-search] primary query failed; falling back", {
