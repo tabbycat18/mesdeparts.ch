@@ -72,7 +72,7 @@ test("help center i18n keys resolve for FR/EN/DE/IT and language switch hides ov
   });
 
   try {
-    const i18n = await import(`../i18n.v2026-02-21-3.js?test=${Date.now()}`);
+    const i18n = await import(`../i18n.v2026-02-21-4.js?test=${Date.now()}`);
     const requiredKeys = [
       "infoTitle",
       "infoModalDescription",
