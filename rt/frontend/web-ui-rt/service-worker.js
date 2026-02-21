@@ -26,7 +26,7 @@ const LAZY_ASSETS = [
 ];
 
 const ASSETS = [...CORE_ASSETS, ...LAZY_ASSETS];
-const CACHE_REV = "2026-02-21-3-v1.8.3";
+const CACHE_REV = "2026-02-21-4-v1.8.3";
 
 function hashStrings(list) {
   const str = list.join("|");

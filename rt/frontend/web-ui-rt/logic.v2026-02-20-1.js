@@ -497,12 +497,17 @@ export async function fetchStationSuggestions(query, { signal } = {}) {
       .trim();
 
   // Ask backend for a larger candidate set, then diversify client-side.
-  const url = apiUrl(`/api/stops/search?q=${encodeURIComponent(query)}&limit=30`);
+  const url = apiUrl(`/api/stops/search?q=${encodeURIComponent(query)}&limit=20`);
   const data = await fetchJson(url, { signal, timeoutMs: 6_000 });
 
   const raw = (Array.isArray(data?.stops) ? data.stops : [])
-    .filter((s) => s && s.stop_name && s.stop_id)
-    .map((s) => ({ id: s.stop_id, name: s.stop_name }));
+    .map((s) => {
+      const id = String(s?.stop_id || s?.id || "").trim();
+      const name = String(s?.stop_name || s?.name || "").trim();
+      const nbStopTimes = Number(s?.nb_stop_times ?? s?.nbStopTimes ?? 0);
+      return { id, name, nbStopTimes };
+    })
+    .filter((s) => s.id && s.name);
 
   const queryKey = normalizeSuggestionName(query);
   const exact = [];
@@ -517,8 +522,16 @@ export async function fetchStationSuggestions(query, { signal } = {}) {
     else others.push(entry);
   }
 
+  others.sort((a, b) => {
+    if (a.nbStopTimes !== b.nbStopTimes) return b.nbStopTimes - a.nbStopTimes;
+    return a.name.localeCompare(b.name, "fr-CH");
+  });
+
   // Keep one exact city/station match first, then diverse specific stops.
-  return (exact.length ? [exact[0]] : []).concat(others).slice(0, 10);
+  return (exact.length ? [exact[0]] : [])
+    .concat(others)
+    .slice(0, 10)
+    .map(({ id, name }) => ({ id, name }));
 }
 
 export async function fetchStationsNearby(lat, lon, limit = 7) {
