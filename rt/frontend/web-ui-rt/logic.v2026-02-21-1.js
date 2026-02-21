@@ -409,7 +409,7 @@ function deriveRealtimeRemark({ cancelled, effectiveDeltaSec, mode }) {
 }
 
 const FETCH_TIMEOUT_MS = 12_000;
-const STATIONBOARD_FETCH_TIMEOUT_MS = 20_000;
+const STATIONBOARD_FETCH_TIMEOUT_MS = FETCH_TIMEOUT_MS;
 
 async function fetchJson(url, { signal, timeoutMs = FETCH_TIMEOUT_MS, cache = "default" } = {}) {
   const controller = new AbortController();

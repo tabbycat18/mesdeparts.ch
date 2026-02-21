@@ -62,6 +62,7 @@ const LEGACY_DEFAULT_STATION_NAME = "Lausanne, motte";
 const COUNTDOWN_REFRESH_MS = 5_000;
 const STALE_EMPTY_MAX_MS = 60_000; // force recovery if board stays empty this long while stationboard has entries
 const STALE_BOARD_RETRY_COOLDOWN_MS = 60_000; // per-station cache-bypass retry spacing
+const TRANSIENT_RETRY_DELAY_MS = 700;
 const DEBUG_PERF =
   (() => {
     try {
@@ -596,12 +597,22 @@ async function refreshDepartures({ retried, showLoadingHint = true } = {}) {
   } catch (err) {
     if (isStaleRequest()) return;
     const isTransient = isTransientFetchError(err);
+    if (isTransient && !retried) {
+      setTimeout(() => {
+        refreshDepartures({ retried: true, showLoadingHint: false });
+      }, TRANSIENT_RETRY_DELAY_MS);
+      return;
+    }
     if (isTransient && lastStationboardData) {
-      console.warn("[MesDeparts] refresh transient error (kept last board):", err);
+      if (DEBUG_PERF) {
+        console.warn("[MesDeparts] refresh transient error (kept last board):", err);
+      }
       return;
     }
     if (isTransient) {
-      console.warn("[MesDeparts] refresh transient error:", err);
+      if (DEBUG_PERF) {
+        console.warn("[MesDeparts] refresh transient error:", err);
+      }
     } else {
       console.error("[MesDeparts] refresh error:", err);
     }
