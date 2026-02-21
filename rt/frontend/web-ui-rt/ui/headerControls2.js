@@ -70,22 +70,22 @@ const SAVE_META_LABELS = {
 
 const TRAIN_SEGMENT_VARIANTS = {
   all: {
-    fr: { full: "Tous", mid: "Tous", short: "Tous", tiny: "T" },
-    de: { full: "Alle", mid: "Alle", short: "Alle", tiny: "A" },
-    it: { full: "Tutti", mid: "Tutti", short: "Tutti", tiny: "T" },
-    en: { full: "All", mid: "All", short: "All", tiny: "A" },
+    fr: { full: "Tous", mid: "Tous", short: "Tous", tiny: "Tous" },
+    de: { full: "Alle", mid: "Alle", short: "Alle", tiny: "Alle" },
+    it: { full: "Tutti", mid: "Tutti", short: "Tutti", tiny: "Tutti" },
+    en: { full: "All", mid: "All", short: "All", tiny: "All" },
   },
   regional: {
-    fr: { full: "Régional", mid: "Rég.", short: "Rég.", tiny: "R" },
-    de: { full: "Regional", mid: "Reg.", short: "Reg.", tiny: "R" },
-    it: { full: "Regionale", mid: "Reg.", short: "Reg.", tiny: "R" },
-    en: { full: "Regional", mid: "Reg.", short: "Reg.", tiny: "R" },
+    fr: { full: "Régio", mid: "Régio", short: "Régio", tiny: "Régio" },
+    de: { full: "Regio", mid: "Regio", short: "Regio", tiny: "Regio" },
+    it: { full: "Regio", mid: "Regio", short: "Regio", tiny: "Regio" },
+    en: { full: "Regio", mid: "Regio", short: "Regio", tiny: "Regio" },
   },
   longDistance: {
-    fr: { full: "Grande ligne", mid: "Gde ligne", short: "Gde.", tiny: "GL" },
-    de: { full: "Fernverkehr", mid: "Fernverk.", short: "Fern.", tiny: "FV" },
-    it: { full: "Lunga percorrenza", mid: "Lunga perc.", short: "Lunga.", tiny: "LP" },
-    en: { full: "Long distance", mid: "Long dist.", short: "Long.", tiny: "LD" },
+    fr: { full: "Gde Ln", mid: "Gde Ln", short: "Gde Ln", tiny: "Gde Ln" },
+    de: { full: "Fernv", mid: "Fernv", short: "Fernv", tiny: "Fernv" },
+    it: { full: "Lunga", mid: "Lunga", short: "Lunga", tiny: "Lunga" },
+    en: { full: "Long", mid: "Long", short: "Long", tiny: "Long" },
   },
 };
 
@@ -106,6 +106,7 @@ const state = {
   },
   controlsOpen: false,
   favoritesOpen: false,
+  favoritesManageMode: false,
   searchText: "",
   favorites: [], // [{ id, name, addedAt }]
   selectedFavId: null,
@@ -236,110 +237,140 @@ function createTemplate() {
       </div>
 
       <div id="header-controls2-panel" class="hc2__controls is-collapsed" aria-label="Header Controls 2" aria-hidden="true">
-        <label for="station-input" class="sr-only">${t("searchStop")}</label>
-        <div class="hc2__search">
-          <span class="hc2__searchIcon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" focusable="false">
-              <path
-                fill="currentColor"
-                d="m15.7 14.3-.3-.3A5.95 5.95 0 0 0 16.5 10a6 6 0 1 0-6 6 5.95 5.95 0 0 0 4-1.5l.3.3v.9L20 21l1-1-5.3-5.7Zm-5.2 0A4.3 4.3 0 1 1 14.8 10a4.3 4.3 0 0 1-4.3 4.3Z"
+        <div class="hc2__topControls">
+          <div class="hc2__topRow hc2__topRow--search">
+            <label for="station-input" class="sr-only">${t("searchStop")}</label>
+            <div class="hc2__search hc2__topSurface">
+              <span class="hc2__searchIcon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" focusable="false">
+                  <path
+                    fill="currentColor"
+                    d="m15.7 14.3-.3-.3A5.95 5.95 0 0 0 16.5 10a6 6 0 1 0-6 6 5.95 5.95 0 0 0 4-1.5l.3.3v.9L20 21l1-1-5.3-5.7Zm-5.2 0A4.3 4.3 0 1 1 14.8 10a4.3 4.3 0 0 1-4.3 4.3Z"
+                  />
+                </svg>
+              </span>
+              <input
+                id="station-input"
+                type="text"
+                class="hc2__searchInput"
+                placeholder="${t("searchAction")}..."
+                autocomplete="off"
               />
-            </svg>
-          </span>
-          <input
-            id="station-input"
-            type="text"
-            class="hc2__searchInput"
-            placeholder="${t("searchAction")}..."
-            autocomplete="off"
-          />
-          <div class="hc2__searchActions">
-            <button
-              id="station-input-clear"
-              class="hc2__actionBtn hc2__pillControl is-hidden"
-              data-action="clear"
-              type="button"
-              aria-label="Clear"
-            >
-              <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-                <path
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  d="M6 6 18 18M18 6 6 18"
-                />
-              </svg>
-            </button>
-            <button
-              id="station-search-btn"
-              class="hc2__actionBtn hc2__pillControl"
-              data-action="geo"
-              type="button"
-              aria-label="${t("nearbyButton")}"
-              title="${t("nearbyButton")}"
-            >
-              <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-                <path
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1.8"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M12 21s-6-5.94-6-11a6 6 0 1 1 12 0c0 5.06-6 11-6 11Z"
-                />
-                <circle cx="12" cy="10" r="2.4" fill="currentColor" />
-              </svg>
-            </button>
-            <button
-              id="favorites-only-toggle"
-              class="hc2__actionBtn hc2__pillControl"
-              data-action="favorites"
-              type="button"
-              aria-label="${t("filterFavoritesTitle")}"
-              aria-expanded="false"
-              aria-controls="favorites-popover"
-            >
-              <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-                <path
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1.8"
-                  stroke-linejoin="round"
-                  d="M6 4h12a1 1 0 0 1 1 1v15l-7-3-7 3V5a1 1 0 0 1 1-1Z"
-                />
-              </svg>
-              <span id="favorites-only-label" class="sr-only">${t("filterFavoritesLabel")}</span>
-            </button>
+              <div class="hc2__searchActions">
+                <button
+                  id="station-input-clear"
+                  class="hc2__actionBtn hc2__pillControl is-hidden"
+                  data-action="clear"
+                  type="button"
+                  aria-label="Clear"
+                >
+                  <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                    <path
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      d="M6 6 18 18M18 6 6 18"
+                    />
+                  </svg>
+                </button>
+                <button
+                  id="station-search-btn"
+                  class="hc2__actionBtn hc2__pillControl"
+                  data-action="geo"
+                  type="button"
+                  aria-label="${t("nearbyButton")}"
+                  title="${t("nearbyButton")}"
+                >
+                  <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                    <path
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.8"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      d="M12 21s-6-5.94-6-11a6 6 0 1 1 12 0c0 5.06-6 11-6 11Z"
+                    />
+                    <circle cx="12" cy="10" r="2.4" fill="currentColor" />
+                  </svg>
+                </button>
+                <button
+                  id="favorites-only-toggle"
+                  class="hc2__actionBtn hc2__pillControl"
+                  data-action="favorites"
+                  type="button"
+                  aria-label="${t("filterFavoritesTitle")}"
+                  aria-expanded="false"
+                  aria-controls="favorites-popover"
+                >
+                  <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                    <path
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.8"
+                      stroke-linejoin="round"
+                      d="M6 4h12a1 1 0 0 1 1 1v15l-7-3-7 3V5a1 1 0 0 1 1-1Z"
+                    />
+                  </svg>
+                  <span id="favorites-only-label" class="sr-only">${t("filterFavoritesLabel")}</span>
+                </button>
+              </div>
+            </div>
           </div>
-        </div>
 
-        <div class="hc2__row hc2__displayRow">
-          <div id="view-section-label" class="hc2__rowLabel hc2__displayLabel">${t("viewSectionLabel")}</div>
-          <div class="hc2__displayControls">
-            <div class="hc2__displayLeft">
+          <div class="hc2__topRow hc2__topRow--secondary">
+            <div class="hc2__topCluster hc2__topCluster--display">
+              <div id="view-section-label" class="hc2__rowLabel hc2__topDisplayLabel">${t("viewSectionLabel")}</div>
               <div id="view-segment" class="hc2__segment"></div>
             </div>
-            <div class="hc2__displayRight hc2__rowDual">
+
+            <div class="hc2__topCluster hc2__topCluster--actions hc2__rowDual">
               <a
                 id="dual-board-link"
-                class="hc2__pill"
+                class="hc2__pill hc2__topControl hc2__topControl--normal"
                 href="dual-board.html"
                 target="_blank"
                 rel="noopener"
                 aria-label="${t("dualBoardOpen")}"
               >
-                <span aria-hidden="true">
+                <span class="hc2__dualIcon" aria-hidden="true">
                   <svg viewBox="0 0 24 24" focusable="false">
-                    <rect x="5" y="6" width="6" height="12" rx="2" fill="currentColor"></rect>
-                    <rect x="13" y="6" width="6" height="12" rx="2" fill="currentColor"></rect>
+                    <rect
+                      x="3.5"
+                      y="5"
+                      width="7.5"
+                      height="14"
+                      rx="2.4"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.8"
+                    ></rect>
+                    <rect
+                      x="13"
+                      y="5"
+                      width="7.5"
+                      height="14"
+                      rx="2.4"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.8"
+                    ></rect>
+                    <path
+                      d="M11.2 9.2h1.6M11.2 14.8h1.6"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.8"
+                      stroke-linecap="round"
+                    ></path>
+                    <circle cx="7.25" cy="8.8" r="0.9" fill="currentColor"></circle>
+                    <circle cx="16.75" cy="8.8" r="0.9" fill="currentColor"></circle>
                   </svg>
                 </span>
                 <span id="dual-board-label">${t("dualBoardLabel")}</span>
               </a>
               <button
                 id="filters-open"
-                class="hc2__pill"
+                class="hc2__pill hc2__topControl hc2__topControl--normal"
                 data-action="filters"
                 type="button"
                 aria-expanded="false"
@@ -360,12 +391,17 @@ function createTemplate() {
                 <span id="filters-open-label">${t("filterButton")}</span>
               </button>
             </div>
-          </div>
-        </div>
 
-        <div class="hc2__row hc2__rowLang">
-          <label for="language-select" class="hc2__rowLabel">${t("languageLabel")}</label>
-          <select id="language-select" class="hc2__select" aria-label="${t("languageLabel")}"></select>
+            <div class="hc2__topCluster hc2__topCluster--language">
+              <span id="language-select-title" class="hc2__rowLabel hc2__topLanguageLabel">${t("languageLabel")}</span>
+              <label for="language-select" class="sr-only">${t("languageLabel")}</label>
+              <select
+                id="language-select"
+                class="hc2__select hc2__topControl hc2__topControl--normal"
+                aria-label="${t("languageLabel")}"
+              ></select>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -376,9 +412,6 @@ function createTemplate() {
           <span id="hc2-served-lines-label" class="hc2__servedLabel">${t("servedByLines")}</span>
           <div id="hc2-served-lines-container" class="hc2__servedChips"></div>
         </div>
-        <button id="hc2-served-lines-clear" class="hc2__servedClearBtn" type="button" title="Clear line selection" hidden>
-          ${t("filterReset")}
-        </button>
       </div>
     </header>
   `;
@@ -386,50 +419,54 @@ function createTemplate() {
 
 function createGlobalSheetsTemplate() {
   return `
-    <div id="favorites-backdrop" class="hc2__backdrop" hidden></div>
+    <div id="favorites-backdrop" class="hc2__backdrop ui-modal-overlay" hidden></div>
 
     <section
       id="favorites-popover"
-      class="hc2__sheet"
+      class="hc2__sheet ui-modal-shell hc2__sheet--favorites"
       role="dialog"
       aria-modal="true"
       aria-labelledby="favorites-popover-title"
       tabindex="-1"
       hidden
     >
-      <header class="hc2__sheetHeader">
-        <h2 id="favorites-popover-title" class="hc2__sheetTitle">${t("filterFavoritesTitle")}</h2>
-        <button
-          class="hc2__iconBtn hc2__sheetClose"
-          data-action="closeFavs"
-          data-fav-sheet-close="true"
-          type="button"
-          aria-label="Close"
-        >
-          ×
-        </button>
+      <header class="hc2__sheetHeader ui-modal-header">
+        <div class="ui-modal-headerMain">
+          <h2 id="favorites-popover-title" class="hc2__sheetTitle ui-modal-title">${t("filterFavoritesTitle")}</h2>
+          <button
+            class="hc2__sheetClose ui-modal-close"
+            data-action="closeFavs"
+            data-fav-sheet-close="true"
+            type="button"
+            aria-label="Close"
+          >
+            ×
+          </button>
+        </div>
       </header>
 
-      <div id="favorites-status" class="hc2__status is-hidden" role="status" aria-live="polite"></div>
+      <div class="hc2__sheetBody ui-modal-body hc2__sheetBody--favorites">
+        <div id="favorites-status" class="hc2__status is-hidden" role="status" aria-live="polite"></div>
 
-      <div class="hc2__saveCard">
-        <button id="favorites-save-current" class="hc2__saveCta" data-action="saveStop" type="button">
-          <span class="hc2__saveCtaIcon" aria-hidden="true">★</span>
-          <span class="hc2__saveCtaText">
-            <span id="favorites-save-current-label" class="hc2__saveCtaTitle">
-              ${pickLocalized(SAVE_LABELS).ready}
+        <div class="hc2__saveCard">
+          <button id="favorites-save-current" class="hc2__saveCta" data-action="saveStop" type="button">
+            <span class="hc2__saveCtaIcon" aria-hidden="true">★</span>
+            <span class="hc2__saveCtaText">
+              <span id="favorites-save-current-label" class="hc2__saveCtaTitle">
+                ${pickLocalized(SAVE_LABELS).ready}
+              </span>
+              <span id="favorites-save-current-meta" class="hc2__saveCtaMeta">
+                ${pickLocalized(SAVE_META_LABELS).idle}
+              </span>
             </span>
-            <span id="favorites-save-current-meta" class="hc2__saveCtaMeta">
-              ${pickLocalized(SAVE_META_LABELS).idle}
-            </span>
-          </span>
-        </button>
+          </button>
+        </div>
+
+        <div id="favorites-chip-list" class="hc2__favList"></div>
+        <div id="favorites-empty" class="hc2__empty is-hidden">${t("filterNoFavorites")}</div>
       </div>
 
-      <div id="favorites-chip-list" class="hc2__favList"></div>
-      <div id="favorites-empty" class="hc2__empty is-hidden">${t("filterNoFavorites")}</div>
-
-      <footer class="hc2__sheetFooter">
+      <footer class="hc2__sheetFooter ui-modal-footer">
         <button id="favorites-manage" class="hc2__secondary" data-action="manage" type="button">
           ${t("filterManageFavorites")}
         </button>
@@ -540,12 +577,12 @@ function cacheRefs() {
     hideDeparture: dq("filters-hide-departure"),
 
     viewSegment: q("view-segment"),
-    displayLeft: state.mountEl.querySelector(".hc2__displayLeft"),
+    displayLeft: q("view-segment"),
     servedLinesWrap: q("hc2-served-lines"),
     servedLinesLabel: q("hc2-served-lines-label"),
     servedLinesContainer: q("hc2-served-lines-container"),
-    servedLinesClearBtn: dq("hc2-served-lines-clear"),
     backdrop: dq("favorites-backdrop"),
+    languageTitle: q("language-select-title"),
     languageSelect: q("language-select"),
   };
 }
@@ -949,6 +986,9 @@ function openFavorites() {
   if (backdrop) backdrop.hidden = false;
   setBackgroundInert(true);
   state.favoritesOpen = true;
+  state.favoritesManageMode = false;
+  updateFavoritesManageButton();
+  renderFavoritesSheet();
 
   const focusables = focusableIn(favoritesSheet);
   const target = focusables[0] || favoritesSheet;
@@ -973,6 +1013,8 @@ function closeFavorites({ restoreFocus = true } = {}) {
     opener.focus({ preventScroll: true });
   }
   state.favoritesOpen = false;
+  state.favoritesManageMode = false;
+  updateFavoritesManageButton();
   if (favoritesSheet) {
     favoritesSheet.hidden = true;
   }
@@ -1165,6 +1207,14 @@ function deleteFavorite(id) {
   persistFavorites();
   renderFavoritesSheet();
   updateSaveButton();
+}
+
+function updateFavoritesManageButton() {
+  const btn = state.refs.favoritesManage;
+  if (!btn) return;
+  const managing = !!state.favoritesManageMode;
+  btn.textContent = managing ? t("favoritesManageDone") : t("filterManageFavorites");
+  btn.setAttribute("aria-pressed", managing ? "true" : "false");
 }
 
 function renderSuggestions(items) {
@@ -1456,9 +1506,10 @@ function trainSegmentDensity() {
   const leftWidth = state.refs.displayLeft?.clientWidth || state.refs.viewSegment?.clientWidth || 0;
   const viewportWidth = typeof window !== "undefined" ? window.innerWidth || 9999 : 9999;
 
-  if (viewportWidth <= 360 || leftWidth <= 200) return "tiny";
-  if (viewportWidth <= 420 || leftWidth <= 270) return "short";
-  if (leftWidth <= 340) return "mid";
+  if (viewportWidth >= 900) return "full";
+  if (viewportWidth <= 360 || leftWidth <= 180) return "tiny";
+  if (viewportWidth <= 420 || leftWidth <= 240) return "short";
+  if (leftWidth <= 300) return "mid";
   return "full";
 }
 
@@ -1699,7 +1750,6 @@ function renderServedLinesChips() {
   const wrap = state.refs.servedLinesWrap;
   const label = state.refs.servedLinesLabel;
   const container = state.refs.servedLinesContainer;
-  const clearBtn = state.refs.servedLinesClearBtn;
   if (!wrap || !label || !container) return;
 
   const lines = sortedLineOptions();
@@ -1716,11 +1766,6 @@ function renderServedLinesChips() {
     wrap.style.display = "none";
   } else {
     wrap.style.display = "";
-  }
-
-  // Show/hide the clear button based on whether any lines are selected
-  if (clearBtn) {
-    clearBtn.hidden = selection === "ALL" || active.size === 0;
   }
 
   container.innerHTML = "";
@@ -1879,10 +1924,10 @@ function updateSaveButton() {
     metaText = metaLabels.saving;
   } else if (hasStop && alreadySaved) {
     labelText = labels.saved;
-    metaText = `${metaLabels.savedPrefix} · ${stop.name}`;
+    metaText = metaLabels.savedPrefix;
   } else if (hasStop) {
     labelText = labels.ready;
-    metaText = `${metaLabels.readyPrefix} · ${stop.name}`;
+    metaText = metaLabels.readyPrefix;
   }
 
   if (labelEl) labelEl.textContent = labelText;
@@ -1909,6 +1954,7 @@ function renderFavoritesSheet() {
   favorites.forEach((fav) => {
     const row = document.createElement("div");
     row.className = "hc2__favoriteRow";
+    row.classList.toggle("is-manage", !!state.favoritesManageMode);
     row.classList.toggle("is-selected", state.selectedFavId === fav.id);
 
     const pickBtn = document.createElement("button");
@@ -1924,6 +1970,7 @@ function renderFavoritesSheet() {
     deleteBtnInline.className = "hc2__favoriteDelete";
     deleteBtnInline.setAttribute("aria-label", `${t("favoritesDelete")}: ${fav.name}`);
     deleteBtnInline.textContent = "×";
+    deleteBtnInline.hidden = !state.favoritesManageMode;
     deleteBtnInline.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -1970,6 +2017,7 @@ function saveCurrentStop() {
 
 function renderLanguageSelect() {
   const select = state.refs.languageSelect;
+  const title = state.refs.languageTitle;
   if (!select) return;
 
   select.innerHTML = "";
@@ -1980,6 +2028,7 @@ function renderLanguageSelect() {
     select.appendChild(node);
   });
   select.value = appState.language || "fr";
+  if (title) title.textContent = t("languageLabel");
 }
 
 function bindEvents() {
@@ -2064,7 +2113,9 @@ function bindEvents() {
 
   r.favoritesSave?.addEventListener("click", saveCurrentStop);
   r.favoritesManage?.addEventListener("click", () => {
-    setStatus(t("favoritesManageHint"));
+    state.favoritesManageMode = !state.favoritesManageMode;
+    updateFavoritesManageButton();
+    renderFavoritesSheet();
   });
 
   r.filtersReset?.addEventListener("click", () => {
@@ -2077,12 +2128,6 @@ function bindEvents() {
 
   r.filtersResetInline?.addEventListener("click", () => {
     resetAllFilters();
-  });
-
-  r.servedLinesClearBtn?.addEventListener("click", () => {
-    state.filterState.selectedLines = "ALL";
-    applyFilterState();
-    renderFiltersSheet();
   });
 
   r.hideDeparture?.addEventListener("change", () => {

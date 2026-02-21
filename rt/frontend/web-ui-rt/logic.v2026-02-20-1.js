@@ -484,13 +484,41 @@ export async function resolveStationId() {
 }
 
 export async function fetchStationSuggestions(query, { signal } = {}) {
-  const url = apiUrl(`/api/stops/search?q=${encodeURIComponent(query)}&limit=7`);
+  const normalizeSuggestionName = (value) =>
+    String(value || "")
+      .trim()
+      .toLowerCase()
+      .normalize("NFKD")
+      .replace(/\p{M}+/gu, "")
+      .replace(/[\u2010-\u2015]/g, "-")
+      .replace(/[’'`]+/g, "")
+      .replace(/[-_.\/]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+  // Ask backend for a larger candidate set, then diversify client-side.
+  const url = apiUrl(`/api/stops/search?q=${encodeURIComponent(query)}&limit=30`);
   const data = await fetchJson(url, { signal, timeoutMs: 6_000 });
 
-  const list = Array.isArray(data?.stops) ? data.stops : [];
-  return list
+  const raw = (Array.isArray(data?.stops) ? data.stops : [])
     .filter((s) => s && s.stop_name && s.stop_id)
     .map((s) => ({ id: s.stop_id, name: s.stop_name }));
+
+  const queryKey = normalizeSuggestionName(query);
+  const exact = [];
+  const others = [];
+  const seenName = new Set();
+
+  for (const entry of raw) {
+    const nameKey = normalizeSuggestionName(entry.name);
+    if (!nameKey || seenName.has(nameKey)) continue;
+    seenName.add(nameKey);
+    if (queryKey && nameKey === queryKey) exact.push(entry);
+    else others.push(entry);
+  }
+
+  // Keep one exact city/station match first, then diverse specific stops.
+  return (exact.length ? [exact[0]] : []).concat(others).slice(0, 10);
 }
 
 export async function fetchStationsNearby(lat, lon, limit = 7) {

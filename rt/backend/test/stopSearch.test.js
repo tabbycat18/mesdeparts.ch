@@ -354,3 +354,78 @@ test("cornavain typo still returns Geneve Cornavin in top 3", () => {
   const topIds = ranked.slice(0, 3).map((row) => row.stop_id);
   assert.ok(topIds.includes("Parent8587057"));
 });
+
+test("generic query diversifies duplicate stop names", () => {
+  const rows = [
+    {
+      group_id: "Parent8507000",
+      stop_id: "Parent8507000",
+      stop_name: "Bern",
+      parent_station: "",
+      location_type: "1",
+      city_name: "Bern",
+      aliases_matched: [],
+      alias_weight: 0,
+      alias_similarity: 0,
+      name_similarity: 0.95,
+      core_similarity: 0.95,
+      nb_stop_times: 50000,
+      is_parent: true,
+      has_hub_token: false,
+    },
+    {
+      group_id: "8507000:0:1",
+      stop_id: "8507000:0:1",
+      stop_name: "Bern",
+      parent_station: "Parent8507000",
+      location_type: "",
+      city_name: "Bern",
+      aliases_matched: [],
+      alias_weight: 0,
+      alias_similarity: 0,
+      name_similarity: 0.94,
+      core_similarity: 0.94,
+      nb_stop_times: 4000,
+      is_parent: false,
+      has_hub_token: false,
+    },
+    {
+      group_id: "Parent8507010",
+      stop_id: "Parent8507010",
+      stop_name: "Bern, Bahnhof",
+      parent_station: "",
+      location_type: "1",
+      city_name: "Bern",
+      aliases_matched: [],
+      alias_weight: 0,
+      alias_similarity: 0,
+      name_similarity: 0.9,
+      core_similarity: 0.9,
+      nb_stop_times: 15000,
+      is_parent: true,
+      has_hub_token: false,
+    },
+    {
+      group_id: "Parent8507020",
+      stop_id: "Parent8507020",
+      stop_name: "Bern, Bundesplatz",
+      parent_station: "",
+      location_type: "1",
+      city_name: "Bern",
+      aliases_matched: [],
+      alias_weight: 0,
+      alias_similarity: 0,
+      name_similarity: 0.88,
+      core_similarity: 0.88,
+      nb_stop_times: 12000,
+      is_parent: true,
+      has_hub_token: false,
+    },
+  ];
+
+  const ranked = rankStopCandidates(rows, "Bern", 3);
+  const names = ranked.map((row) => normalizeSearchText(row.stop_name));
+  assert.equal(names[0], "bern");
+  assert.ok(names.includes("bern, bahnhof"));
+  assert.ok(names.includes("bern, bundesplatz"));
+});

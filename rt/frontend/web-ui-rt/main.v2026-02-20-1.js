@@ -656,6 +656,11 @@ function markMainBoardReadyForHints() {
 
 async function runHomeStopOnboardingIfNeeded() {
   if (homeStopOnboardingOpen) return;
+  if (isDualEmbed()) {
+    onboardingSettled = true;
+    maybeShowThreeDotsTipWhenReady();
+    return;
+  }
   if (!shouldShowHomeStopModal()) {
     onboardingSettled = true;
     maybeShowThreeDotsTipWhenReady();

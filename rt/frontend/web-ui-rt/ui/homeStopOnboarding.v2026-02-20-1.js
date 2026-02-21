@@ -34,6 +34,14 @@ function focusableIn(container) {
 }
 
 export function openHomeStopOnboardingModal({ initialStop } = {}) {
+  const isDualEmbed =
+    typeof document !== "undefined" &&
+    (document.documentElement.classList.contains("dual-embed") ||
+      document.body?.classList.contains("dual-embed"));
+  if (isDualEmbed) {
+    return Promise.resolve({ confirmed: false, stop: null, dontAskAgain: false });
+  }
+
   const initial = normalizeStop(initialStop);
   const previouslyFocused =
     typeof document !== "undefined" && document.activeElement instanceof HTMLElement

@@ -254,6 +254,10 @@ function compareScored(a, b) {
   return a.stopId.localeCompare(b.stopId);
 }
 
+function stopNameKey(value) {
+  return normalizeSearchText(value) || toString(value).trim().toLowerCase();
+}
+
 function scoreCandidate(row, queryCtx) {
   const stopName = toString(row?.stop_name).trim();
   const stopId = toString(row?.stop_id).trim();
@@ -488,8 +492,23 @@ export function rankStopCandidatesDetailed(rows, query, limit = DEFAULT_LIMIT) {
   }
 
   const ordered = Array.from(bestByStopId.values()).sort(compareScored);
+  const uniqueNameRows = [];
+  const duplicateNameRows = [];
+  const seenNames = new Set();
 
-  return ordered.slice(0, lim).map((row, index) => ({
+  for (const row of ordered) {
+    const key = stopNameKey(row.stopName);
+    if (!key || !seenNames.has(key)) {
+      if (key) seenNames.add(key);
+      uniqueNameRows.push(row);
+    } else {
+      duplicateNameRows.push(row);
+    }
+  }
+
+  const diversified = uniqueNameRows.concat(duplicateNameRows);
+
+  return diversified.slice(0, lim).map((row, index) => ({
     rank: index + 1,
     ...row,
   }));

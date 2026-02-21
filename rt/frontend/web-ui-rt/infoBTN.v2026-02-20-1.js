@@ -168,24 +168,24 @@ function saveTab(tabId) {
 }
 
 function buildInfoOverlay() {
-  const overlay = createEl("div", "info-overlay");
+  const overlay = createEl("div", "info-overlay ui-modal-overlay");
   overlay.id = "info-overlay";
 
-  const panel = createEl("div", "info-panel");
+  const panel = createEl("div", "info-panel ui-modal-shell");
   panel.setAttribute("role", "dialog");
   panel.setAttribute("aria-modal", "true");
   panel.setAttribute("aria-labelledby", "info-panel-title");
   panel.setAttribute("aria-describedby", "info-panel-desc");
 
-  const header = createEl("div", "info-panel-header");
-  const titleRow = createEl("div", "info-panel-title-row");
+  const header = createEl("div", "info-panel-header ui-modal-header");
+  const titleRow = createEl("div", "info-panel-title-row ui-modal-headerMain");
   const desc = createEl("p", "sr-only", t("infoModalDescription"));
   desc.id = "info-panel-desc";
 
-  const title = createEl("h2", "info-panel-title", t("infoTitle"));
+  const title = createEl("h2", "info-panel-title ui-modal-title", t("infoTitle"));
   title.id = "info-panel-title";
 
-  const close = createEl("button", "info-panel-close", "×");
+  const close = createEl("button", "info-panel-close ui-modal-close", "×");
   close.type = "button";
   close.setAttribute("aria-label", t("infoClose"));
 
@@ -234,7 +234,7 @@ function buildInfoOverlay() {
   header.appendChild(desc);
   header.appendChild(tabs);
 
-  const body = createEl("div", "info-panel-body");
+  const body = createEl("div", "info-panel-body ui-modal-body");
   Object.values(tabPanels).forEach((panelEl) => body.appendChild(panelEl));
 
   panel.appendChild(header);

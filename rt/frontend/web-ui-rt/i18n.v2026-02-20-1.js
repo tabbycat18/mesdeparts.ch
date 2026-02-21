@@ -581,7 +581,7 @@ const TRANSLATIONS = {
   viewSectionLabel: {
     fr: "Affichage",
     de: "Anzeige",
-    it: "Visualizzazione",
+    it: "Visuali",
     en: "Display",
   },
   viewLabelFallback: {
@@ -1309,6 +1309,7 @@ export function applyStaticTranslations() {
     ["th.col-min", "columnMinutes"],
     ["th.col-remark", "columnRemark"],
     ["label[for='language-select']", "languageLabel"],
+    ["#language-select-title", "languageLabel"],
     ["#filters-open-label", "filterButton"],
     ["#filters-sheet-title", "filterButton"],
     ["#filters-display-title", "filterDisplay"],

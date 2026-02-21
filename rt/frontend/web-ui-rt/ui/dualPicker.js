@@ -73,7 +73,7 @@ function createPickerTemplate(side) {
       <div class="hc2__row">
         <button
           id="filters-open-${suffix}"
-          class="hc2__pill"
+          class="hc2__pill hc2__topControl hc2__topControl--normal"
           type="button"
           aria-expanded="false"
           aria-controls="filters-popover-${suffix}"

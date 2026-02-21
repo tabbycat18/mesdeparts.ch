@@ -29,7 +29,7 @@
     <link rel="modulepreload" href="homeStop.v2026-02-20-1.js" />
     <link rel="modulepreload" href="threeDotsTip.v2026-02-20-1.js" />
     <link rel="modulepreload" href="ui/homeStopOnboarding.v2026-02-20-1.js" />
-    <link rel="modulepreload" href="ui/headerControls2.js" />
+    <link rel="modulepreload" href="ui/headerControls2.js?v=2026-02-21-2" />
     <script>
       (function markEmbed() {
         if (window.self === window.top) return;
@@ -53,9 +53,22 @@
     </script>
     <script>
       window.__MD_API_BASE__ = window.__MD_API_BASE__ || "";
+      (function resolveApiBase() {
+        if (window.__MD_API_BASE__) return;
+        const host = String(window.location.hostname || "").toLowerCase();
+        if (host === "mesdeparts.ch" || host === "www.mesdeparts.ch") {
+          window.__MD_API_BASE__ = "https://api.mesdeparts.ch";
+          return;
+        }
+        if (host === "localhost" || host === "127.0.0.1") {
+          window.__MD_API_BASE__ = "http://localhost:3001";
+          return;
+        }
+        window.__MD_API_BASE__ = `http://${window.location.hostname}:3001`;
+      })();
     </script>
     <link rel="stylesheet" href="style.v2026-02-20-1.css" />
-    <link rel="stylesheet" href="ui/headerControls2.css" />
+    <link rel="stylesheet" href="ui/headerControls2.css?v=2026-02-21-2" />
   </head>
   <body>
     <div class="mobile-fullscreen-wrapper">
@@ -105,7 +118,7 @@
 
     <!-- IMPORTANT: use main.v2026-02-20-1.js as an ES module -->
     <script type="module">
-      import "./ui/headerControls2.js";
+      import "./ui/headerControls2.js?v=2026-02-21-2";
     </script>
     <script type="module" src="main.v2026-02-20-1.js"></script>
     <script>
