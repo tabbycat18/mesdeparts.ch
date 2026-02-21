@@ -409,6 +409,7 @@ function deriveRealtimeRemark({ cancelled, effectiveDeltaSec, mode }) {
 }
 
 const FETCH_TIMEOUT_MS = 12_000;
+const STATIONBOARD_FETCH_TIMEOUT_MS = 20_000;
 
 async function fetchJson(url, { signal, timeoutMs = FETCH_TIMEOUT_MS, cache = "default" } = {}) {
   const controller = new AbortController();
@@ -456,7 +457,7 @@ function isTimeoutError(err) {
   return err instanceof DOMException && err.name === "AbortError" && err.message === "Timeout";
 }
 
-function isTransientFetchError(err) {
+export function isTransientFetchError(err) {
   return isAbortError(err) || isTimeoutError(err);
 }
 
@@ -868,7 +869,10 @@ export async function fetchStationboardRaw(options = {}) {
   const url = apiUrl(`/api/stationboard?${params.toString()}`);
   const req = (async () => {
     try {
-      const backendData = await fetchJson(url, { cache: bustCache ? "reload" : "default" });
+      const backendData = await fetchJson(url, {
+        cache: bustCache ? "reload" : "default",
+        timeoutMs: STATIONBOARD_FETCH_TIMEOUT_MS,
+      });
       const data = normalizeBackendStationboard(backendData);
 
       const needsRetry =

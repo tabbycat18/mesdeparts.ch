@@ -23,6 +23,7 @@ import {
   fetchStationboardRaw,
   buildDeparturesGrouped,
   stationboardLooksStale,
+  isTransientFetchError,
 } from "./logic.v2026-02-21-1.js";
 
 import {
@@ -594,7 +595,16 @@ async function refreshDepartures({ retried, showLoadingHint = true } = {}) {
     publishEmbedState();
   } catch (err) {
     if (isStaleRequest()) return;
-    console.error("[MesDeparts] refresh error:", err);
+    const isTransient = isTransientFetchError(err);
+    if (isTransient && lastStationboardData) {
+      console.warn("[MesDeparts] refresh transient error (kept last board):", err);
+      return;
+    }
+    if (isTransient) {
+      console.warn("[MesDeparts] refresh transient error:", err);
+    } else {
+      console.error("[MesDeparts] refresh error:", err);
+    }
 
     // Show a minimal error row
     const tbody2 = document.getElementById("departures-body");

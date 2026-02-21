@@ -279,8 +279,8 @@ export async function buildStationboard(locationId, options = {}) {
     Number(process.env.STATIONBOARD_FALLBACK_QUERY_TIMEOUT_MS || "4000")
   );
   const terminusQueryTimeoutMs = Math.max(
-    1000,
-    Number(process.env.STATIONBOARD_TERMINUS_QUERY_TIMEOUT_MS || "4000")
+    300,
+    Number(process.env.STATIONBOARD_TERMINUS_QUERY_TIMEOUT_MS || "1500")
   );
   const rtLoadTimeoutMs = Math.max(
     100,
