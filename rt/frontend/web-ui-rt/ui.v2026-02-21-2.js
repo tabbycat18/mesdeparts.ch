@@ -3433,6 +3433,7 @@ export function renderDepartures(rows) {
     const tdRemark = document.createElement("td");
     tdRemark.className = "col-remark-cell";
     let effectiveStatus = dep.status;
+    const suppressDelayRemark = dep?.suppressDelayRemark === true;
     let remarkText = narrowRemark
       ? (dep.remarkNarrow || dep.remark || "")
       : (dep.remarkWide || dep.remark || "");
@@ -3441,7 +3442,7 @@ export function renderDepartures(rows) {
         remarkText = t("remarkCancelled");
       } else if (effectiveStatus === "early") {
         remarkText = t("remarkEarly");
-      } else if (effectiveStatus === "delay") {
+      } else if (effectiveStatus === "delay" && !suppressDelayRemark) {
         const delayValue = Number(dep?.displayedDelayMin);
         if (dep?.mode === "train" && Number.isFinite(delayValue) && delayValue > 0) {
           remarkText = narrowRemark
@@ -3452,7 +3453,7 @@ export function renderDepartures(rows) {
         }
       } else {
         const delayValue = Number(dep?.displayedDelayMin);
-        if (Number.isFinite(delayValue) && delayValue > 0) {
+        if (!suppressDelayRemark && Number.isFinite(delayValue) && delayValue > 0) {
           effectiveStatus = "delay";
           if (dep?.mode === "train") {
             remarkText = narrowRemark

@@ -270,6 +270,9 @@ export function getDisplayedDelayBadge({
   cancelled = false,
   busDelayThresholdMin = 2,
 }) {
+  const shouldSuppressDelayRemark = (displayMin) =>
+    Number.isFinite(Number(displayMin)) && Number(displayMin) === 1;
+
   if (cancelled) {
     const msg = t("remarkCancelled");
     return {
@@ -278,6 +281,7 @@ export function getDisplayedDelayBadge({
       remarkWide: msg,
       remarkNarrow: msg,
       remark: msg,
+      suppressDelayRemark: false,
       suppressed: false,
     };
   }
@@ -290,6 +294,7 @@ export function getDisplayedDelayBadge({
       remarkWide: "",
       remarkNarrow: "",
       remark: "",
+      suppressDelayRemark: false,
       suppressed: false,
     };
   }
@@ -306,6 +311,7 @@ export function getDisplayedDelayBadge({
       remarkWide: msg,
       remarkNarrow: msg,
       remark: msg,
+      suppressDelayRemark: false,
       suppressed: false,
     };
   }
@@ -314,10 +320,11 @@ export function getDisplayedDelayBadge({
     if (displayMinCeil <= 1) {
       return {
         status: null,
-        displayedDelayMin: 0,
+        displayedDelayMin: displayMinCeil,
         remarkWide: "",
         remarkNarrow: "",
         remark: "",
+        suppressDelayRemark: shouldSuppressDelayRemark(displayMinCeil),
         suppressed: true,
       };
     }
@@ -329,6 +336,7 @@ export function getDisplayedDelayBadge({
       remarkWide: wide,
       remarkNarrow: narrow,
       remark: wide,
+      suppressDelayRemark: false,
       suppressed: false,
     };
   }
@@ -341,6 +349,7 @@ export function getDisplayedDelayBadge({
       remarkWide: msg,
       remarkNarrow: msg,
       remark: msg,
+      suppressDelayRemark: false,
       suppressed: false,
     };
   }
@@ -351,6 +360,7 @@ export function getDisplayedDelayBadge({
     remarkWide: "",
     remarkNarrow: "",
     remark: "",
+    suppressDelayRemark: shouldSuppressDelayRemark(displayMinCeil),
     suppressed: false,
   };
 }
@@ -1194,6 +1204,7 @@ export function buildDeparturesGrouped(data, viewMode = VIEW_MODE_LINE) {
     const remarkWide = rtView.remarkWide;
     const remarkNarrow = rtView.remarkNarrow;
     const remark = rtView.remark; // alias for remarkWide (backward compat)
+    const suppressDelayRemark = rtView.suppressDelayRemark === true;
 
     if (isDeltaDiagnosticsEnabled()) {
       // Per-row delay debug log — validate scheduled/rt dep, delayMin, mode, suppression
@@ -1231,6 +1242,7 @@ export function buildDeparturesGrouped(data, viewMode = VIEW_MODE_LINE) {
         renderStatus: status,
         renderRemarkWide: remarkWide,
         renderRemarkNarrow: remarkNarrow,
+        suppressDelayRemark,
         delaySource,
         rawFieldsUsed: {
           "stop.departure": stop?.departure ?? null,
@@ -1280,6 +1292,7 @@ export function buildDeparturesGrouped(data, viewMode = VIEW_MODE_LINE) {
       delayMin: deltaMin,
       earlyMin,
       status,
+      suppressDelayRemark,
       remark,       // alias for remarkWide (backward compat)
       remarkWide,
       remarkNarrow,

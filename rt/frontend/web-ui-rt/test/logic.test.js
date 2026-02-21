@@ -63,8 +63,46 @@ assert.equal(computeDelayMin(60, { rounding: "ceil" }), 1);
     delaySeconds: 60,
     cancelled: false,
   });
-  assert.equal(trainBadge.displayedDelayMin, 0);
+  assert.equal(trainBadge.displayedDelayMin, 1);
   assert.equal(trainBadge.status, null);
+  assert.equal(trainBadge.suppressDelayRemark, true);
+  assert.equal(trainBadge.remark, "");
+
+  const trainDelay2 = getDisplayedDelayBadge({
+    mode: "train",
+    vehicleCategory: "train",
+    delaySeconds: 120,
+    cancelled: false,
+  });
+  assert.equal(trainDelay2.displayedDelayMin, 2);
+  assert.equal(trainDelay2.status, "delay");
+  assert.equal(String(trainDelay2.remark || "").length > 0, true);
+
+  const trainEarly1 = getDisplayedDelayBadge({
+    mode: "train",
+    vehicleCategory: "train",
+    delaySeconds: -60,
+    cancelled: false,
+  });
+  assert.equal(trainEarly1.status, "early");
+  assert.equal(String(trainEarly1.remark || "").toLowerCase().includes("avance"), true);
+
+  const trainNoRealtime = getDisplayedDelayBadge({
+    mode: "train",
+    vehicleCategory: "train",
+    delaySeconds: null,
+    cancelled: false,
+  });
+  assert.equal(trainNoRealtime.status, null);
+
+  const cancelled = getDisplayedDelayBadge({
+    mode: "train",
+    vehicleCategory: "train",
+    delaySeconds: 60,
+    cancelled: true,
+  });
+  assert.equal(cancelled.status, "cancelled");
+  assert.equal(String(cancelled.remark || "").length > 0, true);
 }
 
 // detectNetworkFromStation should pick up city-specific networks
@@ -379,11 +417,13 @@ assert.equal(detectNetworkFromStation("Zurich HB"), "vbz");
     );
     const train5 = trainRows.find((row) => row.mode === "train" && String(row.simpleLineId || "") === "5");
     assert.ok(train5);
-    // 2) TRAIN: raw +60s is preserved, while display can suppress +1
+    // 2) TRAIN: raw +60s is preserved, +1 badge can stay visible while delay remark is suppressed
     assert.equal(train5.rawDelaySec, 60);
     assert.equal(train5.delayMin, 1);
-    assert.equal(train5.displayedDelayMin, 0);
+    assert.equal(train5.displayedDelayMin, 1);
     assert.equal(train5.status, null);
+    assert.equal(train5.suppressDelayRemark, true);
+    assert.equal(String(train5.remark || ""), "");
 
     // 3) Countdown/min uses realtime timestamp directly (no 1-min global shift)
     assert.ok(
@@ -410,7 +450,7 @@ assert.equal(detectNetworkFromStation("Zurich HB"), "vbz");
       cancelled: false,
     });
     assert.equal(mixedBusDisplay.displayedDelayMin, 1);
-    assert.equal(mixedTrainDisplay.displayedDelayMin, 0);
+    assert.equal(mixedTrainDisplay.displayedDelayMin, 1);
 
     // 5) Sorting stays based on realtime/base time (not display fields)
     const sortedByBaseTime = [...trainRows].sort((a, b) => (a.baseTime || 0) - (b.baseTime || 0));
