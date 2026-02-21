@@ -226,7 +226,13 @@ export function createStationboardRouteHandler({
       randomRequestId();
     let debug = false;
     setResponseHeader(res, "x-md-request-id", requestId);
-    setResponseHeader(res, "Cache-Control", "no-store, max-age=0");
+    setResponseHeader(res, "Cache-Control", "public, max-age=0, must-revalidate");
+    setResponseHeader(
+      res,
+      "CDN-Cache-Control",
+      "public, max-age=12, stale-while-revalidate=24"
+    );
+    setResponseHeader(res, "Vary", "Origin");
     try {
       const stopIdRaw = text(req.query.stop_id);
       const stationIdCamelRaw = text(req.query.stationId);

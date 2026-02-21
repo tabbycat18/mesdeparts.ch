@@ -42,6 +42,20 @@ function makeStationboardStub(calls) {
 
     return {
       station: { id: input.stopId || "Parent8501120", name: "Lausanne" },
+      rt: {
+        available: false,
+        applied: false,
+        reason: "missing_cache",
+        fetchedAt: null,
+        ageSeconds: null,
+      },
+      alerts: {
+        available: false,
+        applied: false,
+        reason: "disabled",
+        fetchedAt: null,
+        ageSeconds: null,
+      },
       departures: [
         {
           line: "R3",
@@ -170,6 +184,16 @@ test("stationboard route does not conflict when params resolve to same canonical
   assert.equal(res.statusCode, 200);
   assert.ok(Array.isArray(res.body.departures));
   assert.equal(res.body.departures.length, 1);
+  assert.equal(typeof res.body?.rt, "object");
+  assert.equal(typeof res.body?.alerts, "object");
+  assert.equal(
+    res.headers["Cache-Control"] || res.headers["cache-control"],
+    "public, max-age=0, must-revalidate"
+  );
+  assert.equal(
+    res.headers["CDN-Cache-Control"] || res.headers["cdn-cache-control"],
+    "public, max-age=12, stale-while-revalidate=24"
+  );
 
   assert.equal(calls.length, 1);
 });

@@ -18,6 +18,7 @@ import {
   summarizeCancellation,
   shouldEnableStationboardDebug,
 } from "../debug/stationboardDebug.js";
+import { guardStationboardRequestPathUpstream } from "../util/upstreamRequestGuard.js";
 
 const ALERTS_CACHE_MS = Math.max(
   1_000,
@@ -37,6 +38,9 @@ const OTD_SUPPLEMENT_CACHE_MS = Math.max(
   Number(process.env.OTD_SUPPLEMENT_CACHE_MS || "30000")
 );
 const OTD_SUPPLEMENT_BLOCK_ON_COLD = process.env.OTD_EV_SUPPLEMENT_BLOCK_ON_COLD === "1";
+const STATIONBOARD_DISABLE_REQUEST_PATH_UPSTREAM =
+  process.env.STATIONBOARD_DISABLE_REQUEST_PATH_UPSTREAM !== "0";
+const SERVICE_ALERTS_UPSTREAM_URL = "https://api.opentransportdata.swiss/la/gtfs-sa";
 const INSTANCE_ID = `${os.hostname()}:${process.pid}`;
 const DEFAULT_STATIONBOARD_WINDOW_MINUTES = Math.max(
   30,
@@ -64,6 +68,13 @@ function resolveServiceAlertsApiKey() {
 }
 
 async function refreshAlertsCache() {
+  if (STATIONBOARD_DISABLE_REQUEST_PATH_UPSTREAM) {
+    return null;
+  }
+  const allowed = guardStationboardRequestPathUpstream(SERVICE_ALERTS_UPSTREAM_URL, {
+    scope: "api/stationboard:service_alerts",
+  });
+  if (!allowed) return null;
   const next = await fetchServiceAlerts({
     apiKey: resolveServiceAlertsApiKey(),
     timeoutMs: ALERTS_FETCH_TIMEOUT_MS,
@@ -282,6 +293,14 @@ function buildOtdStationboardCandidates(stopId, stationName) {
 }
 
 async function fetchJsonWithTimeout(url, timeoutMs, headers = {}) {
+  const allowed = guardStationboardRequestPathUpstream(url, {
+    scope: "api/stationboard:otd_fetch",
+  });
+  if (!allowed) {
+    const err = new Error("request_path_upstream_blocked");
+    err.code = "request_path_upstream_blocked";
+    throw err;
+  }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -307,6 +326,7 @@ async function fetchOtdReplacementSupplement({
   windowMinutes,
   limit,
 } = {}) {
+  if (STATIONBOARD_DISABLE_REQUEST_PATH_UPSTREAM) return [];
   const enableSupplement = process.env.OTD_EV_SUPPLEMENT !== "0";
   if (!enableSupplement) return [];
 
@@ -632,14 +652,62 @@ function toRtTripUpdatesDebug(rtMeta, departureAuditRows) {
 
   return {
     cacheStatus: String(base.cacheStatus || "MISS"),
-    fetchedAtUtc: base.fetchedAtUtc || null,
-    ageSec: Number.isFinite(base.ageSec) ? Number(base.ageSec) : null,
-    ttlSec: Number.isFinite(base.ttlSec) ? Number(base.ttlSec) : null,
-    fetchMs: Number.isFinite(base.fetchMs) ? Number(base.fetchMs) : null,
+    fetchedAtUtc: base.fetchedAt || base.fetchedAtUtc || null,
+    ageSec: Number.isFinite(base.ageSeconds)
+      ? Number(base.ageSeconds)
+      : Number.isFinite(base.ageSec)
+        ? Number(base.ageSec)
+        : null,
+    ttlSec: Number.isFinite(base.freshnessMaxAgeSeconds)
+      ? Number(base.freshnessMaxAgeSeconds)
+      : Number.isFinite(base.ttlSec)
+        ? Number(base.ttlSec)
+        : null,
+    fetchMs: Number.isFinite(base.processingMs)
+      ? Number(base.processingMs)
+      : Number.isFinite(base.fetchMs)
+        ? Number(base.fetchMs)
+        : null,
     entityCount: Number.isFinite(base.entityCount) ? Number(base.entityCount) : null,
-    hadError: base.hadError === true,
-    error: base.error ? String(base.error) : null,
+    hadError: base.hadError === true || !["applied", "stale_cache", "missing_cache", "disabled"].includes(String(base.reason || "")),
+    error: base.error ? String(base.error) : base.lastError ? String(base.lastError) : null,
+    applied: base.applied === true,
+    reason: String(base.reason || ""),
     appliedToDeparturesCount,
+  };
+}
+
+function buildRtResponseMeta(rtMetaRaw) {
+  const rtMeta = rtMetaRaw && typeof rtMetaRaw === "object" ? rtMetaRaw : {};
+  const reason = String(rtMeta.reason || (rtMeta.applied ? "applied" : "missing_cache"));
+  return {
+    available: rtMeta.available === true,
+    applied: rtMeta.applied === true,
+    reason,
+    fetchedAt: rtMeta.fetchedAt || null,
+    ageSeconds: Number.isFinite(rtMeta.ageSeconds) ? Number(rtMeta.ageSeconds) : null,
+    freshnessMaxAgeSeconds: Number.isFinite(rtMeta.freshnessMaxAgeSeconds)
+      ? Number(rtMeta.freshnessMaxAgeSeconds)
+      : 45,
+    cacheStatus: String(rtMeta.cacheStatus || "MISS"),
+    lastStatus: Number.isFinite(rtMeta.lastStatus) ? Number(rtMeta.lastStatus) : null,
+    lastError: rtMeta.lastError ? String(rtMeta.lastError) : null,
+  };
+}
+
+function buildAlertsResponseMeta({
+  includeAlertsRequested,
+  includeAlertsApplied,
+  reason,
+} = {}) {
+  return {
+    available: false,
+    applied: false,
+    reason: String(reason || "disabled"),
+    fetchedAt: null,
+    ageSeconds: null,
+    includeRequested: includeAlertsRequested === true,
+    includeApplied: includeAlertsApplied === true,
   };
 }
 
@@ -660,9 +728,9 @@ export async function getStationboard({
 } = {}) {
   void fromTs;
   void toTs;
-  const alertsFeatureEnabled = process.env.STATIONBOARD_ENABLE_M2 !== "0";
+  const alertsFeatureEnabled = false;
   const includeAlertsRequested = includeAlerts !== false;
-  const includeAlertsApplied = alertsFeatureEnabled && includeAlertsRequested;
+  const includeAlertsApplied = false;
   const debugEnabled =
     debug === true || shouldEnableStationboardDebug(process.env.STATIONBOARD_DEBUG_JSON);
   const rtDebugMode = debugEnabled ? String(debugRt || "").trim().toLowerCase() : "";
@@ -924,6 +992,14 @@ export async function getStationboard({
   const rowSources = Array.isArray(board?.debugMeta?.rowSources) ? board.debugMeta.rowSources : [];
   debugState.rowSources = rowSources;
   debugState.rtTripUpdates = board?.debugMeta?.rtTripUpdates || null;
+  const rtResponseMeta = buildRtResponseMeta(debugState.rtTripUpdates);
+  const alertsResponseMeta = buildAlertsResponseMeta({
+    includeAlertsRequested,
+    includeAlertsApplied,
+    reason: STATIONBOARD_DISABLE_REQUEST_PATH_UPSTREAM
+      ? "disabled"
+      : "not_available",
+  });
   const scheduledRowCount = rowSources.reduce(
     (acc, source) => acc + (Number(source?.rowCount) || 0),
     0
@@ -993,6 +1069,8 @@ export async function getStationboard({
       source: String(resolved?.source || "fallback"),
       childrenCount: Array.isArray(resolved?.children) ? resolved.children.length : 0,
     },
+    rt: rtResponseMeta,
+    alerts: alertsResponseMeta,
     banners: [],
     departures: departures.map((dep) =>
       ({

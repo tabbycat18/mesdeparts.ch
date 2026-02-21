@@ -4,11 +4,13 @@
   "$comment": "Schema for the stationboard API response. Validated in CI by backend_schema_check.yml.",
   "title": "MesDeparts Stationboard Response",
   "type": "object",
-  "required": ["departures"],
+  "required": ["departures", "rt", "alerts"],
   "properties": {
     "station": { "type": ["object", "null"] },
     "banners": { "type": "array", "items": { "type": "object" } },
     "resolved": { "type": ["object", "null"] },
+    "rt": { "$ref": "#/$defs/rtMeta" },
+    "alerts": { "$ref": "#/$defs/alertsMeta" },
     "departures": {
       "type": "array",
       "items": { "$ref": "#/$defs/departure" }
@@ -16,6 +18,36 @@
     "debug": { "type": ["object", "null"] }
   },
   "$defs": {
+    "rtMeta": {
+      "type": "object",
+      "required": ["available", "applied", "reason", "fetchedAt", "ageSeconds"],
+      "properties": {
+        "available": { "type": "boolean" },
+        "applied": { "type": "boolean" },
+        "reason": { "type": "string" },
+        "fetchedAt": { "type": ["string", "null"], "format": "date-time" },
+        "ageSeconds": { "type": ["integer", "null"] },
+        "freshnessMaxAgeSeconds": { "type": ["integer", "null"] },
+        "cacheStatus": { "type": ["string", "null"] },
+        "lastStatus": { "type": ["integer", "null"] },
+        "lastError": { "type": ["string", "null"] }
+      },
+      "additionalProperties": true
+    },
+    "alertsMeta": {
+      "type": "object",
+      "required": ["available", "applied", "reason", "fetchedAt", "ageSeconds"],
+      "properties": {
+        "available": { "type": "boolean" },
+        "applied": { "type": "boolean" },
+        "reason": { "type": "string" },
+        "fetchedAt": { "type": ["string", "null"], "format": "date-time" },
+        "ageSeconds": { "type": ["integer", "null"] },
+        "includeRequested": { "type": ["boolean", "null"] },
+        "includeApplied": { "type": ["boolean", "null"] }
+      },
+      "additionalProperties": true
+    },
     "departure": {
       "type": "object",
       "required": [

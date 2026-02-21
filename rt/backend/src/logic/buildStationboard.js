@@ -1,12 +1,10 @@
 // backend/src/logic/buildStationboard.js
 import { pool } from "../../db.js";
-import {
-  loadRealtimeDelayIndexOnceWithDebug,
-} from "../../loaders/loadRealtime.js";
 import { applyTripUpdates } from "../merge/applyTripUpdates.js";
 import { applyAddedTrips } from "../merge/applyAddedTrips.js";
 import { pickPreferredMergedDeparture } from "../merge/pickPreferredDeparture.js";
 import { createCancellationTracer } from "../debug/cancellationTrace.js";
+import { loadScopedRtFromCache } from "../rt/loadScopedRtFromCache.js";
 import {
   addDaysToYmdInt,
   dateFromZurichServiceDateAndSeconds,
@@ -728,50 +726,6 @@ export async function buildStationboard(locationId, options = {}) {
     }
   }
 
-  // 3) Realtime delay index
-  const rtLoadStartedMs = performance.now();
-  const debugRtMode = String(rtDebugMode || "").trim().toLowerCase();
-  const debugRtBlock = debugEnabled && debugRtMode === "block";
-  const rtLoadResult = ENABLE_RT
-    ? await loadRealtimeDelayIndexOnceWithDebug({
-        allowStale: !debugRtBlock,
-        maxWaitMs: debugRtBlock ? Math.max(1500, rtLoadTimeoutMs) : rtLoadTimeoutMs,
-      }).catch((err) => {
-        console.warn("[GTFS-RT] Failed to load delay index, continuing without RT:", err);
-        return {
-          index: { byKey: {} },
-          tripUpdates: {
-            cacheStatus: "MISS",
-            fetchedAtUtc: null,
-            ageSec: null,
-            ttlSec: null,
-            fetchMs: null,
-            entityCount: null,
-            hadError: true,
-            error: String(err?.message || err),
-          },
-        };
-      })
-    : {
-        index: { byKey: {} },
-        tripUpdates: {
-          cacheStatus: "BYPASS",
-          fetchedAtUtc: null,
-          ageSec: null,
-          ttlSec: null,
-          fetchMs: null,
-          entityCount: null,
-          hadError: false,
-          error: null,
-        },
-      };
-  const delayIndex = rtLoadResult?.index || { byKey: {} };
-  timings.rtLoadMs = Number((performance.now() - rtLoadStartedMs).toFixed(1));
-  debugMeta.rtTripUpdates = {
-    ...(rtLoadResult?.tripUpdates || null),
-    debugRtMode: debugRtBlock ? "block" : "",
-  };
-
   const baseRows = [];
 
   for (const row of rows) {
@@ -897,8 +851,69 @@ export async function buildStationboard(locationId, options = {}) {
   });
   safeDebugLog(requestDebugLog, "build.stage_counts", debugMeta.stageCounts[debugMeta.stageCounts.length - 1]);
 
+  // 3) Realtime merge input from shared DB cache (scoped, guard-bounded).
+  const rtLoadStartedMs = performance.now();
+  const debugRtMode = String(rtDebugMode || "").trim().toLowerCase();
+  const rtEnabledForRequest = ENABLE_RT && debugRtMode !== "disabled";
+  const rtWindowStartEpochSec = Math.floor(
+    (now.getTime() - DEPARTED_GRACE_SECONDS * 1000) / 1000
+  );
+  const rtWindowEndEpochSec = Math.floor(
+    (now.getTime() + windowMinutes * 60 * 1000) / 1000
+  );
+  const rtLoadResult = await loadScopedRtFromCache({
+    enabled: rtEnabledForRequest,
+    nowMs: now.getTime(),
+    windowStartEpochSec: rtWindowStartEpochSec,
+    windowEndEpochSec: rtWindowEndEpochSec,
+    scopeTripIds: tripIds,
+    scopeStopIds: queryStopIds,
+    maxProcessMs: rtLoadTimeoutMs,
+  }).catch((err) => {
+    console.warn("[GTFS-RT] scoped cache load failed, continuing without RT:", err);
+    return {
+      tripUpdates: { entities: [], entity: [] },
+      meta: {
+        applied: false,
+        reason: "decode_failed",
+        available: false,
+        fetchedAt: null,
+        ageSeconds: null,
+        freshnessMaxAgeSeconds: 45,
+        cacheStatus: "ERROR",
+        hasPayload: false,
+        lastStatus: null,
+        lastError: String(err?.message || err),
+        etag: null,
+        entityCount: 0,
+        scannedEntities: 0,
+        scopedEntities: 0,
+        scopedStopUpdates: 0,
+        processingMs: 0,
+      },
+    };
+  });
+  const scopedTripUpdates =
+    rtLoadResult?.tripUpdates && typeof rtLoadResult.tripUpdates === "object"
+      ? rtLoadResult.tripUpdates
+      : { entities: [], entity: [] };
+  const rtMeta = rtLoadResult?.meta && typeof rtLoadResult.meta === "object"
+    ? rtLoadResult.meta
+    : {
+        applied: false,
+        reason: rtEnabledForRequest ? "missing_cache" : "disabled",
+        available: false,
+      };
+  timings.rtLoadMs = Number((performance.now() - rtLoadStartedMs).toFixed(1));
+  debugMeta.rtTripUpdates = {
+    ...rtMeta,
+    debugRtMode,
+    scopedTripCount: tripIds.length,
+    scopedStopCount: queryStopIds.length,
+  };
+
   const rtMergeStartedMs = performance.now();
-  const mergedScheduledRows = applyTripUpdates(baseRows, delayIndex);
+  const mergedScheduledRows = applyTripUpdates(baseRows, scopedTripUpdates);
   traceCancellation("after_apply_trip_updates", mergedScheduledRows);
   debugMeta.stageCounts.push({
     stage: "after_trip_updates_applied",
@@ -906,9 +921,9 @@ export async function buildStationboard(locationId, options = {}) {
     cancelled: countCancelled(mergedScheduledRows),
   });
   safeDebugLog(requestDebugLog, "build.stage_counts", debugMeta.stageCounts[debugMeta.stageCounts.length - 1]);
-  const addedRows = ENABLE_RT
+  const addedRows = rtMeta.applied
     ? applyAddedTrips({
-        tripUpdates: delayIndex,
+        tripUpdates: scopedTripUpdates,
         stationStopIds: queryStopIds,
         platformByStopId,
         stationName,
