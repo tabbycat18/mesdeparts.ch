@@ -127,6 +127,12 @@ class FakeDocument {
     return new FakeElement(tagName, this);
   }
 
+  createTextNode(text) {
+    const node = new FakeElement("#text", this);
+    node.textContent = String(text || "");
+    return node;
+  }
+
   addEventListener() {}
 
   getElementById(id) {

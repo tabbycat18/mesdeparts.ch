@@ -647,6 +647,82 @@ function ensureDepartureAlertsLayer() {
   return departureAlertsLayer;
 }
 
+function stripHtmlTags(value) {
+  return String(value || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function normalizeAlertDescriptionText(value) {
+  let text = String(value || "");
+  if (!text) return "";
+  text = text.replace(
+    /<a\b[^>]*href\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi,
+    (_match, href, label) => {
+      const safeHref = String(href || "").trim();
+      const safeLabel = stripHtmlTags(label);
+      if (!safeHref) return safeLabel;
+      if (!safeLabel) return safeHref;
+      return `${safeLabel} (${safeHref})`;
+    }
+  );
+  text = text.replace(/<a\b[^>]*href\s*=\s*["']([^"']+)["'][^>]*>/gi, " $1 ");
+  text = text.replace(/<\/a>/gi, " ");
+  text = text.replace(/<br\s*\/?>/gi, "\n");
+  text = text.replace(/<[^>]+>/g, " ");
+  return text.replace(/[ \t]+\n/g, "\n").replace(/[ \t]{2,}/g, " ").trim();
+}
+
+function appendTextWithLineBreaks(container, value) {
+  const text = String(value || "");
+  if (!text) return;
+  const lines = text.split(/\n/);
+  for (let idx = 0; idx < lines.length; idx += 1) {
+    if (idx > 0) container.appendChild(document.createElement("br"));
+    if (lines[idx]) container.appendChild(document.createTextNode(lines[idx]));
+  }
+}
+
+function appendAlertTextWithLinks(container, rawText) {
+  if (!container) return;
+  const text = normalizeAlertDescriptionText(rawText);
+  if (!text) return;
+
+  const urlRe = /https?:\/\/[^\s<>"']+/gi;
+  let cursor = 0;
+  let match = urlRe.exec(text);
+
+  while (match) {
+    const start = match.index;
+    const rawUrl = match[0];
+    if (start > cursor) {
+      appendTextWithLineBreaks(container, text.slice(cursor, start));
+    }
+
+    let url = rawUrl;
+    let trailing = "";
+    while (/[),.;!?]$/.test(url)) {
+      trailing = url.slice(-1) + trailing;
+      url = url.slice(0, -1);
+    }
+
+    if (url) {
+      const link = document.createElement("a");
+      link.className = "departure-alerts-link";
+      link.href = url;
+      link.textContent = url;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      container.appendChild(link);
+    }
+    if (trailing) appendTextWithLineBreaks(container, trailing);
+    cursor = start + rawUrl.length;
+    match = urlRe.exec(text);
+  }
+
+  if (cursor < text.length) {
+    appendTextWithLineBreaks(container, text.slice(cursor));
+  }
+}
+
 function renderDepartureAlertsList(alerts, container) {
   if (!container) return;
   container.innerHTML = "";
@@ -670,7 +746,7 @@ function renderDepartureAlertsList(alerts, container) {
     if (alert.description) {
       const body = document.createElement("p");
       body.className = "departure-alerts-item-text";
-      body.textContent = alert.description;
+      appendAlertTextWithLinks(body, alert.description);
       item.appendChild(body);
     }
     container.appendChild(item);
@@ -3240,8 +3316,10 @@ export function renderDepartures(rows) {
       );
       alertBtn.title = t("alertsOpen");
       alertBtn.innerHTML = `
-        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-          <path d="M12 3 2.8 19h18.4L12 3Zm0 4.1 5.74 9.9H6.26L12 7.1Zm-1 2.4v4.5h2V9.5h-2Zm0 5.6v2h2v-2h-2Z" fill="currentColor"/>
+        <svg class="line-alert-btn__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M12 2.4 2 20.2h20L12 2.4Zm0 4.6 6.05 10.6H5.95L12 7Z" fill="currentColor"/>
+          <rect x="11" y="9.6" width="2" height="5.5" rx="1" fill="currentColor"/>
+          <circle cx="12" cy="17.25" r="1.1" fill="currentColor"/>
         </svg>
       `;
       if (inlineAlerts.length > 1) {
