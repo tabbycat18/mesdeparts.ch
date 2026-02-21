@@ -385,3 +385,99 @@ test("attachAlerts matches 85-prefixed parent ids against SLOID stop ids", () =>
   assert.equal(out.banners[0]?.header, "Rail disruption near Brig");
   assert.deepEqual(out.departures[0]?.alerts?.map((alert) => alert.id), ["brig-derailment"]);
 });
+
+test("attachAlerts matches route alerts when informed stop platform format differs within same parent", () => {
+  const now = new Date("2026-02-21T03:30:00.000Z");
+  const departures = [
+    {
+      trip_id: "trip-biel-1",
+      route_id: "route-biel-1",
+      stop_id: "8576391:0:C",
+      stop_sequence: 6,
+      destination: "Biel/Bienne, Stadien/Stades",
+      tags: [],
+      source: "scheduled",
+    },
+  ];
+
+  const alerts = {
+    entities: [
+      {
+        id: "biel-platform-variant",
+        severity: "warning",
+        headerText: "Biel line disruption",
+        descriptionText: "Platform-specific disruption",
+        activePeriods: [],
+        informedEntities: [{ route_id: "route-biel-1", stop_id: "8576391:0:1" }],
+      },
+    ],
+  };
+
+  const out = attachAlerts({
+    stopId: "Parent8576391",
+    routeIds: departures.map((dep) => dep.route_id),
+    tripIds: departures.map((dep) => dep.trip_id),
+    departures,
+    alerts,
+    now,
+  });
+
+  assert.equal(out.banners.length, 1);
+  assert.equal(out.banners[0]?.header, "Biel line disruption");
+  assert.deepEqual(out.departures[0]?.alerts?.map((alert) => alert.id), [
+    "biel-platform-variant",
+  ]);
+});
+
+test("attachAlerts suppresses recurring night-only alerts during daytime", () => {
+  const departures = [
+    {
+      trip_id: "trip-ge-1",
+      route_id: "route-ge-1",
+      stop_id: "8501008:0:1",
+      stop_sequence: 2,
+      destination: "Genève",
+      tags: [],
+      source: "scheduled",
+    },
+  ];
+  const alerts = {
+    entities: [
+      {
+        id: "ge-night",
+        severity: "warning",
+        headerText: "Genève station works",
+        descriptionText: "Every night from 01:00 to 05:00 platform changes.",
+        activePeriods: [
+          {
+            start: new Date("2026-02-20T00:00:00.000Z"),
+            end: new Date("2026-02-25T00:00:00.000Z"),
+          },
+        ],
+        informedEntities: [{ stop_id: "Parent8501008" }],
+      },
+    ],
+  };
+
+  const dayOut = attachAlerts({
+    stopId: "Parent8501008",
+    routeIds: departures.map((dep) => dep.route_id),
+    tripIds: departures.map((dep) => dep.trip_id),
+    departures,
+    alerts,
+    now: new Date("2026-02-22T11:00:00.000Z"), // 12:00 Zurich
+  });
+  assert.equal(dayOut.banners.length, 0);
+  assert.equal(dayOut.departures[0]?.alerts?.length || 0, 0);
+
+  const nightOut = attachAlerts({
+    stopId: "Parent8501008",
+    routeIds: departures.map((dep) => dep.route_id),
+    tripIds: departures.map((dep) => dep.trip_id),
+    departures,
+    alerts,
+    now: new Date("2026-02-22T01:30:00.000Z"), // 02:30 Zurich
+  });
+  assert.equal(nightOut.banners.length, 1);
+  assert.deepEqual(nightOut.departures[0]?.alerts?.map((item) => item.id), ["ge-night"]);
+});

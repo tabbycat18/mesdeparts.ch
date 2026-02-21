@@ -200,3 +200,31 @@ test("normalizeDeparture includes delay computation debug fields only when reque
   assert.equal(depWithTripFallbackDebug.debug?.delayComputation?.rtMatched, true);
   assert.equal(depWithTripFallbackDebug.debug?.delayComputation?.rtMatchReason, "trip_fallback");
 });
+
+test("normalizeDeparture preserves raw delay seconds and applies train-only +1 display suppression", () => {
+  const train = normalizeDeparture({
+    trip_id: "trip-train-plus1",
+    stop_id: "8501120:0:20",
+    category: "S",
+    scheduledDeparture: "2026-02-17T10:00:00.000Z",
+    realtimeDeparture: "2026-02-17T10:01:00.000Z",
+    source: "tripupdate",
+    _rtMatched: true,
+  });
+  assert.equal(train.rawDelaySec, 60);
+  assert.equal(train.rawDelayMin, 1);
+  assert.equal(train.displayedDelayMin, 0);
+
+  const bus = normalizeDeparture({
+    trip_id: "trip-bus-plus1",
+    stop_id: "8501120:0:21",
+    category: "B",
+    scheduledDeparture: "2026-02-17T10:00:00.000Z",
+    realtimeDeparture: "2026-02-17T10:01:00.000Z",
+    source: "tripupdate",
+    _rtMatched: true,
+  });
+  assert.equal(bus.rawDelaySec, 60);
+  assert.equal(bus.rawDelayMin, 1);
+  assert.equal(bus.displayedDelayMin, 1);
+});

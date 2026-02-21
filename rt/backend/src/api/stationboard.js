@@ -151,12 +151,27 @@ function filterLocalizedAlertsByScope(alerts, { stopId, scopeStopIds, routeIds, 
     return Array.from(stopKeySet(value));
   }
 
+  function stopNumericRoot(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return "";
+    const parentMatch = raw.match(/^Parent(\d+)$/i);
+    if (parentMatch?.[1]) return String(Number(parentMatch[1]));
+    const scopedNumericMatch = raw.match(/^(\d+)(?::|$)/);
+    if (scopedNumericMatch?.[1]) return String(Number(scopedNumericMatch[1]));
+    const sloidMatch = raw.match(/sloid:(\d+)/i);
+    if (sloidMatch?.[1]) return String(Number(sloidMatch[1]));
+    return "";
+  }
+
   const stopTokenSet = new Set();
+  const stopRootSet = new Set();
   for (const stop of [
     stopId,
     ...(Array.isArray(scopeStopIds) ? scopeStopIds : []),
   ]) {
     for (const token of stopTokens(stop)) stopTokenSet.add(token);
+    const root = stopNumericRoot(stop);
+    if (root && root !== "0") stopRootSet.add(root);
   }
   const stopSet = new Set(
     [stopId, ...(Array.isArray(scopeStopIds) ? scopeStopIds : [])]
@@ -185,6 +200,8 @@ function filterLocalizedAlertsByScope(alerts, { stopId, scopeStopIds, routeIds, 
       if (eStop) {
         const tokens = stopTokens(eStop);
         if (tokens.some((token) => stopTokenSet.has(token))) return true;
+        const eRoot = stopNumericRoot(eStop);
+        if (eRoot && stopRootSet.has(eRoot)) return true;
       }
       if (eRoute && routeSet.has(eRoute)) return true;
       if (eTrip && tripSet.has(eTrip)) return true;

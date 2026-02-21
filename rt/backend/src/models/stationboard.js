@@ -133,6 +133,20 @@ function asFiniteNumber(value) {
   return Number.isFinite(n) ? n : null;
 }
 
+function isTrainCategory(category) {
+  const cat = normalizeText(category).toUpperCase();
+  return ["IC", "IR", "EC", "EN", "R", "RE", "S", "ICE", "RJ", "RJX", "PE", "GPX"].includes(cat);
+}
+
+function computeDisplayedDelayMinForVehicle(rawDelaySec, category) {
+  const sec = asFiniteNumber(rawDelaySec);
+  if (!Number.isFinite(sec)) return null;
+  if (sec <= 0) return 0;
+  const ceilMin = Math.ceil(sec / 60);
+  if (isTrainCategory(category) && ceilMin <= 1) return 0;
+  return ceilMin;
+}
+
 export function computeDisplayFields(dep, options = {}) {
   const includeDelayDebug = options?.includeDelayDebug === true;
   const delayMeta =
@@ -241,6 +255,19 @@ export function computeDisplayFields(dep, options = {}) {
       matchReason: rtMatchReason,
     };
   }
+
+  const fallbackRawDelaySec =
+    Number.isFinite(scheduledMs) && Number.isFinite(realtimeMs)
+      ? computeDelaySecondsFromTimestamps(scheduledMs, realtimeMs)
+      : null;
+  const rawDelaySec =
+    asFiniteNumber(computedDelaySec) ??
+    asFiniteNumber(rawRtDelaySecUsed) ??
+    asFiniteNumber(fallbackRawDelaySec);
+  out.rawDelaySec = Number.isFinite(rawDelaySec) ? rawDelaySec : null;
+  out.rawDelayMin =
+    Number.isFinite(rawDelaySec) ? Math.round(rawDelaySec / 60) : null;
+  out.displayedDelayMin = computeDisplayedDelayMinForVehicle(rawDelaySec, out.category);
 
   const hasTripCancel = out.flags.includes("TRIP_CANCELLED");
   const hasSkippedStop = out.flags.includes("STOP_SKIPPED");

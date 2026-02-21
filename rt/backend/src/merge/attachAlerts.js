@@ -3,6 +3,7 @@ import {
   normalizeStopId,
   stopKeySet,
 } from "../util/stopScope.js";
+import { isAlertActiveNow } from "../util/alertActive.js";
 
 function toSet(values) {
   if (!values) return new Set();
@@ -72,43 +73,24 @@ function normalizeNow(now) {
   return new Date();
 }
 
-function getPeriodTime(periodValue) {
-  if (periodValue == null) return null;
-  if (periodValue instanceof Date) {
-    return Number.isFinite(periodValue.getTime()) ? periodValue.getTime() : null;
-  }
-  if (typeof periodValue === "number" && Number.isFinite(periodValue)) {
-    // Support unix-seconds and ms values.
-    return periodValue < 2_000_000_000 ? periodValue * 1000 : periodValue;
-  }
-  if (typeof periodValue === "string" && periodValue.trim() !== "") {
-    const asNumber = Number(periodValue);
-    if (Number.isFinite(asNumber)) {
-      return asNumber < 2_000_000_000 ? asNumber * 1000 : asNumber;
-    }
-    const parsed = Date.parse(periodValue);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-  return null;
-}
-
-export function isActiveNow(alert, now) {
-  const periods = Array.isArray(alert?.activePeriods) ? alert.activePeriods : [];
-  if (periods.length === 0) return true;
-
-  const nowMs = normalizeNow(now).getTime();
-  for (const period of periods) {
-    const startMs = getPeriodTime(period?.start);
-    const endMs = getPeriodTime(period?.end);
-    const afterStart = startMs == null ? true : nowMs >= startMs;
-    const beforeEnd = endMs == null ? true : nowMs <= endMs;
-    if (afterStart && beforeEnd) return true;
-  }
-  return false;
-}
-
 function isParentStopId(stopId) {
   return normalizeStopId(stopId).startsWith("Parent");
+}
+
+function stopNumericRoot(stopId) {
+  const raw = normalizeStopId(stopId);
+  if (!raw) return "";
+
+  const parentMatch = raw.match(/^Parent(\d+)$/i);
+  if (parentMatch?.[1]) return String(Number(parentMatch[1]));
+
+  const scopedNumericMatch = raw.match(/^(\d+)(?::|$)/);
+  if (scopedNumericMatch?.[1]) return String(Number(scopedNumericMatch[1]));
+
+  const sloidMatch = raw.match(/sloid:(\d+)/i);
+  if (sloidMatch?.[1]) return String(Number(sloidMatch[1]));
+
+  return "";
 }
 
 function stopMatchesScope(
@@ -153,10 +135,18 @@ function pickFirstAffected(informedEntities, matchFn) {
   return {};
 }
 
-function informedStopMatchesScope(informedStopId, requestedStopId, childStopIds, scopeStopTokens) {
+function informedStopMatchesScope(
+  informedStopId,
+  requestedStopId,
+  childStopIds,
+  scopeStopTokens,
+  scopeStopRoots
+) {
   const informedStop = normalizeStopId(informedStopId);
   if (!informedStop) return false;
   if (hasTokenIntersection(stopKeySet(informedStop), scopeStopTokens)) return true;
+  const informedRoot = stopNumericRoot(informedStop);
+  if (informedRoot && scopeStopRoots.has(informedRoot)) return true;
   if (isParentStopId(requestedStopId) && childStopIds.has(informedStop)) return true;
   return false;
 }
@@ -223,10 +213,15 @@ export function attachAlerts({
     }
   }
   const scopeStopTokens = new Set();
+  const scopeStopRoots = new Set();
   for (const sid of childStopIds) {
     for (const key of stopKeySet(sid)) scopeStopTokens.add(key);
+    const root = stopNumericRoot(sid);
+    if (root && root !== "0") scopeStopRoots.add(root);
   }
   for (const key of stopKeySet(requestedStopId)) scopeStopTokens.add(key);
+  const requestedRoot = stopNumericRoot(requestedStopId);
+  if (requestedRoot && requestedRoot !== "0") scopeStopRoots.add(requestedRoot);
   const effectiveRouteIds = toSet(
     hasValues(routeIds)
       ? routeIds
@@ -253,7 +248,7 @@ export function attachAlerts({
 
   for (const alert of allAlerts) {
     if (!alert || !alert.id) continue;
-    if (!isActiveNow(alert, currentNow)) continue;
+    if (!isAlertActiveNow(alert, currentNow)) continue;
 
     const informedEntities = Array.isArray(alert.informedEntities)
       ? alert.informedEntities
@@ -266,7 +261,8 @@ export function attachAlerts({
         entity?.stop_id,
         requestedStopId,
         childStopIds,
-        scopeStopTokens
+        scopeStopTokens,
+        scopeStopRoots
       )
     );
 
@@ -284,7 +280,8 @@ export function attachAlerts({
             entity?.stop_id,
             requestedStopId,
             childStopIds,
-            scopeStopTokens
+            scopeStopTokens,
+            scopeStopRoots
           );
         }),
       });

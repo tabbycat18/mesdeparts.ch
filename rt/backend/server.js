@@ -61,11 +61,8 @@ const { fetchServiceAlerts } = await import("./src/loaders/fetchServiceAlerts.js
 const { fetchTripUpdates } = await import("./src/loaders/fetchTripUpdates.js");
 const { summarizeTripUpdates } = await import("./src/loaders/tripUpdatesSummary.js");
 const { readTripUpdatesFeedFromCache } = await import("./loaders/loadRealtime.js");
-const {
-  hasTokenIntersection,
-  normalizeStopId,
-  stopKeySet,
-} = await import("./src/util/stopScope.js");
+const { normalizeStopId } = await import("./src/util/stopScope.js");
+const { informedStopMatchesForDebug } = await import("./src/util/alertDebugScope.js");
 
 const app = express();
 const PORT = Number(process.env.PORT || 3001);
@@ -100,13 +97,6 @@ function resolveServiceAlertsApiKey() {
   );
 }
 
-function stopRoot(stopId) {
-  const s = normalizeStopId(stopId);
-  if (!s) return "";
-  if (s.startsWith("Parent")) return s.slice("Parent".length);
-  return s.split(":")[0] || s;
-}
-
 function alertIsActiveNow(alert, now) {
   const periods = Array.isArray(alert?.activePeriods) ? alert.activePeriods : [];
   if (periods.length === 0) return true;
@@ -130,19 +120,6 @@ function hasReplacementSignal(alert) {
   return /\b(ersatz|replacement|remplacement|sostitutiv|substitute|ev(?:\s*\d+)?)\b/i.test(
     text
   );
-}
-
-function informedStopMatches(entityStopId, requestedStopId) {
-  const informed = normalizeStopId(entityStopId);
-  const requested = normalizeStopId(requestedStopId);
-  if (!informed || !requested) return false;
-  const informedKeys = stopKeySet(informed);
-  const requestedKeys = stopKeySet(requested);
-  if (hasTokenIntersection(informedKeys, requestedKeys)) return true;
-  const root = stopRoot(requested);
-  if (!root) return false;
-  if (informed === root || informed.startsWith(`${root}:`)) return true;
-  return false;
 }
 
 function buildOtdUrl(pathname, queryObj = {}) {
@@ -533,7 +510,7 @@ app.get("/api/debug/alerts", async (req, res) => {
       const informed = Array.isArray(alert?.informedEntities) ? alert.informedEntities : [];
       const stopIds = informed.map((e) => normalizeStopId(e?.stop_id)).filter(Boolean);
       const matchedByStop = stopId
-        ? informed.some((e) => informedStopMatches(e?.stop_id, stopId))
+        ? informed.some((e) => informedStopMatchesForDebug(e?.stop_id, stopId))
         : false;
 
       if (active) activeCount += 1;
