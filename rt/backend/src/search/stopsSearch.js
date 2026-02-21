@@ -777,6 +777,7 @@ const FALLBACK_TRGM_SQL = `
 WITH params AS (
   SELECT
     $1::text AS q_norm,
+    trim(regexp_replace(lower($1::text), '[^a-z0-9]+', ' ', 'g')) AS q_fold,
     CASE
       WHEN char_length($1::text) <= 4 THEN 0.48
       WHEN char_length($1::text) <= 6 THEN 0.40
@@ -793,32 +794,40 @@ base AS (
     COALESCE(NULLIF(to_jsonb(s) ->> 'location_type', ''), '') AS location_type,
     trim(split_part(s.stop_name, ',', 1)) AS city_name,
     lower(s.stop_name) AS name_lower,
-    lower(regexp_replace(s.stop_name, '[-_./''’]+', ' ', 'g')) AS name_simple
+    lower(regexp_replace(s.stop_name, '[-_./''’]+', ' ', 'g')) AS name_simple,
+    trim(
+      regexp_replace(
+        translate(
+          lower(s.stop_name),
+          'àáâãäåçèéêëìíîïñòóôõöøùúûüýÿ',
+          'aaaaaaceeeeiiiinoooooouuuuyy'
+        ),
+        '[^a-z0-9]+',
+        ' ',
+        'g'
+      )
+    ) AS name_fold
   FROM public.gtfs_stops s
 ),
 candidates AS (
   SELECT
     b.*,
-    similarity(b.name_lower, p.q_norm)::float8 AS sim_lower,
-    similarity(b.name_simple, p.q_norm)::float8 AS sim_simple,
+    similarity(b.name_fold, p.q_fold)::float8 AS sim_fold,
     CASE
-      WHEN b.name_lower = p.q_norm OR b.name_simple = p.q_norm THEN 4
-      WHEN b.name_lower LIKE p.q_norm || '%' OR b.name_simple LIKE p.q_norm || '%' THEN 3
-      WHEN b.name_lower LIKE '%' || p.q_norm || '%' OR b.name_simple LIKE '%' || p.q_norm || '%' THEN 2
-      WHEN b.name_lower % p.q_norm OR b.name_simple % p.q_norm THEN 1
+      WHEN b.name_fold = p.q_fold THEN 4
+      WHEN b.name_fold LIKE p.q_fold || '%' THEN 3
+      WHEN b.name_fold LIKE '%' || p.q_fold || '%' THEN 2
+      WHEN b.name_fold % p.q_fold THEN 1
       ELSE 0
     END AS tier
   FROM base b
   CROSS JOIN params p
   WHERE
-    p.q_norm <> ''
+    p.q_fold <> ''
     AND (
-      b.name_lower LIKE p.q_norm || '%'
-      OR b.name_simple LIKE p.q_norm || '%'
-      OR b.name_lower LIKE '%' || p.q_norm || '%'
-      OR b.name_simple LIKE '%' || p.q_norm || '%'
-      OR b.name_lower % p.q_norm
-      OR b.name_simple % p.q_norm
+      b.name_fold LIKE p.q_fold || '%'
+      OR b.name_fold LIKE '%' || p.q_fold || '%'
+      OR b.name_fold % p.q_fold
     )
 )
 SELECT
@@ -833,7 +842,7 @@ SELECT
   ARRAY[]::text[] AS aliases_matched,
   0::float8 AS alias_weight,
   0::float8 AS alias_similarity,
-  GREATEST(c.sim_lower, c.sim_simple)::float8 AS name_similarity,
+  c.sim_fold::float8 AS name_similarity,
   0::float8 AS core_similarity,
   (c.parent_station IS NULL OR c.stop_id LIKE 'Parent%') AS is_parent,
   FALSE AS has_hub_token,
@@ -842,7 +851,7 @@ FROM candidates c
 WHERE c.tier > 0
 ORDER BY
   c.tier DESC,
-  GREATEST(c.sim_lower, c.sim_simple) DESC,
+  c.sim_fold DESC,
   (c.parent_station IS NULL OR c.stop_id LIKE 'Parent%') DESC,
   c.stop_name ASC
 LIMIT $2;
@@ -852,8 +861,9 @@ const FALLBACK_PLAIN_SQL = `
 WITH params AS (
   SELECT
     $1::text AS q_norm,
-    split_part($1::text, ' ', 1) AS q_head,
-    left($1::text, 1) AS q_first
+    trim(regexp_replace(lower($1::text), '[^a-z0-9]+', ' ', 'g')) AS q_fold,
+    split_part(trim(regexp_replace(lower($1::text), '[^a-z0-9]+', ' ', 'g')), ' ', 1) AS q_head,
+    left(trim(regexp_replace(lower($1::text), '[^a-z0-9]+', ' ', 'g')), 1) AS q_first
 ),
 base AS (
   SELECT
@@ -864,47 +874,53 @@ base AS (
     COALESCE(NULLIF(to_jsonb(s) ->> 'location_type', ''), '') AS location_type,
     trim(split_part(s.stop_name, ',', 1)) AS city_name,
     lower(s.stop_name) AS name_lower,
-    lower(regexp_replace(s.stop_name, '[-_./''’]+', ' ', 'g')) AS name_simple
+    lower(regexp_replace(s.stop_name, '[-_./''’]+', ' ', 'g')) AS name_simple,
+    trim(
+      regexp_replace(
+        translate(
+          lower(s.stop_name),
+          'àáâãäåçèéêëìíîïñòóôõöøùúûüýÿ',
+          'aaaaaaceeeeiiiinoooooouuuuyy'
+        ),
+        '[^a-z0-9]+',
+        ' ',
+        'g'
+      )
+    ) AS name_fold
   FROM public.gtfs_stops s
 ),
 candidates AS (
   SELECT
     b.*,
     CASE
-      WHEN b.name_lower = p.q_norm OR b.name_simple = p.q_norm THEN 4
-      WHEN b.name_lower LIKE p.q_norm || '%' OR b.name_simple LIKE p.q_norm || '%' THEN 3
-      WHEN b.name_lower LIKE '%' || p.q_norm || '%' OR b.name_simple LIKE '%' || p.q_norm || '%' THEN 2
+      WHEN b.name_fold = p.q_fold THEN 4
+      WHEN b.name_fold LIKE p.q_fold || '%' THEN 3
+      WHEN b.name_fold LIKE '%' || p.q_fold || '%' THEN 2
       WHEN p.q_head <> '' AND (
-        b.name_lower LIKE p.q_head || '%'
-        OR b.name_simple LIKE p.q_head || '%'
+        b.name_fold LIKE p.q_head || '%'
       ) THEN 1
       WHEN p.q_first <> '' AND (
-        b.name_lower LIKE p.q_first || '%'
-        OR b.name_simple LIKE p.q_first || '%'
+        b.name_fold LIKE p.q_first || '%'
       ) THEN 1
       ELSE 0
     END AS tier
   FROM base b
   CROSS JOIN params p
   WHERE
-    p.q_norm <> ''
+    p.q_fold <> ''
     AND (
-      b.name_lower LIKE p.q_norm || '%'
-      OR b.name_simple LIKE p.q_norm || '%'
-      OR b.name_lower LIKE '%' || p.q_norm || '%'
-      OR b.name_simple LIKE '%' || p.q_norm || '%'
+      b.name_fold LIKE p.q_fold || '%'
+      OR b.name_fold LIKE '%' || p.q_fold || '%'
       OR (
         p.q_head <> ''
         AND (
-          b.name_lower LIKE p.q_head || '%'
-          OR b.name_simple LIKE p.q_head || '%'
+          b.name_fold LIKE p.q_head || '%'
         )
       )
       OR (
         p.q_first <> ''
         AND (
-          b.name_lower LIKE p.q_first || '%'
-          OR b.name_simple LIKE p.q_first || '%'
+          b.name_fold LIKE p.q_first || '%'
         )
       )
     )

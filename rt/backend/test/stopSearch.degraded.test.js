@@ -298,8 +298,7 @@ test("degraded fallback SQL supports non-leading substring matches", async () =>
 
       if (text.includes("FROM public.gtfs_stops s")) {
         sawSubstringClause =
-          text.includes("b.name_lower LIKE '%' || p.q_norm || '%'") &&
-          text.includes("b.name_simple LIKE '%' || p.q_norm || '%'");
+          text.includes("b.name_fold LIKE '%' || p.q_fold || '%'");
 
         const qNorm = String(params?.[0] || "");
         if (qNorm !== "grande bor") return { rows: [] };
@@ -333,4 +332,56 @@ test("degraded fallback SQL supports non-leading substring matches", async () =>
   assert.equal(sawSubstringClause, true);
   assert.ok(rows.length > 0);
   assert.equal(rows[0].stop_name, "Lausanne, Grande-Borde");
+});
+
+test("degraded fallback SQL folds accents/comma for Geneve, Poterie queries", async () => {
+  __resetSearchCapabilitiesCacheForTests();
+
+  let sawFoldClause = false;
+
+  const db = {
+    async query(sql, params = []) {
+      const text = String(sql || "");
+
+      if (text.includes("to_regclass('public.stop_search_index')")) {
+        return { rows: [capabilityRow()] };
+      }
+
+      if (text.includes("FROM public.gtfs_stops s")) {
+        sawFoldClause =
+          text.includes("translate(") &&
+          text.includes("b.name_fold LIKE '%' || p.q_fold || '%'");
+
+        const qNorm = String(params?.[0] || "");
+        if (qNorm !== "geneve, poterie") return { rows: [] };
+        return {
+          rows: [
+            {
+              group_id: "Parent8587320",
+              stop_id: "Parent8587320",
+              stop_name: "Genève, Poterie",
+              parent_station: null,
+              location_type: "",
+              city_name: "Genève",
+              aliases_matched: [],
+              alias_weight: 0,
+              alias_similarity: 0,
+              name_similarity: 0,
+              core_similarity: 0,
+              is_parent: true,
+              has_hub_token: false,
+              nb_stop_times: 400,
+            },
+          ],
+        };
+      }
+
+      return { rows: [] };
+    },
+  };
+
+  const rows = await searchStops(db, "geneve, poterie", 10);
+  assert.equal(sawFoldClause, true);
+  assert.ok(rows.length > 0);
+  assert.equal(rows[0].stop_name, "Genève, Poterie");
 });
