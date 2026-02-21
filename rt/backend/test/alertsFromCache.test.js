@@ -60,6 +60,7 @@ test("loadAlertsFromCache returns stale_cache when payload is older than thresho
     enabled: true,
     nowMs: Date.now(),
     freshnessThresholdMs: 45_000,
+    staleGraceMs: 0,
     readCacheLike: async () => ({
       payloadBytes: encodeServiceAlertsFeed([]),
       fetched_at: new Date(Date.now() - 60_000),
@@ -71,6 +72,59 @@ test("loadAlertsFromCache returns stale_cache when payload is older than thresho
   assert.equal(out.meta.applied, false);
   assert.equal(out.meta.reason, "stale_cache");
   assert.equal(out.meta.cacheStatus, "STALE");
+});
+
+test("loadAlertsFromCache applies stale cached alerts when within stale grace window", async () => {
+  const loadAlertsFromCache = await loadAlertsFromCacheFn();
+  const nowMs = Date.now();
+  const nowSec = Math.floor(nowMs / 1000);
+  const payloadBytes = encodeServiceAlertsFeed([
+    {
+      id: "alert-stale-grace-1",
+      alert: {
+        informedEntity: [
+          {
+            stopId: "8576391:0:B",
+          },
+        ],
+        activePeriod: [
+          {
+            start: nowSec - 300,
+            end: nowSec + 3600,
+          },
+        ],
+        headerText: {
+          translation: [
+            {
+              language: "fr",
+              text: "Travaux",
+            },
+          ],
+        },
+      },
+    },
+  ]);
+
+  const out = await loadAlertsFromCache({
+    enabled: true,
+    nowMs,
+    freshnessThresholdMs: 45_000,
+    staleGraceMs: 1_800_000,
+    readCacheLike: async () => ({
+      payloadBytes,
+      fetched_at: new Date(nowMs - 120_000),
+      last_status: 200,
+      last_error: null,
+    }),
+  });
+
+  assert.equal(out.meta.reason, "stale_cache");
+  assert.equal(out.meta.cacheStatus, "STALE");
+  assert.equal(out.meta.applied, true);
+  assert.equal(out.meta.available, true);
+  assert.equal(Array.isArray(out.alerts.entities), true);
+  assert.equal(out.alerts.entities.length, 1);
+  assert.equal(out.alerts.entities[0].id, "alert-stale-grace-1");
 });
 
 test("loadAlertsFromCache decodes fresh cached protobuf and returns normalized alerts", async () => {

@@ -7,6 +7,10 @@ const DEFAULT_ALERTS_FRESH_MAX_AGE_MS = Math.max(
   5_000,
   Number(process.env.STATIONBOARD_ALERTS_FRESH_MAX_AGE_MS || "120000")
 );
+const DEFAULT_ALERTS_STALE_GRACE_MS = Math.max(
+  0,
+  Number(process.env.STATIONBOARD_ALERTS_STALE_GRACE_MS || "1800000")
+);
 
 const EMPTY_ALERTS = Object.freeze({ entities: [] });
 
@@ -62,6 +66,11 @@ export async function loadAlertsFromCache(options = {}) {
     5_000,
     Number(options.freshnessThresholdMs || DEFAULT_ALERTS_FRESH_MAX_AGE_MS)
   );
+  const staleGraceInput = Number(options.staleGraceMs);
+  const staleGraceMs = Math.max(
+    0,
+    Number.isFinite(staleGraceInput) ? staleGraceInput : DEFAULT_ALERTS_STALE_GRACE_MS
+  );
   const readCacheLike = typeof options.readCacheLike === "function" ? options.readCacheLike : getRtCache;
 
   const meta = baseMeta(nowMs);
@@ -105,7 +114,10 @@ export async function loadAlertsFromCache(options = {}) {
     return { alerts: EMPTY_ALERTS, meta };
   }
 
-  if (Number.isFinite(ageMs) && ageMs > freshnessThresholdMs) {
+  const isStale = Number.isFinite(ageMs) && ageMs > freshnessThresholdMs;
+  const staleBeyondGrace =
+    Number.isFinite(ageMs) && ageMs > freshnessThresholdMs + staleGraceMs;
+  if (staleBeyondGrace) {
     meta.reason = "stale_cache";
     meta.cacheStatus = "STALE";
     return { alerts: EMPTY_ALERTS, meta };
@@ -128,8 +140,8 @@ export async function loadAlertsFromCache(options = {}) {
 
   meta.available = entities.length > 0;
   meta.applied = entities.length > 0;
-  meta.reason = entities.length > 0 ? "applied" : "no_alerts";
-  meta.cacheStatus = "FRESH";
+  meta.reason = entities.length > 0 ? (isStale ? "stale_cache" : "applied") : "no_alerts";
+  meta.cacheStatus = isStale ? "STALE" : "FRESH";
   return {
     alerts: { entities },
     meta,
