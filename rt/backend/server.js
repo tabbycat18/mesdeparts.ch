@@ -87,6 +87,10 @@ const STOPS_SEARCH_FALLBACK_QUERY_TIMEOUT_MS = Math.max(
   80,
   Number(process.env.STOPS_SEARCH_FALLBACK_QUERY_TIMEOUT_MS || "350")
 );
+const STOPS_SEARCH_DEGRADED_TIMEOUT_MS = Math.max(
+  120,
+  Number(process.env.STOPS_SEARCH_DEGRADED_TIMEOUT_MS || "700")
+);
 
 function resolveOtdApiKey() {
   return (
@@ -333,6 +337,37 @@ async function fastStopsSearchFallback(query, limit) {
   });
 }
 
+function setSearchFallbackHeaders(res, reason) {
+  const fallbackReason = String(reason || "error");
+  if (typeof res.setHeader === "function") {
+    res.setHeader("x-md-search-fallback", "1");
+    res.setHeader("x-md-search-fallback-reason", fallbackReason);
+    return;
+  }
+  if (typeof res.set === "function") {
+    res.set("x-md-search-fallback", "1");
+    res.set("x-md-search-fallback-reason", fallbackReason);
+  }
+}
+
+async function safeStopsSearchFallback(query, limit, reason = "error") {
+  try {
+    return await withTimeout(
+      fastStopsSearchFallback(query, limit),
+      STOPS_SEARCH_DEGRADED_TIMEOUT_MS,
+      "stops_search_fallback_timeout"
+    );
+  } catch (fallbackErr) {
+    console.warn("[API] /api/stops/search fallback failed", {
+      q: String(query || ""),
+      limit,
+      reason: String(reason || "error"),
+      fallbackReason: String(fallbackErr?.code || fallbackErr?.message || fallbackErr),
+    });
+    return [];
+  }
+}
+
 function parseBooleanish(value) {
   const raw = String(value || "").trim().toLowerCase();
   if (!raw) return false;
@@ -477,19 +512,14 @@ app.get("/api/stops/search", async (req, res) => {
         "stops_search_timeout"
       );
     } catch (err) {
+      const reason = String(err?.code || err?.message || "error");
       console.warn("[API] /api/stops/search degraded fallback", {
         q,
         limit,
-        reason: String(err?.code || err?.message || err),
+        reason,
       });
-      const fallbackStops = await fastStopsSearchFallback(q, limit).catch(() => []);
-      if (typeof res.setHeader === "function") {
-        res.setHeader("x-md-search-fallback", "1");
-        res.setHeader("x-md-search-fallback-reason", String(err?.code || "error"));
-      } else if (typeof res.set === "function") {
-        res.set("x-md-search-fallback", "1");
-        res.set("x-md-search-fallback-reason", String(err?.code || "error"));
-      }
+      const fallbackStops = await safeStopsSearchFallback(q, limit, reason);
+      setSearchFallbackHeaders(res, reason);
       return res.json({ stops: fallbackStops });
     }
 
@@ -511,13 +541,12 @@ app.get("/api/stops/search", async (req, res) => {
     return res.json({ stops });
   } catch (err) {
     console.error("[API] /api/stops/search failed:", err);
-    if (process.env.NODE_ENV !== "production") {
-      return res.status(500).json({
-        error: "stops_search_failed",
-        detail: String(err?.message || err),
-      });
-    }
-    return res.status(500).json({ error: "stops_search_failed" });
+    const q = String(req.query.q || req.query.query || "").trim();
+    const limit = Number(req.query.limit || "20");
+    const reason = String(err?.code || err?.message || "unexpected_error");
+    const fallbackStops = await safeStopsSearchFallback(q, limit, reason);
+    setSearchFallbackHeaders(res, reason);
+    return res.json({ stops: fallbackStops });
   }
 });
 
