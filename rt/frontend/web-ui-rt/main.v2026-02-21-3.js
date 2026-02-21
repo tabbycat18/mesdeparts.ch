@@ -24,6 +24,7 @@ import {
   buildDeparturesGrouped,
   stationboardLooksStale,
   isTransientFetchError,
+  shouldHoldRtDowngrade,
 } from "./logic.v2026-02-21-3.js";
 
 import {
@@ -38,7 +39,7 @@ import {
 } from "./ui.v2026-02-21-3.js";
 
 import { setupInfoButton } from "./infoBTN.v2026-02-21-3.js";
-import { initI18n, applyStaticTranslations } from "./i18n.v2026-02-21-3.js";
+import { initI18n, applyStaticTranslations, t } from "./i18n.v2026-02-21-3.js";
 import { loadFavorites } from "./favourites.v2026-02-21-3.js";
 import {
   getHomeStop,
@@ -51,6 +52,7 @@ import {
   initHeaderControls2,
   updateHeaderControls2,
   setBoardLoadingHint,
+  setBoardNoticeHint,
   maybeShowThreeDotsTip,
 } from "./ui/headerControls2.js";
 
@@ -67,6 +69,8 @@ const FOLLOWUP_REFRESH_BASE_MS = 3_000;
 const REFRESH_JITTER_MIN_MS = 300;
 const REFRESH_JITTER_MAX_MS = 600;
 const REFRESH_BACKOFF_STEPS_MS = [2_000, 5_000, 10_000, 15_000];
+const RT_DOWNGRADE_HOLD_WINDOW_MS = 30_000;
+const RT_LONG_STALE_GRACE_MS = 30_000;
 const DEBUG_PERF =
   (() => {
     try {
@@ -197,6 +201,8 @@ let refreshRequestSeq = 0;
 let refreshBackoffIndex = 0;
 let refreshLoopActive = false;
 let refreshInFlight = false;
+let lastRtAppliedSnapshot = null;
+let lastRtAppliedAtMs = 0;
 
 function clearBoardForStationChange() {
   // Invalidate old in-flight refreshes and cached rows immediately.
@@ -207,6 +213,9 @@ function clearBoardForStationChange() {
   staleBoardEmptySince = null;
   staleBoardDirectRescueAt = 0;
   lastNonEmptyStationboardAt = 0;
+  lastRtAppliedSnapshot = null;
+  lastRtAppliedAtMs = 0;
+  setBoardNoticeHint("");
 
   // Clear visible rows so we don't briefly show the previous station board.
   const tbody = document.getElementById("departures-body");
@@ -498,11 +507,33 @@ async function refreshDepartures({ retried, showLoadingHint = true, fromSchedule
     const data = await fetchStationboardRaw();
     if (isStaleRequest()) return;
     const tAfterFetch = DEBUG_PERF ? performance.now() : 0;
-    const rows = buildDeparturesGrouped(data, appState.viewMode);
+    const nowMs = Date.now();
+    if (data?.rt?.applied === true) {
+      lastRtAppliedSnapshot = data;
+      lastRtAppliedAtMs = nowMs;
+    }
+    const holdPreviousRt = shouldHoldRtDowngrade({
+      lastRtAppliedAtMs,
+      nextRt: data?.rt,
+      nowMs,
+      holdWindowMs: RT_DOWNGRADE_HOLD_WINDOW_MS,
+      staleGraceMs: RT_LONG_STALE_GRACE_MS,
+    });
+    const renderData = holdPreviousRt && lastRtAppliedSnapshot ? lastRtAppliedSnapshot : data;
+    if (holdPreviousRt) {
+      setBoardNoticeHint(t("rtTemporarilyUnavailable"), { ttlMs: REFRESH_DEPARTURES + 1_500 });
+    } else {
+      setBoardNoticeHint("");
+      if (String(data?.rt?.reason || "").toLowerCase() === "disabled") {
+        lastRtAppliedSnapshot = null;
+        lastRtAppliedAtMs = 0;
+      }
+    }
+    const rows = buildDeparturesGrouped(renderData, appState.viewMode);
     const tAfterBuild = DEBUG_PERF ? performance.now() : 0;
-    lastStationboardData = data;
+    lastStationboardData = renderData;
 
-    const rawCount = Array.isArray(data?.stationboard) ? data.stationboard.length : 0;
+    const rawCount = Array.isArray(renderData?.stationboard) ? renderData.stationboard.length : 0;
     if (rawCount > 0) {
       lastNonEmptyStationboardAt = Date.now();
     }
@@ -648,7 +679,7 @@ async function refreshDepartures({ retried, showLoadingHint = true, fromSchedule
     // Update filter dropdown options from the latest board
     updateHeaderControls2();
 
-    renderServiceBanners(data?.banners || []);
+    renderServiceBanners(renderData?.banners || []);
     renderDepartures(rows);
     markMainBoardReadyForHints();
     const tAfterRender = DEBUG_PERF ? performance.now() : 0;

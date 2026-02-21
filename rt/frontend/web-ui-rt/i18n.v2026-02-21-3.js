@@ -1226,6 +1226,12 @@ const TRANSLATIONS = {
     it: "Aggiornamento…",
     en: "Refreshing…",
   },
+  rtTemporarilyUnavailable: {
+    fr: "RT temporairement indisponible",
+    de: "Echtzeit voruebergehend nicht verfuegbar",
+    it: "Tempo reale temporaneamente non disponibile",
+    en: "Real-time temporarily unavailable",
+  },
 };
 
 let currentLang = "fr";

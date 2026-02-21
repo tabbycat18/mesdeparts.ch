@@ -12,6 +12,7 @@ import {
   detectNetworkFromStation,
   fetchJourneyDetails,
   parseApiDate,
+  shouldHoldRtDowngrade,
 } from "../logic.v2026-02-21-3.js";
 import { appState, VIEW_MODE_LINE, VIEW_MODE_TIME } from "../state.v2026-02-21-3.js";
 
@@ -109,6 +110,56 @@ assert.equal(computeDelayMin(60, { rounding: "ceil" }), 1);
 assert.equal(detectNetworkFromStation("Lausanne, gare"), "tl");
 assert.equal(detectNetworkFromStation("Genève, Cornavin"), "tpg");
 assert.equal(detectNetworkFromStation("Zurich HB"), "vbz");
+
+// Anti-flicker guard: keep previous RT view briefly on transient non-applied responses.
+assert.equal(
+  shouldHoldRtDowngrade({
+    lastRtAppliedAtMs: 1_000,
+    nowMs: 20_000,
+    holdWindowMs: 30_000,
+    staleGraceMs: 30_000,
+    nextRt: {
+      applied: false,
+      reason: "missing_cache",
+      freshnessThresholdMs: 45_000,
+      cacheAgeMs: 10_000,
+    },
+  }),
+  true
+);
+assert.equal(
+  shouldHoldRtDowngrade({
+    lastRtAppliedAtMs: 1_000,
+    nowMs: 70_000,
+    holdWindowMs: 30_000,
+    nextRt: { applied: false, reason: "missing_cache" },
+  }),
+  false
+);
+assert.equal(
+  shouldHoldRtDowngrade({
+    lastRtAppliedAtMs: 1_000,
+    nowMs: 20_000,
+    holdWindowMs: 30_000,
+    staleGraceMs: 5_000,
+    nextRt: {
+      applied: false,
+      reason: "stale_cache",
+      freshnessThresholdMs: 45_000,
+      cacheAgeMs: 60_500,
+    },
+  }),
+  false
+);
+assert.equal(
+  shouldHoldRtDowngrade({
+    lastRtAppliedAtMs: 1_000,
+    nowMs: 20_000,
+    holdWindowMs: 30_000,
+    nextRt: { applied: false, reason: "disabled" },
+  }),
+  false
+);
 
 // fetchJourneyDetails should prefer the bus section on mixed train+bus connection results
 {

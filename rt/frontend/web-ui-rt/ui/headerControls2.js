@@ -138,6 +138,8 @@ const state = {
   // Board loading state tracking
   isSuggestionFetching: false,
   isBoardLoading: false,
+  boardNoticeText: "",
+  boardNoticeTimer: null,
   threeDotsTipEl: null,
   threeDotsTipVisible: false,
   threeDotsTipShownInSession: false,
@@ -1186,6 +1188,9 @@ function syncHint() {
     hint.classList.add("is-visible");
   } else if (state.isBoardLoading) {
     hint.textContent = t("loadingDepartures");
+    hint.classList.add("is-visible");
+  } else if (state.boardNoticeText) {
+    hint.textContent = state.boardNoticeText;
     hint.classList.add("is-visible");
   } else {
     hint.textContent = "";
@@ -2397,4 +2402,22 @@ export function setBoardLoadingHint(isLoading) {
   if (!state.initialized) return;
   state.isBoardLoading = !!isLoading;
   syncHint();
+}
+
+export function setBoardNoticeHint(text, { ttlMs = 0 } = {}) {
+  if (!state.initialized) return;
+  if (state.boardNoticeTimer) {
+    clearTimeout(state.boardNoticeTimer);
+    state.boardNoticeTimer = null;
+  }
+  state.boardNoticeText = String(text || "").trim();
+  syncHint();
+  const ttl = Number(ttlMs);
+  if (state.boardNoticeText && Number.isFinite(ttl) && ttl > 0) {
+    state.boardNoticeTimer = setTimeout(() => {
+      state.boardNoticeText = "";
+      state.boardNoticeTimer = null;
+      syncHint();
+    }, ttl);
+  }
 }

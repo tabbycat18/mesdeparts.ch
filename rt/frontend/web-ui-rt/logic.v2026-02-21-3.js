@@ -677,6 +677,54 @@ function normalizeBackendStationboard(data) {
   const stationId = String(data?.station?.id || appState.stationId || "").trim();
   const stationName = String(data?.station?.name || appState.STATION || "").trim();
   const station = { id: stationId, name: stationName };
+  const rtRaw = data?.rt && typeof data.rt === "object" ? data.rt : {};
+  const rtFetchedAt = String(rtRaw?.cacheFetchedAt || rtRaw?.fetchedAt || "").trim() || null;
+  const rtAgeMsRaw = Number(rtRaw?.cacheAgeMs);
+  const rtAgeMs = Number.isFinite(rtAgeMsRaw) ? Math.max(0, Math.round(rtAgeMsRaw)) : null;
+  const rtFreshnessMsRaw = Number(rtRaw?.freshnessThresholdMs);
+  const rtFreshnessMs = Number.isFinite(rtFreshnessMsRaw)
+    ? Math.max(5_000, Math.round(rtFreshnessMsRaw))
+    : 45_000;
+  const rt = {
+    available: rtRaw?.available === true,
+    applied: rtRaw?.applied === true,
+    reason: String(rtRaw?.reason || (rtRaw?.applied ? "applied" : "missing_cache")),
+    feedKey: String(rtRaw?.feedKey || "la_tripupdates"),
+    fetchedAt: rtFetchedAt,
+    cacheFetchedAt: rtFetchedAt,
+    cacheAgeMs: rtAgeMs,
+    ageSeconds:
+      Number.isFinite(Number(rtRaw?.ageSeconds))
+        ? Math.max(0, Math.floor(Number(rtRaw.ageSeconds)))
+        : rtAgeMs != null
+          ? Math.floor(rtAgeMs / 1000)
+          : null,
+    freshnessThresholdMs: rtFreshnessMs,
+    freshnessMaxAgeSeconds: Math.round(rtFreshnessMs / 1000),
+    instance:
+      rtRaw?.instance && typeof rtRaw.instance === "object"
+        ? {
+            id: String(rtRaw.instance.id || ""),
+            allocId:
+              rtRaw.instance.allocId == null ? null : String(rtRaw.instance.allocId || ""),
+            host: String(rtRaw.instance.host || ""),
+            pid: Number.isFinite(Number(rtRaw.instance.pid))
+              ? Number(rtRaw.instance.pid)
+              : null,
+            build: String(rtRaw.instance.build || ""),
+          }
+        : null,
+  };
+  const alertsRaw = data?.alerts && typeof data.alerts === "object" ? data.alerts : {};
+  const alerts = {
+    available: alertsRaw?.available === true,
+    applied: alertsRaw?.applied === true,
+    reason: String(alertsRaw?.reason || "disabled"),
+    fetchedAt: String(alertsRaw?.fetchedAt || "").trim() || null,
+    ageSeconds: Number.isFinite(Number(alertsRaw?.ageSeconds))
+      ? Math.max(0, Math.floor(Number(alertsRaw.ageSeconds)))
+      : null,
+  };
 
   const stationboard = departures.map((dep) => {
     const scheduled = dep?.scheduledDeparture || dep?.realtimeDeparture || null;
@@ -763,7 +811,7 @@ function normalizeBackendStationboard(data) {
     };
   });
 
-  return { station, stationboard, banners };
+  return { station, stationboard, banners, rt, alerts };
 }
 
 // Normalize a “simple” line id used for CSS and grouping
@@ -961,6 +1009,34 @@ export function stationboardLooksStale(data) {
 
     return dep.getTime() - now >= -graceMs;
   });
+}
+
+export function shouldHoldRtDowngrade({
+  lastRtAppliedAtMs,
+  nextRt,
+  nowMs = Date.now(),
+  holdWindowMs = 30_000,
+  staleGraceMs = 30_000,
+} = {}) {
+  const lastApplied = Number(lastRtAppliedAtMs);
+  const now = Number(nowMs);
+  if (!Number.isFinite(lastApplied) || lastApplied <= 0) return false;
+  if (!Number.isFinite(now) || now < lastApplied) return false;
+  if (now - lastApplied > Math.max(1_000, Number(holdWindowMs) || 0)) return false;
+
+  const rt = nextRt && typeof nextRt === "object" ? nextRt : {};
+  if (rt.applied === true) return false;
+  const reason = String(rt.reason || "").trim().toLowerCase();
+  if (reason === "disabled") return false;
+
+  const ageMs = Number(rt.cacheAgeMs);
+  const thresholdMs = Number(rt.freshnessThresholdMs);
+  const graceMs = Math.max(0, Number(staleGraceMs) || 0);
+  if (Number.isFinite(ageMs) && Number.isFinite(thresholdMs) && ageMs > thresholdMs + graceMs) {
+    return false;
+  }
+
+  return true;
 }
 
 export function buildDeparturesGrouped(data, viewMode = VIEW_MODE_LINE) {
