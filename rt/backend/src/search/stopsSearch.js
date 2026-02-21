@@ -478,22 +478,21 @@ export function rankStopCandidatesDetailed(rows, query, limit = DEFAULT_LIMIT) {
     fuzzyThreshold: similarityThreshold(queryNorm.length),
   };
 
-  const bestByStopId = new Map();
+  const bestByGroupId = new Map();
 
   for (const row of rows || []) {
     const scored = scoreCandidate(row, queryCtx);
     if (!scored) continue;
 
-    const key = scored.stopId;
-    const previous = bestByStopId.get(key);
+    const key = scored.groupId || scored.stopId;
+    const previous = bestByGroupId.get(key);
     if (!previous || compareScored(scored, previous) < 0) {
-      bestByStopId.set(key, scored);
+      bestByGroupId.set(key, scored);
     }
   }
 
-  const ordered = Array.from(bestByStopId.values()).sort(compareScored);
+  const ordered = Array.from(bestByGroupId.values()).sort(compareScored);
   const uniqueNameRows = [];
-  const duplicateNameRows = [];
   const seenNames = new Set();
 
   for (const row of ordered) {
@@ -501,14 +500,9 @@ export function rankStopCandidatesDetailed(rows, query, limit = DEFAULT_LIMIT) {
     if (!key || !seenNames.has(key)) {
       if (key) seenNames.add(key);
       uniqueNameRows.push(row);
-    } else {
-      duplicateNameRows.push(row);
     }
   }
-
-  const diversified = uniqueNameRows.concat(duplicateNameRows);
-
-  return diversified.slice(0, lim).map((row, index) => ({
+  return uniqueNameRows.slice(0, lim).map((row, index) => ({
     rank: index + 1,
     ...row,
   }));

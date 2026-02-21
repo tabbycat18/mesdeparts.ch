@@ -426,6 +426,7 @@ test("generic query diversifies duplicate stop names", () => {
   const ranked = rankStopCandidates(rows, "Bern", 3);
   const names = ranked.map((row) => normalizeSearchText(row.stop_name));
   assert.equal(names[0], "bern");
+  assert.equal(names.filter((name) => name === "bern").length, 1);
   assert.ok(names.includes("bern, bahnhof"));
   assert.ok(names.includes("bern, bundesplatz"));
 });

@@ -202,6 +202,14 @@ function pickFirstAffected(informedEntities, matchFn) {
   return {};
 }
 
+function informedStopMatchesScope(informedStopId, requestedStopId, childStopIds, scopeStopTokens) {
+  const informedStop = normalizeStopId(informedStopId);
+  if (!informedStop) return false;
+  if (hasTokenIntersection(stopKeySet(informedStop), scopeStopTokens)) return true;
+  if (isParentStopId(requestedStopId) && childStopIds.has(informedStop)) return true;
+  return false;
+}
+
 function shouldAttachServiceTag(tag, matchCtx, dep) {
   const depLine = String(dep?.line || "").trim();
   const depSource = String(dep?.source || "").trim();
@@ -299,15 +307,20 @@ export function attachAlerts({
     const informedEntities = Array.isArray(alert.informedEntities)
       ? alert.informedEntities
       : [];
+    const informedHasAnyStop = informedEntities.some((entity) =>
+      normalizeStopId(entity?.stop_id)
+    );
+    const informedHasScopeStop = informedEntities.some((entity) =>
+      informedStopMatchesScope(
+        entity?.stop_id,
+        requestedStopId,
+        childStopIds,
+        scopeStopTokens
+      )
+    );
 
     // A) Stop-level banners.
-    const bannerMatch = informedEntities.some((entity) => {
-      const informedStop = normalizeStopId(entity?.stop_id);
-      if (!informedStop) return false;
-      if (hasTokenIntersection(stopKeySet(informedStop), scopeStopTokens)) return true;
-      if (isParentStopId(requestedStopId) && childStopIds.has(informedStop)) return true;
-      return false;
-    });
+    const bannerMatch = informedHasScopeStop;
 
     if (bannerMatch && !bannerSeen.has(alert.id)) {
       bannerSeen.add(alert.id);
@@ -316,10 +329,11 @@ export function attachAlerts({
         header: alert.headerText || "",
         description: alert.descriptionText || "",
         affected: pickFirstAffected(informedEntities, (entity) => {
-          const informedStop = normalizeStopId(entity?.stop_id);
-          return (
-            hasTokenIntersection(stopKeySet(informedStop), scopeStopTokens) ||
-            (isParentStopId(requestedStopId) && childStopIds.has(informedStop))
+          return informedStopMatchesScope(
+            entity?.stop_id,
+            requestedStopId,
+            childStopIds,
+            scopeStopTokens
           );
         }),
       });
@@ -362,6 +376,7 @@ export function attachAlerts({
             !!entity?.route_id &&
             String(entity.route_id) === depRouteId &&
             (effectiveRouteIds.size === 0 || effectiveRouteIds.has(depRouteId));
+          const scopedRouteMatch = routeMatch && informedHasScopeStop;
 
           const stopMatch = stopMatchesScope(
             entity?.stop_id,
@@ -377,15 +392,19 @@ export function attachAlerts({
             Number(entity.stop_sequence) === depStopSeq;
 
           if (tripMatch) matchCtx.tripMatch = true;
-          if (routeMatch) matchCtx.routeMatch = true;
+          if (scopedRouteMatch) matchCtx.routeMatch = true;
           if (stopMatch) matchCtx.stopMatch = true;
           if (stopSeqMatch) matchCtx.stopSeqMatch = true;
 
-          return tripMatch || routeMatch || stopMatch || stopSeqMatch;
+          return tripMatch || scopedRouteMatch || stopMatch || stopSeqMatch;
         });
 
       if (!depMatched) continue;
-      if (matchCtx.tripMatch || matchCtx.routeMatch || isSyntheticOriginMatch) {
+      if (
+        matchCtx.tripMatch ||
+        matchCtx.routeMatch ||
+        (isSyntheticOriginMatch && (informedHasScopeStop || !informedHasAnyStop))
+      ) {
         matchedByTripOrRoute = true;
       }
       if (depSeenByIndex[idx].has(alert.id)) continue;
