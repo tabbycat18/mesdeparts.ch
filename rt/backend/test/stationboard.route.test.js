@@ -418,12 +418,12 @@ test("stationboard route returns 504 when build times out and no cache exists", 
       getStationboardLike: async () => {
         await new Promise((resolve) => setTimeout(resolve, 200));
         return {
-          station: { id: "Parent8501120", name: "Lausanne" },
+          station: { id: "Parent8509999", name: "Lausanne" },
           departures: [{ line: "R1", destination: "Renens" }],
         };
       },
       resolveStopLike: makeResolveStopStub({
-        "stop:Parent8501120": { resolvedStopId: "Parent8501120", resolvedRootId: "Parent8501120" },
+        "stop:Parent8509999": { resolvedStopId: "Parent8509999", resolvedRootId: "Parent8509999" },
       }),
       dbQueryLike: async () => ({ rows: [] }),
       logger: { log() {}, error() {} },
@@ -431,7 +431,7 @@ test("stationboard route returns 504 when build times out and no cache exists", 
 
     const res = await invokeRoute(handler, {
       query: {
-        stop_id: "Parent8501120",
+        stop_id: "Parent8509999",
         lang: "fr",
       },
     });
