@@ -691,7 +691,7 @@ WITH params AS (
 alias_hits AS (
   SELECT
     sa.stop_id,
-    ARRAY_AGG(DISTINCT sa.alias_text ORDER BY sa.weight DESC, sa.alias_text) AS aliases_matched,
+    ARRAY_AGG(sa.alias_text ORDER BY sa.weight DESC, sa.alias_text) AS aliases_matched,
     MAX(sa.weight)::float8 AS alias_weight,
     MAX(similarity(sa.alias_norm, p.q_norm))::float8 AS alias_similarity
   FROM public.stop_aliases sa

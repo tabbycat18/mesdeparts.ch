@@ -477,16 +477,18 @@ app.get("/api/stops/search", async (req, res) => {
         "stops_search_timeout"
       );
     } catch (err) {
-      if (err?.code !== "stops_search_timeout") throw err;
-      console.warn("[API] /api/stops/search timed out; returning fast fallback", {
+      console.warn("[API] /api/stops/search degraded fallback", {
         q,
         limit,
+        reason: String(err?.code || err?.message || err),
       });
       const fallbackStops = await fastStopsSearchFallback(q, limit).catch(() => []);
       if (typeof res.setHeader === "function") {
         res.setHeader("x-md-search-fallback", "1");
+        res.setHeader("x-md-search-fallback-reason", String(err?.code || "error"));
       } else if (typeof res.set === "function") {
         res.set("x-md-search-fallback", "1");
+        res.set("x-md-search-fallback-reason", String(err?.code || "error"));
       }
       return res.json({ stops: fallbackStops });
     }
