@@ -3432,10 +3432,40 @@ export function renderDepartures(rows) {
     // Remark — pick narrow (+X min) or wide (Retard env. X min) based on layout
     const tdRemark = document.createElement("td");
     tdRemark.className = "col-remark-cell";
-    const remarkText = narrowRemark
+    let effectiveStatus = dep.status;
+    let remarkText = narrowRemark
       ? (dep.remarkNarrow || dep.remark || "")
       : (dep.remarkWide || dep.remark || "");
-    if (dep.status === "cancelled" && remarkText) {
+    if (!remarkText) {
+      if (effectiveStatus === "cancelled") {
+        remarkText = t("remarkCancelled");
+      } else if (effectiveStatus === "early") {
+        remarkText = t("remarkEarly");
+      } else if (effectiveStatus === "delay") {
+        const delayValue = Number(dep?.displayedDelayMin);
+        if (dep?.mode === "train" && Number.isFinite(delayValue) && delayValue > 0) {
+          remarkText = narrowRemark
+            ? `+${delayValue} min`
+            : t("remarkDelayTrainApprox").replace("{min}", String(delayValue));
+        } else {
+          remarkText = t("remarkDelayShort");
+        }
+      } else {
+        const delayValue = Number(dep?.displayedDelayMin);
+        if (Number.isFinite(delayValue) && delayValue > 0) {
+          effectiveStatus = "delay";
+          if (dep?.mode === "train") {
+            remarkText = narrowRemark
+              ? `+${delayValue} min`
+              : t("remarkDelayTrainApprox").replace("{min}", String(delayValue));
+          } else {
+            remarkText = t("remarkDelayShort");
+          }
+        }
+      }
+    }
+
+    if (effectiveStatus === "cancelled" && remarkText) {
       const badge = document.createElement("span");
       badge.className = "remark-pill remark-pill--cancelled";
       badge.textContent = remarkText;
@@ -3443,10 +3473,10 @@ export function renderDepartures(rows) {
     } else {
       tdRemark.textContent = remarkText;
     }
-    if (dep.status === "cancelled") tdRemark.classList.add("status-cancelled");
-    if (dep.status === "delay") tdRemark.classList.add("status-delay");
-    if (dep.status === "early") tdRemark.classList.add("status-early");
-    if (dep.status === "cancelled" && uiDebugEnabled()) {
+    if (effectiveStatus === "cancelled") tdRemark.classList.add("status-cancelled");
+    if (effectiveStatus === "delay") tdRemark.classList.add("status-delay");
+    if (effectiveStatus === "early") tdRemark.classList.add("status-early");
+    if (effectiveStatus === "cancelled" && uiDebugEnabled()) {
       const debugCancel = document.createElement("span");
       debugCancel.className = "remark-debug-cancelled";
       debugCancel.textContent = " CXL";
