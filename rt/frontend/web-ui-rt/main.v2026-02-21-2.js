@@ -63,6 +63,10 @@ const COUNTDOWN_REFRESH_MS = 5_000;
 const STALE_EMPTY_MAX_MS = 60_000; // force recovery if board stays empty this long while stationboard has entries
 const STALE_BOARD_RETRY_COOLDOWN_MS = 60_000; // per-station cache-bypass retry spacing
 const TRANSIENT_RETRY_DELAY_MS = 700;
+const FOLLOWUP_REFRESH_BASE_MS = 3_000;
+const REFRESH_JITTER_MIN_MS = 300;
+const REFRESH_JITTER_MAX_MS = 600;
+const REFRESH_BACKOFF_STEPS_MS = [2_000, 5_000, 10_000, 15_000];
 const DEBUG_PERF =
   (() => {
     try {
@@ -180,6 +184,7 @@ function updateDebugPanel(rows) {
 }
 
 let refreshTimer = null;
+let followupRefreshTimer = null;
 let countdownTimer = null;
 let lastStationboardData = null;
 let emptyBoardRetryStation = null;
@@ -189,6 +194,9 @@ let staleBoardEmptySince = null;
 let staleBoardDirectRescueAt = 0;
 let lastNonEmptyStationboardAt = 0;
 let refreshRequestSeq = 0;
+let refreshBackoffIndex = 0;
+let refreshLoopActive = false;
+let refreshInFlight = false;
 
 function clearBoardForStationChange() {
   // Invalidate old in-flight refreshes and cached rows immediately.
@@ -207,9 +215,67 @@ function clearBoardForStationChange() {
   }
 }
 
+function randomRefreshJitterMs() {
+  const spread = REFRESH_JITTER_MAX_MS - REFRESH_JITTER_MIN_MS;
+  const magnitude = REFRESH_JITTER_MIN_MS + Math.random() * Math.max(0, spread);
+  const sign = Math.random() < 0.5 ? -1 : 1;
+  return Math.round(sign * magnitude);
+}
+
+function jitteredDelayMs(baseMs) {
+  const base = Math.max(200, Number(baseMs) || 0);
+  return Math.max(200, base + randomRefreshJitterMs());
+}
+
+function clearScheduledRefresh() {
+  if (refreshTimer) {
+    clearTimeout(refreshTimer);
+    refreshTimer = null;
+  }
+}
+
+function clearFollowupRefresh() {
+  if (followupRefreshTimer) {
+    clearTimeout(followupRefreshTimer);
+    followupRefreshTimer = null;
+  }
+}
+
+function scheduleNextRefresh({ useBackoff = false } = {}) {
+  if (!refreshLoopActive) return;
+  if (typeof document !== "undefined" && document.hidden) return;
+
+  clearScheduledRefresh();
+  const backoffMs = REFRESH_BACKOFF_STEPS_MS[
+    Math.max(0, Math.min(refreshBackoffIndex, REFRESH_BACKOFF_STEPS_MS.length - 1))
+  ];
+  const baseMs = useBackoff ? backoffMs : REFRESH_DEPARTURES;
+  const delayMs = jitteredDelayMs(baseMs);
+
+  refreshTimer = setTimeout(() => {
+    refreshTimer = null;
+    if (refreshInFlight) {
+      scheduleNextRefresh({ useBackoff });
+      return;
+    }
+    refreshDepartures({ showLoadingHint: false, fromScheduler: true });
+  }, delayMs);
+}
+
+function scheduleInitialFollowupRefresh() {
+  clearFollowupRefresh();
+  const delayMs = jitteredDelayMs(FOLLOWUP_REFRESH_BASE_MS);
+  followupRefreshTimer = setTimeout(() => {
+    followupRefreshTimer = null;
+    if (typeof document !== "undefined" && document.hidden) return;
+    refreshDepartures({ showLoadingHint: false });
+  }, delayMs);
+}
+
 function startRefreshLoop() {
-  if (refreshTimer) clearInterval(refreshTimer);
-  refreshTimer = setInterval(() => refreshDepartures({ showLoadingHint: false }), REFRESH_DEPARTURES);
+  refreshLoopActive = true;
+  refreshBackoffIndex = 0;
+  scheduleNextRefresh({ useBackoff: false });
 }
 
 function refreshCountdownTick() {
@@ -236,10 +302,9 @@ function startCountdownLoop() {
 }
 
 function stopRefreshLoop() {
-  if (refreshTimer) {
-    clearInterval(refreshTimer);
-    refreshTimer = null;
-  }
+  refreshLoopActive = false;
+  clearScheduledRefresh();
+  clearFollowupRefresh();
 }
 
 function stopCountdownLoop() {
@@ -407,7 +472,7 @@ function applyStation(name, id, { syncUrl = false } = {}) {
   updateStationTitle();
 }
 
-async function refreshDepartures({ retried, showLoadingHint = true } = {}) {
+async function refreshDepartures({ retried, showLoadingHint = true, fromScheduler = false } = {}) {
   const requestSeq = ++refreshRequestSeq;
   const requestStation = appState.STATION || "";
   const requestStationId = appState.stationId || "";
@@ -415,6 +480,10 @@ async function refreshDepartures({ retried, showLoadingHint = true } = {}) {
     requestSeq !== refreshRequestSeq ||
     requestStation !== (appState.STATION || "") ||
     requestStationId !== (appState.stationId || "");
+  let refreshSucceeded = false;
+  let scheduleBackoff = false;
+
+  refreshInFlight = true;
 
   const tStart = DEBUG_PERF ? performance.now() : 0;
   const tbody = document.getElementById("departures-body");
@@ -594,9 +663,11 @@ async function refreshDepartures({ retried, showLoadingHint = true } = {}) {
     }
     updateDebugPanel(rows);
     publishEmbedState();
+    refreshSucceeded = true;
   } catch (err) {
     if (isStaleRequest()) return;
     const isTransient = isTransientFetchError(err);
+    scheduleBackoff = true;
     if (isTransient && !retried) {
       setTimeout(() => {
         refreshDepartures({ retried: true, showLoadingHint: false });
@@ -626,7 +697,14 @@ async function refreshDepartures({ retried, showLoadingHint = true } = {}) {
     }
     renderServiceBanners([]);
   } finally {
-    if (isStaleRequest()) return;
+    const staleRequest = isStaleRequest();
+    refreshInFlight = false;
+    if (staleRequest) {
+      if (fromScheduler) {
+        scheduleNextRefresh({ useBackoff: false });
+      }
+      return;
+    }
     if (tbody) {
       tbody.removeAttribute("aria-busy");
     }
@@ -634,6 +712,21 @@ async function refreshDepartures({ retried, showLoadingHint = true } = {}) {
       setBoardLoadingHint(false);
     }
     publishEmbedState();
+
+    if (fromScheduler) {
+      if (refreshSucceeded) {
+        refreshBackoffIndex = 0;
+        scheduleNextRefresh({ useBackoff: false });
+      } else {
+        if (scheduleBackoff) {
+          refreshBackoffIndex = Math.min(
+            refreshBackoffIndex + 1,
+            REFRESH_BACKOFF_STEPS_MS.length - 1
+          );
+        }
+        scheduleNextRefresh({ useBackoff: true });
+      }
+    }
   }
 }
 
@@ -789,6 +882,7 @@ async function runHomeStopOnboardingIfNeeded() {
 
   // Initial load
   refreshDepartures();
+  scheduleInitialFollowupRefresh();
   defer(() => {
     runHomeStopOnboardingIfNeeded();
   });

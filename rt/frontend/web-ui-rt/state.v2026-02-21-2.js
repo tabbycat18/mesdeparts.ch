@@ -19,8 +19,8 @@ export const MIN_ROWS = 12;
 export const MAX_TRAIN_ROWS = 20;
 export const CHRONO_VIEW_MIN_MINUTES = 15;
 
-// Refresh cadence
-export const REFRESH_DEPARTURES = 20_000;
+// Refresh cadence (phase 1: align UI polling with poller cadence).
+export const REFRESH_DEPARTURES = 15_000;
 
 // How far ahead we keep departures (client-side window).
 // Note: the upstream API may not return a full 3h horizon for every stop.
