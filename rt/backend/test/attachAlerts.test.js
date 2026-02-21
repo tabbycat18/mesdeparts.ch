@@ -344,3 +344,44 @@ test("attachAlerts does not apply skipped_stop tag from stop-only alert to all d
   assert.ok(dep1.tags.includes("skipped_stop"));
   assert.equal(dep2.tags.includes("skipped_stop"), false);
 });
+
+test("attachAlerts matches 85-prefixed parent ids against SLOID stop ids", () => {
+  const now = new Date("2026-02-21T02:00:00.000Z");
+  const departures = [
+    {
+      trip_id: "trip-brig",
+      route_id: "route-brig",
+      stop_id: "8576646:0:1",
+      stop_sequence: 3,
+      destination: "Brig",
+      tags: [],
+      source: "scheduled",
+    },
+  ];
+
+  const alerts = {
+    entities: [
+      {
+        id: "brig-derailment",
+        severity: "severe",
+        headerText: "Rail disruption near Brig",
+        descriptionText: "Derailment response in progress.",
+        activePeriods: [],
+        informedEntities: [{ stop_id: "ch:1:sloid:76646" }],
+      },
+    ],
+  };
+
+  const out = attachAlerts({
+    stopId: "Parent8576646",
+    routeIds: departures.map((dep) => dep.route_id),
+    tripIds: departures.map((dep) => dep.trip_id),
+    departures,
+    alerts,
+    now,
+  });
+
+  assert.equal(out.banners.length, 1);
+  assert.equal(out.banners[0]?.header, "Rail disruption near Brig");
+  assert.deepEqual(out.departures[0]?.alerts?.map((alert) => alert.id), ["brig-derailment"]);
+});

@@ -10,6 +10,7 @@ import { pickPreferredMergedDeparture } from "../merge/pickPreferredDeparture.js
 import { normalizeDeparture } from "../models/stationboard.js";
 import { pickTranslation, resolveLangPrefs } from "../util/i18n.js";
 import { filterRenderableDepartures } from "../util/departureFilter.js";
+import { stopKeySet } from "../util/stopScope.js";
 import { createCancellationTracer } from "../debug/cancellationTrace.js";
 import { buildDepartureAudit } from "../debug/departureAudit.js";
 import {
@@ -147,11 +148,7 @@ function filterLocalizedAlertsByScope(alerts, { stopId, scopeStopIds, routeIds, 
   if (!entities.length) return { entities: [] };
 
   function stopTokens(value) {
-    const raw = String(value || "").trim().toLowerCase();
-    if (!raw) return [];
-    const noParent = raw.startsWith("parent") ? raw.slice("parent".length) : raw;
-    const base = noParent.split(":")[0] || noParent;
-    return Array.from(new Set([raw, noParent, base].filter(Boolean)));
+    return Array.from(stopKeySet(value));
   }
 
   const stopTokenSet = new Set();

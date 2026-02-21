@@ -3,6 +3,11 @@ import {
   dateFromZurichServiceDateAndSeconds,
   ymdIntInZurich,
 } from "../time/zurichTime.js";
+import {
+  hasTokenIntersection,
+  normalizeStopId,
+  stopKeySet,
+} from "../util/stopScope.js";
 
 function normalize(value) {
   if (value == null) return "";
@@ -17,51 +22,6 @@ function textContains(haystack, needle) {
   const h = normalizeText(haystack);
   const n = normalizeText(needle);
   return !!h && !!n && h.includes(n);
-}
-
-function stopKeySet(value) {
-  const raw = normalize(value);
-  const out = new Set();
-  if (!raw) return out;
-
-  const lowerRaw = raw.toLowerCase();
-  out.add(lowerRaw);
-
-  const noParent = lowerRaw.startsWith("parent")
-    ? lowerRaw.slice("parent".length)
-    : lowerRaw;
-  if (noParent) out.add(noParent);
-  const isSloid = lowerRaw.includes("sloid:");
-  const isPlatformScoped = noParent.includes(":") && !isSloid;
-
-  const base = noParent.split(":")[0] || noParent;
-  if (base && !isPlatformScoped && !isSloid) out.add(base);
-
-  const sloidMatch = lowerRaw.match(/sloid:(\d+)/i);
-  if (sloidMatch?.[1]) {
-    const sl = String(Number(sloidMatch[1]));
-    if (sl && sl !== "0") out.add(sl);
-  }
-
-  if (/^\d+$/.test(base)) {
-    const normalizedDigits = String(Number(base));
-    if (normalizedDigits && normalizedDigits !== "0" && !isPlatformScoped && !isSloid) {
-      out.add(normalizedDigits);
-    }
-    if (!isPlatformScoped && !isSloid && base.startsWith("850") && base.length > 3) {
-      const tail = String(Number(base.slice(3)));
-      if (tail && tail !== "0") out.add(tail);
-    }
-  }
-
-  return out;
-}
-
-function hasTokenIntersection(aSet, bSet) {
-  for (const token of aSet) {
-    if (bSet.has(token)) return true;
-  }
-  return false;
 }
 
 function isAlertRelevantForWindow(alert, nowMs, windowMs, graceMs) {
@@ -95,11 +55,11 @@ function getPeriodMs(periodValue) {
 }
 
 function isParentStopId(stopId) {
-  return normalize(stopId).startsWith("Parent");
+  return normalizeStopId(stopId).startsWith("Parent");
 }
 
 function stationRootFromRequestedStop(stopId) {
-  const raw = normalize(stopId);
+  const raw = normalizeStopId(stopId);
   if (!raw) return "";
   if (raw.startsWith("Parent")) return raw.slice("Parent".length);
   const parts = raw.split(":");
@@ -107,8 +67,8 @@ function stationRootFromRequestedStop(stopId) {
 }
 
 function stopMatchesScope(informedStopId, requestedStopId, childStopIds) {
-  const informed = normalize(informedStopId);
-  const requested = normalize(requestedStopId);
+  const informed = normalizeStopId(informedStopId);
+  const requested = normalizeStopId(requestedStopId);
   if (!informed) return false;
   const informedKeys = stopKeySet(informed);
   const requestedKeys = stopKeySet(requested);

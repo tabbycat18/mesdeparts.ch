@@ -61,6 +61,11 @@ const { fetchServiceAlerts } = await import("./src/loaders/fetchServiceAlerts.js
 const { fetchTripUpdates } = await import("./src/loaders/fetchTripUpdates.js");
 const { summarizeTripUpdates } = await import("./src/loaders/tripUpdatesSummary.js");
 const { readTripUpdatesFeedFromCache } = await import("./loaders/loadRealtime.js");
+const {
+  hasTokenIntersection,
+  normalizeStopId,
+  stopKeySet,
+} = await import("./src/util/stopScope.js");
 
 const app = express();
 const PORT = Number(process.env.PORT || 3001);
@@ -93,56 +98,6 @@ function resolveServiceAlertsApiKey() {
     process.env.OPENTDATA_GTFS_RT_KEY ||
     ""
   );
-}
-
-function normalizeStopId(value) {
-  if (value == null) return "";
-  return String(value).trim();
-}
-
-function stopKeySet(value) {
-  const raw = normalizeStopId(value);
-  const out = new Set();
-  if (!raw) return out;
-
-  const lowerRaw = raw.toLowerCase();
-  out.add(lowerRaw);
-
-  const noParent = lowerRaw.startsWith("parent")
-    ? lowerRaw.slice("parent".length)
-    : lowerRaw;
-  if (noParent) out.add(noParent);
-  const isSloid = lowerRaw.includes("sloid:");
-  const isPlatformScoped = noParent.includes(":") && !isSloid;
-
-  const base = noParent.split(":")[0] || noParent;
-  if (base && !isPlatformScoped && !isSloid) out.add(base);
-
-  const sloidMatch = lowerRaw.match(/sloid:(\d+)/i);
-  if (sloidMatch?.[1]) {
-    const sl = String(Number(sloidMatch[1]));
-    if (sl && sl !== "0") out.add(sl);
-  }
-
-  if (/^\d+$/.test(base)) {
-    const normalizedDigits = String(Number(base));
-    if (normalizedDigits && normalizedDigits !== "0" && !isPlatformScoped && !isSloid) {
-      out.add(normalizedDigits);
-    }
-    if (!isPlatformScoped && !isSloid && base.startsWith("850") && base.length > 3) {
-      const tail = String(Number(base.slice(3)));
-      if (tail && tail !== "0") out.add(tail);
-    }
-  }
-
-  return out;
-}
-
-function hasTokenIntersection(aSet, bSet) {
-  for (const token of aSet) {
-    if (bSet.has(token)) return true;
-  }
-  return false;
 }
 
 function stopRoot(stopId) {
