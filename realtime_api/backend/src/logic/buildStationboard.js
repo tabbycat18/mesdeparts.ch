@@ -311,9 +311,11 @@ export async function buildStationboard(locationId, options = {}) {
   // We intentionally fetch a bit *before* "now" so late vehicles (scheduled in the past)
   // don't disappear from the board when they are delayed.
   // Tunables (via env):
-  //  - PAST_LOOKBACK_MINUTES: how far back (scheduled) we still fetch from DB (default 5)
+  //  - PAST_LOOKBACK_MINUTES: how far back (scheduled) we still fetch from DB (default 60)
+  //    Increased to 60 minutes to ensure trains with reasonable delays (up to ~60min)
+  //    remain visible even after their scheduled departure time passes.
   //  - DEPARTED_GRACE_SECONDS: keep a departure on screen this long after it leaves (default 45)
-  const PAST_LOOKBACK_MINUTES = Number(process.env.PAST_LOOKBACK_MINUTES || "5");
+  const PAST_LOOKBACK_MINUTES = Number(process.env.PAST_LOOKBACK_MINUTES || "60");
   const DEPARTED_GRACE_SECONDS = Number(
     process.env.DEPARTED_GRACE_SECONDS || "45"
   );
