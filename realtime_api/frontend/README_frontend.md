@@ -1,5 +1,7 @@
 # Web UI
 
+Docs index: [`../README_INDEX.md`](../README_INDEX.md)
+
 Static, dependency-free front-end for mesdeparts.ch. Everything in this folder is served as-is (no build step), with ES modules and versioned filenames to keep long-lived caches safe to bust.
 
 ## Features

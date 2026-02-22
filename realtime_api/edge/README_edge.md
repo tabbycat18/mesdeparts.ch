@@ -1,5 +1,7 @@
 # Edge Worker (Active)
 
+Docs index: [`../README_INDEX.md`](../README_INDEX.md)
+
 This is the active Cloudflare Worker deployment path for `api.mesdeparts.ch/api/*`.
 
 ## Files

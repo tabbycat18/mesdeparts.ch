@@ -1,5 +1,7 @@
 # Zero-Downtime GTFS Refresh — Complete Implementation
 
+Docs index: [`../README_INDEX.md`](../README_INDEX.md)
+
 ## Overview
 
 This implementation eliminates downtime during GTFS refresh cycles by replacing destructive TRUNCATE+INSERT operations with atomic table renames. The result:
@@ -475,4 +477,3 @@ This implementation provides:
 - ✅ **Production-ready** (tested, documented, rollback procedures ready)
 
 **Total downtime during GTFS refresh: <100ms (imperceptible to users)**
-

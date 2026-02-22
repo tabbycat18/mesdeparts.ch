@@ -1,5 +1,7 @@
 # Backend Scripts Guide
 
+Docs index: [`../../README_INDEX.md`](../../README_INDEX.md)
+
 This folder contains operational scripts, pollers, diagnostics, and QA utilities for the realtime backend.
 
 ## How to run
@@ -129,6 +131,21 @@ STATIONBOARD_BASE_URL=https://api.mesdeparts.ch node scripts/debugStop.js "Lausa
 - `seedStopAliases.js`
   - Seeds alias records from CSV/manual specs.
   - Used by `npm run seed:aliases`.
+
+#### Recommended safe loop for stop-search changes
+
+When changing search behavior, run scripts in this order:
+
+1. `npm run search:sync-aliases`
+   - Ensure alias/spec data is aligned before tuning scoring.
+2. `npm run search:repro-regression`
+   - Verify known regressions (`foret`, `grande borde`, `bel air`, `st/sr francois`) stay fixed.
+3. `npm run search:verify`
+   - Validate expected ranking/target behavior against DB.
+4. `npm run search:bench`
+   - Check latency regressions before deploy.
+
+If step 2 or 3 fails, do not proceed to deploy.
 
 ### Stop resolution / endpoint checks
 

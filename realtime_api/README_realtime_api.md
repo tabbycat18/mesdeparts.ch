@@ -2,6 +2,8 @@
 
 This `realtime_api/` folder contains the real-time (GTFS static + GTFS-RT) implementation.
 
+Docs index: [`README_INDEX.md`](./README_INDEX.md)
+
 ## Swiss GTFS Context (Operational Model)
 
 This project follows the opentransportdata.swiss model:
@@ -80,10 +82,10 @@ They sit in front of existing implementation so future refactors can happen safe
 
 1. `GET /api/stationboard` hits `realtime_api/backend/server.js`.
 2. Server calls `getStationboard(...)` from `realtime_api/backend/src/api/stationboard.js`.
-3. Wrapper delegates to existing pipeline in `realtime_api/backend/logic/buildStationboard.js`.
+3. Wrapper delegates to existing pipeline in `realtime_api/backend/src/logic/buildStationboard.js`.
 4. `buildStationboard`:
    - loads scheduled base rows using `realtime_api/backend/src/sql/stationboard.sql`
-   - loads realtime index via `realtime_api/backend/loaders/loadRealtime.js`
+   - loads scoped realtime from cache via `realtime_api/backend/src/rt/loadScopedRtFromCache.js` (which reads feed snapshots via `realtime_api/backend/loaders/loadRealtime.js`)
    - merges with `applyTripUpdates(...)` from `realtime_api/backend/src/merge/applyTripUpdates.js`
 5. Response is returned to frontend.
 
@@ -193,9 +195,12 @@ Ignored local snapshots include (when present locally):
 1. `realtime_api/README_realtime_api.md` (this file)
 2. `realtime_api/backend/server.js`
 3. `realtime_api/backend/src/api/stationboard.js`
-4. `realtime_api/backend/logic/buildStationboard.js`
+4. `realtime_api/backend/src/logic/buildStationboard.js`
 5. `realtime_api/backend/src/merge/applyTripUpdates.js`
 6. `realtime_api/backend/loaders/loadRealtime.js`
+
+Compatibility note:
+- `realtime_api/backend/logic/buildStationboard.js` exists as a thin re-export shim to `src/logic/buildStationboard.js`.
 7. `realtime_api/backend/src/sql/stationboard.sql`
 
 That gives the complete backend execution path in order.

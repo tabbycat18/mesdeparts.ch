@@ -1,5 +1,7 @@
 # RT Backend Notes
 
+Docs index: [`../README_INDEX.md`](../README_INDEX.md)
+
 GTFS static datasets must not be committed to git.
 
 Static GTFS is downloaded by CI from the opentransportdata permalink during refresh jobs.
@@ -14,6 +16,23 @@ TODO: remove any remaining legacy static dataset directories after the first suc
 - Container listen port: `8080` (`ENV PORT=8080`).
 
 API Fly config is committed at `realtime_api/backend/fly.toml`.
+
+## Runtime Truth Map (verified)
+
+Use this map first to avoid chasing outdated paths:
+
+- Process entrypoint: `realtime_api/backend/server.js`
+- Active stop-search route: `/api/stops/search` mounted via `src/api/stopSearchRoute.js`
+- Active stationboard route: `/api/stationboard` mounted via `src/api/stationboardRoute.js`
+- Stationboard API orchestration: `realtime_api/backend/src/api/stationboard.js`
+- Canonical builder implementation: `realtime_api/backend/src/logic/buildStationboard.js`
+- Compatibility shim (re-export only): `realtime_api/backend/logic/buildStationboard.js`
+- Scoped RT cache merge input: `realtime_api/backend/src/rt/loadScopedRtFromCache.js`
+- Alerts cache input: `realtime_api/backend/src/rt/loadAlertsFromCache.js`
+- Shared feed cache/decode module: `realtime_api/backend/loaders/loadRealtime.js`
+
+Deprecated/non-mounted route file:
+- `realtime_api/backend/routes/searchStops.js` exists for legacy compatibility and is not mounted by `server.js`.
 
 ## GTFS-RT Option A1 (Global Limit Guarantee)
 
@@ -222,3 +241,45 @@ Why typos like `bel aie` still match `Bel-Air`:
 - query normalization turns `bel aie` into stable tokens
 - candidates that do not pass exact/prefix still get fuzzy scores from trigram similarity on normalized `name_norm`/aliases
 - fuzzy tier is retained in top results, so close strings (`aie` vs `air`) remain discoverable.
+
+### End-to-end request flow (`/api/stops/search`)
+
+1. Route validation in `src/api/stopSearchRoute.js`:
+   - `q` required, min length `2`
+   - `limit` clamped to `1..50`
+2. Primary search call in `src/search/stopsSearch.js`:
+   - shared normalization (`src/util/searchNormalize.js`)
+   - capability probe (`stop_search_index`, aliases, SQL functions, `pg_trgm`, `unaccent`)
+3. Query strategy:
+   - full primary SQL path when capabilities are complete
+   - degraded fallback SQL path when capabilities are missing or primary fails
+4. Ranking and shaping:
+   - stable tiered scoring (exact/prefix > contains > fuzzy)
+   - dedupe by station group + stop name, return canonical stop objects
+5. Route fallback behavior:
+   - on route-level timeout/error, a fast fallback runs
+   - response includes `x-md-search-fallback` headers when fallback was applied
+
+### Current conclusions (verified behavior)
+
+- Search is resilient-by-design: it returns useful results even when advanced DB capabilities are unavailable.
+- Primary quality depends on the indexed stack (`stop_search_index` + aliases + `pg_trgm` + `unaccent`).
+- Fallback behavior is intentional and covered by tests; it must remain functional.
+- Normalization parity between JS and SQL is critical (`st/saint`, `hb/hbf`, accent/punctuation folding).
+- Regression-sensitive queries already exist and should be treated as contract tests (for example `foret`, `grande borde`, `bel air`, `st/sr francois`).
+
+### Safe continuous improvement (without breaking current search)
+
+1. Add tests first:
+   - add/extend cases in `test/stopSearch.test.js`, `test/stopSearch.degraded.test.js`, `test/stopSearch.route.test.js`
+2. Prefer data tuning before algorithm changes:
+   - update alias seeds/specs, then run `npm run search:sync-aliases`
+3. If normalization changes:
+   - update both JS (`src/util/searchNormalize.js`) and SQL (`normalize_stop_search_text` in `sql/optimize_stop_search.sql`)
+4. Keep fallback paths intact:
+   - never remove degraded SQL or route-level fallback headers
+5. Verify before merge:
+   - `node --test test/stopSearch.test.js test/stopSearch.degraded.test.js test/stopSearch.route.test.js`
+   - `npm run search:repro-regression`
+   - `npm run search:verify`
+   - `npm run search:bench`
