@@ -88,6 +88,44 @@ If context is still missing after this order, then inspect code.
   2. Update `realtime_api/README_INDEX.md` if navigation or authoritative paths changed.
   3. Update this `AGENTS.md` if runtime entrypoints, ownership, or workflow changed.
 
+## 8) Deployment Configuration (for deployment-related changes)
+
+### Docker Build
+- **Root Dockerfile**: `Dockerfile` at repo root
+  - Builds the main backend application (`realtime_api/backend/server.js`)
+  - References backend source and dependencies with: `COPY realtime_api/backend/...`
+  - Do NOT use `realtime_api/backend/Dockerfile` (removed; use root version)
+- **Docker ignore**: `.dockerignore` at repo root
+  - Excludes unnecessary directories for faster builds: `realtime_api/frontend`, `legacy_api`, `dev-artifacts`, `.claude`
+  - Excludes `.env` files and node_modules
+
+### Fly.io Configuration
+- **Main app deployment** (`fly.toml` at repo root):
+  - App name: `mesdeparts-ch`
+  - Dockerfile: `Dockerfile` (points to root)
+  - Service: HTTP with port 8080, HTTPS enforced, auto-scaling
+  - Deploy: `flyctl deploy` or `fly deploy`
+  - Status: https://mesdeparts-ch.fly.dev/
+
+- **Poller service** (`realtime_api/backend/fly.poller.toml`):
+  - Separate Fly.io app for background GTFS-RT polling jobs
+  - App name: `mesdeparts-rt-poller`
+  - Process: runs `npm run poller` (not HTTP; background task)
+  - Deploy: `flyctl deploy --config realtime_api/backend/fly.poller.toml`
+
+### When to Update Deployment Files
+| File | Purpose | When to change |
+| --- | --- | --- |
+| `Dockerfile` | Build main backend app | package.json changes, runtime changes, build optimization |
+| `fly.toml` | Deploy main app to Fly.io | resource changes, region changes, health check changes |
+| `.dockerignore` | Exclude build context files | new build artifacts, faster build optimization |
+| `realtime_api/backend/fly.poller.toml` | Deploy poller service | poller resource/schedule changes |
+
+### Deployment Troubleshooting
+- **"fly.toml not found"**: Ensure `fly.toml` is at repo root (not in subdirectories) and committed to git (`git ls-files fly.toml`)
+- **Build context issues**: Check `.dockerignore` doesn't exclude essential files; verify Dockerfile `COPY` paths reference `realtime_api/backend/`
+- **Port conflicts**: Backend listens on 8080 (in `Dockerfile` ENV PORT=8080); `fly.toml` routes external port 8080 → internal 8080
+
 ## 9) Stop-search change protocol (do not skip)
 - Apply changes by risk tier:
   1. aliases/spec data
