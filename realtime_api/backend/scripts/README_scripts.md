@@ -1,6 +1,7 @@
 # Backend Scripts Guide
 
 Docs index: [`../../README_INDEX.md`](../../README_INDEX.md)
+SQL guide: [`../README_SQL.md`](../README_SQL.md)
 
 This folder contains operational scripts, pollers, diagnostics, and QA utilities for the realtime backend.
 
@@ -146,6 +147,13 @@ When changing search behavior, run scripts in this order:
    - Check latency regressions before deploy.
 
 If step 2 or 3 fails, do not proceed to deploy.
+
+Extra guardrail before changing ranking/SQL:
+
+- Confirm whether the issue is data (alias/spec) or logic:
+  - If one/few stations are wrong, start with aliases/specs (Tier 1).
+  - If broad ordering is wrong across many queries, inspect ranking logic (Tier 2).
+  - Only then consider SQL retrieval changes (Tier 3+).
 
 ### Stop resolution / endpoint checks
 

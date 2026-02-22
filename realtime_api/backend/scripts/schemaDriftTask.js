@@ -7,7 +7,7 @@ const __dirname = path.dirname(__filename);
 const backendRoot = path.resolve(__dirname, "..");
 
 const FILES = [
-  "schema_gtfs.sql",
+  "sql/legacy/schema_gtfs.sql",
   "src/sql/stationboard.sql",
   "sql/create_stage_tables.sql",
   "sql/validate_stage.sql",
@@ -88,7 +88,9 @@ async function main() {
 
   console.log("Actionable drift-resolution task (non-breaking):");
   console.log("1. Keep runtime canonical naming as gtfs_* (plus app_stop_aliases, rt_updates).");
-  console.log("2. Mark schema_gtfs.sql as legacy if it is not used to bootstrap current gtfs_* runtime.");
+  console.log(
+    "2. Keep sql/legacy/schema_gtfs.sql as legacy-only unless a runtime bootstrap still depends on it."
+  );
   console.log("3. Add or locate one canonical migration that creates gtfs_* + app_stop_aliases.");
   console.log("4. Ensure import scripts and runtime SQL reference only the canonical schema.");
   console.log("5. Keep a compatibility window only if live environments still depend on legacy names.");
@@ -98,4 +100,3 @@ main().catch((err) => {
   console.error("schema drift report failed:", String(err?.stack || err));
   process.exit(1);
 });
-

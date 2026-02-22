@@ -8,8 +8,10 @@ Read in this order when onboarding or debugging:
 
 1. [`README_realtime_api.md`](./README_realtime_api.md)
 2. [`backend/README_backend.md`](./backend/README_backend.md)
-3. [`backend/README_src.md`](./backend/README_src.md)
-4. [`backend/scripts/README_scripts.md`](./backend/scripts/README_scripts.md)
+3. [`backend/README_SQL.md`](./backend/README_SQL.md)
+4. [`backend/README_src.md`](./backend/README_src.md)
+5. [`backend/scripts/README_scripts.md`](./backend/scripts/README_scripts.md)
+6. [`docs/INDEX.md`](./docs/INDEX.md)
 
 This order is designed to avoid code-search for common context.
 
@@ -21,7 +23,22 @@ This order is designed to avoid code-search for common context.
 
 - [`backend/README_backend.md`](./backend/README_backend.md) - backend operations, deployment notes, stationboard contract, stop-search behavior.
 - [`backend/README_src.md`](./backend/README_src.md) - deep code map of `src/` (api, merge, rt, search, utilities).
+- [`backend/README_SQL.md`](./backend/README_SQL.md) - SQL runbook: file roles, refresh order, cutover/search/runtime query mapping.
 - [`backend/scripts/README_scripts.md`](./backend/scripts/README_scripts.md) - script-by-script usage, requirements, and safe execution order.
+
+Loader + logic quick links:
+- Logic pipeline entry: `backend/src/logic/buildStationboard.js`
+- Logic compatibility shim: `backend/logic/buildStationboard.js`
+- Feed cache/decode loader: `backend/loaders/loadRealtime.js`
+- Scoped RT loader: `backend/src/rt/loadScopedRtFromCache.js`
+- Alerts loader: `backend/src/rt/loadAlertsFromCache.js`
+- Deep explanation of these files: [`backend/README_src.md`](./backend/README_src.md) (sections: `src/loaders`, `src/logic`, `src/rt`)
+
+Search-improvement references:
+- Risk-tiered strategy and invariants: `backend/README_backend.md` ("Search improvement map")
+- Code touchpoints by risk: `backend/README_src.md` ("Search touchpoints by risk")
+- SQL-safe editing and verification gate: `backend/README_SQL.md`
+- Execution run-loop and scripts: `backend/scripts/README_scripts.md`
 
 ## Frontend docs
 
@@ -33,7 +50,12 @@ This order is designed to avoid code-search for common context.
 
 ## Operations docs
 
+- [`docs/INDEX.md`](./docs/INDEX.md) - operations-doc hub for zero-downtime GTFS refresh and rollout runbooks.
 - [`docs/ZERO_DOWNTIME_README.md`](./docs/ZERO_DOWNTIME_README.md) - zero-downtime GTFS refresh implementation details.
+- [`docs/ZERO_DOWNTIME_PLAN.md`](./docs/ZERO_DOWNTIME_PLAN.md) - design rationale and migration strategy.
+- [`docs/MIGRATION_GUIDE.md`](./docs/MIGRATION_GUIDE.md) - deployment and verification runbook.
+- [`docs/IMPLEMENTATION_SUMMARY.md`](./docs/IMPLEMENTATION_SUMMARY.md) - technical before/after summary.
+- [`docs/GTFS_ZERO_DOWNTIME_REFACTOR.md`](./docs/GTFS_ZERO_DOWNTIME_REFACTOR.md) - refactor notes and migration context.
 
 ## Authoritative runtime map (verified)
 
@@ -57,6 +79,7 @@ This order is designed to avoid code-search for common context.
 
 - `legacy_api/` is archive-only; do not use it for active deploys.
 - `realtime_api/backend/routes/searchStops.js` exists but is not mounted by `server.js` (deprecated path).
+- `realtime_api/docs/` is active operations documentation for the realtime stack (not legacy).
 
 ## Archive note
 

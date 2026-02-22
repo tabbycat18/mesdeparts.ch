@@ -57,6 +57,8 @@ This project follows the opentransportdata.swiss model:
   - Active Cloudflare Worker (`worker.js`) + Wrangler config (`wrangler.toml`) for edge proxy/routing.
 - `realtime_api/frontend/`
   - Static UI for the RT board (no build step required).
+- `realtime_api/docs/`
+  - Operational docs and GTFS zero-downtime migration/runbook docs (`INDEX.md` entrypoint).
 - `realtime_api/data/` (optional local-only folder)
   - Local GTFS snapshots for manual tooling; keep out of git.
 
@@ -193,14 +195,17 @@ Ignored local snapshots include (when present locally):
 ## If You Feel Lost: What To Read First
 
 1. `realtime_api/README_realtime_api.md` (this file)
-2. `realtime_api/backend/server.js`
-3. `realtime_api/backend/src/api/stationboard.js`
-4. `realtime_api/backend/src/logic/buildStationboard.js`
-5. `realtime_api/backend/src/merge/applyTripUpdates.js`
-6. `realtime_api/backend/loaders/loadRealtime.js`
+2. `realtime_api/backend/README_backend.md`
+3. `realtime_api/backend/README_SQL.md`
+4. `realtime_api/backend/README_src.md`
+5. `realtime_api/backend/server.js`
+6. `realtime_api/backend/src/api/stationboard.js`
+7. `realtime_api/backend/src/logic/buildStationboard.js`
+8. `realtime_api/backend/src/merge/applyTripUpdates.js`
+9. `realtime_api/backend/loaders/loadRealtime.js`
+10. `realtime_api/backend/src/sql/stationboard.sql`
 
 Compatibility note:
 - `realtime_api/backend/logic/buildStationboard.js` exists as a thin re-export shim to `src/logic/buildStationboard.js`.
-7. `realtime_api/backend/src/sql/stationboard.sql`
 
-That gives the complete backend execution path in order.
+That gives docs-first onboarding, then the complete backend execution path.

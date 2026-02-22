@@ -1,6 +1,7 @@
 # Backend `src/` Map
 
 Docs index: [`../README_INDEX.md`](../README_INDEX.md)
+SQL guide: [`README_SQL.md`](./README_SQL.md)
 
 This file documents the current `realtime_api/backend/src/` tree based on direct file inspection.
 
@@ -126,6 +127,21 @@ Primary responsibilities:
 3. If normalization changes, keep JS + SQL normalization in sync.
 4. Preserve degraded fallback behavior and fallback headers.
 5. Run search tests + regression + benchmark before merge.
+
+### Search touchpoints by risk (code-first)
+
+| Risk | What to change | Where |
+| --- | --- | --- |
+| Low | Query/stop alias content and weights | `scripts/syncStopSearchAliases.js`, SQL seed/spec sections in `sql/optimize_stop_search.sql` |
+| Medium | Ranking/tie-break scores | `src/search/stopsSearch.js` (`scoreCandidate`, `compareScored`) |
+| Medium | Candidate-limit and budgets/timeouts | `src/search/stopsSearch.js` constants + `server.js` stop-search timeout env usage |
+| High | Primary/fallback SQL match logic | `src/search/stopsSearch.js` (`PRIMARY_SQL`, fallback SQL constants) |
+| Highest | Text normalization semantics | `src/util/searchNormalize.js` + SQL `normalize_stop_search_text` in `sql/optimize_stop_search.sql` |
+
+Search invariants to preserve:
+- `supportsPrimarySearch(...)` gate must keep degraded mode reachable.
+- `runFallbackSearch(...)` and one-char backoff retry must remain active.
+- `searchStopsWithDebug(...)` must keep debug visibility for ranking analysis.
 
 ## Merge deep dive (`src/merge`)
 

@@ -1,6 +1,7 @@
 # RT Backend Notes
 
 Docs index: [`../README_INDEX.md`](../README_INDEX.md)
+SQL guide: [`README_SQL.md`](./README_SQL.md)
 
 GTFS static datasets must not be committed to git.
 
@@ -30,6 +31,8 @@ Use this map first to avoid chasing outdated paths:
 - Scoped RT cache merge input: `realtime_api/backend/src/rt/loadScopedRtFromCache.js`
 - Alerts cache input: `realtime_api/backend/src/rt/loadAlertsFromCache.js`
 - Shared feed cache/decode module: `realtime_api/backend/loaders/loadRealtime.js`
+- SQL runbook and ownership map: `realtime_api/backend/README_SQL.md`
+- Deep file-by-file explanations for logic/loaders/rt: `realtime_api/backend/README_src.md`
 
 Deprecated/non-mounted route file:
 - `realtime_api/backend/routes/searchStops.js` exists for legacy compatibility and is not mounted by `server.js`.
@@ -283,3 +286,26 @@ Why typos like `bel aie` still match `Bel-Air`:
    - `npm run search:repro-regression`
    - `npm run search:verify`
    - `npm run search:bench`
+
+### Search improvement map (risk-tiered)
+
+Start with lower-risk changes first:
+
+1. Tier 1 (lowest risk): alias/spec tuning
+   - Files: `sql/optimize_stop_search.sql` seed specs and alias tables, plus `scripts/syncStopSearchAliases.js`
+   - Use when specific stations are missing/misranked but overall behavior is good.
+2. Tier 2 (medium risk): ranking weights/tie-breakers
+   - File: `src/search/stopsSearch.js` (`scoreCandidate`, ranking comparator, tier scoring)
+   - Use when candidate set is good but ordering is wrong.
+3. Tier 3 (higher risk): SQL retrieval strategy
+   - File: `src/search/stopsSearch.js` SQL blocks (`PRIMARY_SQL`, fallback SQL), capability gates, budgets/timeouts
+   - Use only when Tier 1/2 cannot recover required results.
+4. Tier 4 (highest risk): normalization semantics
+   - Files: `src/util/searchNormalize.js` and SQL `normalize_stop_search_text` in `sql/optimize_stop_search.sql`
+   - Always update JS+SQL together to avoid drift.
+
+Do-not-break invariants:
+- Keep degraded fallback path functional.
+- Keep `x-md-search-fallback` headers on fallback responses.
+- Keep query min-length and limit clamping behavior.
+- Keep typo/diacritic behavior for known regressions (`foret`, `grande borde`, `bel air`, `st/sr francois`).

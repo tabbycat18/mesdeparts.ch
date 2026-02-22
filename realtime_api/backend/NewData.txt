@@ -127,7 +127,7 @@ WHERE st.trip_id IS NULL;
 
 Rebuild / refresh search_stops (yes, do it)
 
-The view is created by schema_gtfs.sql. After each import:
+The view is created by sql/legacy/schema_gtfs.sql (legacy reference). After each import:
 
 REFRESH MATERIALIZED VIEW public.search_stops;
 
