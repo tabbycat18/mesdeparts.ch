@@ -6,8 +6,11 @@ WORKDIR /app
 COPY realtime_api/backend/package*.json ./
 RUN npm ci --omit=dev
 
-# Copy source
+# Copy backend source
 COPY realtime_api/backend .
+
+# Copy frontend static files to be served by backend
+COPY realtime_api/frontend ./frontend
 
 # Fly/containers expect PORT; your app should listen on it.
 ENV NODE_ENV=production

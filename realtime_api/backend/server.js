@@ -72,6 +72,9 @@ const PORT = Number(process.env.PORT || 3001);
 app.use(cors({ origin: true, credentials: false }));
 app.use(express.json());
 
+// Serve frontend static files (HTML, CSS, JS, assets)
+app.use(express.static(path.resolve(__dirname, './frontend')));
+
 const OTD_API_BASE = "https://transport.opendata.ch/v1/";
 const OTD_FETCH_TIMEOUT_MS = Math.max(
   1000,
