@@ -44,14 +44,15 @@ Legacy policy:
 .
 ├── README.md                              # full guide
 ├── LICENSE / NOTICE
-├── legacy_api/wrangler.toml              # archive copy (do not deploy)
 ├── .github/workflows/
 │   ├── gtfs_static_refresh.yml            # hourly static GTFS refresh job
 │   └── backend_schema_check.yml           # stationboard schema JSON parse check
 ├── .wrangler/                             # local Wrangler state directory
-├── legacy_api/cloudflare-worker/
-│   └── worker.js                          # archive copy (legacy)
-├── legacy_api/web-ui/                                # legacy static frontend path
+├── legacy_api/                            # single legacy root (archive/read-only)
+│   ├── wrangler.toml                      # archive copy (do not deploy)
+│   ├── cloudflare-worker/
+│   │   └── worker.js                      # archive copy (legacy)
+│   └── web-ui/                            # legacy static frontend path
 ├── realtime_api/                                    # active RT stack
 │   ├── README_realtime_api.md
 │   ├── backend/                           # Express + Neon + GTFS pipelines
