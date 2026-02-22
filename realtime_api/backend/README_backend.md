@@ -180,6 +180,9 @@ curl "http://localhost:3001/api/stops/search?q=Lausanne,%20Bel-Air&limit=10&debu
 curl "http://localhost:3001/api/stationboard?stop_id=<returned_id>&limit=20&debug=1"
 ```
 
+Script reference:
+- `realtime_api/backend/scripts/README_scripts.md`
+
 ### Schema
 
 - Canonical JSON schema: `realtime_api/backend/docs/stationboard.schema.json`
