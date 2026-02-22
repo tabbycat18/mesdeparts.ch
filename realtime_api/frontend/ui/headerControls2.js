@@ -9,7 +9,7 @@ import {
 import { fetchStationSuggestions, fetchStationsNearby, isAbortError } from "../v20260222.logic.js";
 import { loadFavorites, saveFavorites } from "../v20260222.favourites.js";
 import { getHasSeenThreeDotsTip, setHasSeenThreeDotsTip } from "../v20260222.threeDotsTip.js";
-import { t, setLanguage, LANGUAGE_OPTIONS, applyStaticTranslations } from "../i18v20260222.n.js";
+import { t, setLanguage, LANGUAGE_OPTIONS, applyStaticTranslations } from "../v20260222.i18n.js";
 
 const STORAGE_COLLAPSED_KEY = "mesdeparts.headerControls2.collapsed";
 

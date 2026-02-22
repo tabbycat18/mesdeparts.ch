@@ -1,4 +1,4 @@
-import { t } from "../i18v20260222.n.js";
+import { t } from "../v20260222.i18n.js";
 import { fetchStationSuggestions, fetchStationsNearby } from "../v20260222.logic.js";
 import { loadFavorites, addFavorite, removeFavorite } from "../v20260222.favourites.js";
 import {
