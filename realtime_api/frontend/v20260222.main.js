@@ -15,7 +15,7 @@ import {
   TRAIN_FILTER_LONG_DISTANCE,
   DEFAULT_STATION_ID,
   STATION_ID_STORAGE_KEY,
-} from "./state.v2026-02-21-4.js";
+} from "./v20260222.state.js";
 
 import {
   detectNetworkFromStation,
@@ -28,7 +28,7 @@ import {
   buildBoardContextKey,
   parseBoardContextKey,
   shouldApplyIncomingBoard,
-} from "./logic.v2026-02-21-4.js";
+} from "./v20260222.logic.js";
 
 import {
   setupClock,
@@ -39,18 +39,18 @@ import {
   publishEmbedState,
   updateCountdownRows,
   renderServiceBanners,
-} from "./ui.v2026-02-21-4.js";
+} from "./v20260222.ui.js";
 
-import { setupInfoButton } from "./infoBTN.v2026-02-21-4.js";
-import { initI18n, applyStaticTranslations, t } from "./i18n.v2026-02-21-4.js";
-import { loadFavorites } from "./favourites.v2026-02-21-4.js";
+import { setupInfoButton } from "./v20260222.infoBTN.js";
+import { initI18n, applyStaticTranslations, t } from "./v20260222.i18n.js";
+import { loadFavorites } from "./v20260222.favourites.js";
 import {
   getHomeStop,
   setHomeStop,
   clearHomeStop,
   shouldShowHomeStopModal,
-} from "./homeStop.v2026-02-21-4.js";
-import { openHomeStopOnboardingModal } from "./ui/homeStopOnboarding.v2026-02-21-4.js";
+} from "./v20260222.homeStop.js";
+import { openHomeStopOnboardingModal } from "./ui/v20260222.homeStopOnboarding.js";
 import {
   initHeaderControls2,
   updateHeaderControls2,
@@ -214,6 +214,10 @@ let refreshInFlight = false;
 let lastRtAppliedSnapshot = null;
 let nextRefreshAtMs = 0;
 let rtDebugOverlayEl = null;
+let consecutive204Count = 0;
+let lastFullRefreshAt = 0;
+const FULL_REFRESH_INTERVAL_MS = 10 * 60 * 1000; // Force full refresh every 10 minutes
+const MAX_CONSECUTIVE_204S = 5; // Force full refresh after 5 consecutive 204s
 
 function ensureRtDebugOverlay() {
   if (!DEBUG_RT_CLIENT || typeof document === "undefined") return null;
@@ -597,6 +601,23 @@ async function refreshDepartures({
   let refreshSucceeded = false;
   let scheduleBackoff = false;
 
+  // Force full refresh if too many consecutive 204s or if too much time has passed
+  const nowMs = Date.now();
+  const needsForcedRefresh = consecutive204Count >= MAX_CONSECUTIVE_204S ||
+    (lastFullRefreshAt > 0 && nowMs - lastFullRefreshAt > FULL_REFRESH_INTERVAL_MS);
+
+  if (needsForcedRefresh && !forceFetch) {
+    if (DEBUG_RT_CLIENT) {
+      // eslint-disable-next-line no-console
+      console.log("[MesDeparts][rt-refresh] Force full refresh", {
+        reason: consecutive204Count >= MAX_CONSECUTIVE_204S ? "too_many_204s" : "interval_elapsed",
+        consecutive204Count,
+        timeSinceLastFullRefreshMs: lastFullRefreshAt > 0 ? nowMs - lastFullRefreshAt : "never",
+      });
+    }
+    forceFetch = true;
+  }
+
   refreshInFlight = true;
 
   const tStart = DEBUG_PERF ? performance.now() : 0;
@@ -616,6 +637,14 @@ async function refreshDepartures({
       updateRtDebugOverlay();
     }
     if (data?.__notModified) {
+      consecutive204Count++;
+      if (DEBUG_RT_CLIENT) {
+        // eslint-disable-next-line no-console
+        console.log("[MesDeparts][rt-refresh] Received 204 No Content", {
+          consecutive204Count,
+          willForceRefreshNext: consecutive204Count >= MAX_CONSECUTIVE_204S,
+        });
+      }
       refreshSucceeded = true;
       publishEmbedState();
       return;
@@ -689,6 +718,14 @@ async function refreshDepartures({
       };
       setBoardNoticeHint("");
     }
+    // Reset consecutive 204 counter on successful response
+    if (consecutive204Count > 0 && DEBUG_RT_CLIENT) {
+      // eslint-disable-next-line no-console
+      console.log("[MesDeparts][rt-refresh] Reset consecutive 204 counter on successful fetch");
+    }
+    consecutive204Count = 0;
+    lastFullRefreshAt = Date.now();
+
     const renderData = data;
     const rows = buildDeparturesGrouped(renderData, appState.viewMode);
     const tAfterBuild = DEBUG_PERF ? performance.now() : 0;

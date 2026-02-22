@@ -22,8 +22,8 @@ import {
   TRAIN_FILTER_REGIONAL,
   TRAIN_FILTER_LONG_DISTANCE,
   STATION_ID_STORAGE_KEY,
-} from "./state.v2026-02-21-4.js";
-import { t } from "./i18n.v2026-02-21-4.js";
+} from "./v20260222.state.js";
+import { t } from "./v20260222.i18n.js";
 
 // API base can be overridden by setting window.__MD_API_BASE__ before scripts load.
 // Frontend now targets realtime_api/backend endpoints only.
@@ -268,6 +268,7 @@ export function getDisplayedDelayBadge({
   mode,
   vehicleCategory,
   delaySeconds,
+  authoritativeDelayMin = null,
   cancelled = false,
   busDelayThresholdMin = 2,
 }) {
@@ -303,6 +304,7 @@ export function getDisplayedDelayBadge({
   const isTrain = String(vehicleCategory || "").toLowerCase() === "train" || mode === "train";
   const displayMinCeil = Math.max(0, computeDelayMin(sec, { rounding: "ceil" }) || 0);
   const rawRoundedMin = computeDelayMin(sec, { rounding: "round" });
+  const authoritativeRoundedMin = toFiniteMinutesOrNull(authoritativeDelayMin);
 
   if (rawRoundedMin != null && rawRoundedMin < 0) {
     const msg = t("remarkEarly");
@@ -342,11 +344,16 @@ export function getDisplayedDelayBadge({
     };
   }
 
-  if (displayMinCeil >= Math.max(1, Number(busDelayThresholdMin) || 2)) {
+  const busDelayMin =
+    authoritativeRoundedMin != null
+      ? Math.max(0, authoritativeRoundedMin)
+      : Math.max(0, rawRoundedMin || 0);
+
+  if (busDelayMin >= Math.max(1, Number(busDelayThresholdMin) || 2)) {
     const msg = t("remarkDelayShort");
     return {
       status: "delay",
-      displayedDelayMin: displayMinCeil,
+      displayedDelayMin: busDelayMin,
       remarkWide: msg,
       remarkNarrow: msg,
       remark: msg,
@@ -357,11 +364,11 @@ export function getDisplayedDelayBadge({
 
   return {
     status: null,
-    displayedDelayMin: displayMinCeil,
+    displayedDelayMin: busDelayMin,
     remarkWide: "",
     remarkNarrow: "",
     remark: "",
-    suppressDelayRemark: shouldSuppressDelayRemark(displayMinCeil),
+    suppressDelayRemark: shouldSuppressDelayRemark(busDelayMin),
     suppressed: false,
   };
 }
@@ -409,11 +416,17 @@ function resolveRealtimeDelta({
   };
 }
 
-function deriveRealtimeRemark({ cancelled, effectiveDeltaSec, mode }) {
+function deriveRealtimeRemark({
+  cancelled,
+  effectiveDeltaSec,
+  authoritativeDelayMin = null,
+  mode,
+}) {
   return getDisplayedDelayBadge({
     mode,
     vehicleCategory: mode === "train" ? "train" : "bus_tram_metro",
     delaySeconds: effectiveDeltaSec,
+    authoritativeDelayMin,
     cancelled,
     busDelayThresholdMin: 2,
   });
@@ -1445,6 +1458,7 @@ export function buildDeparturesGrouped(data, viewMode = VIEW_MODE_LINE) {
     const rtView = deriveRealtimeRemark({
       cancelled: isCancelled,
       effectiveDeltaSec: delta.effectiveDeltaSec,
+      authoritativeDelayMin: delta.apiDelayMin,
       mode,
     });
     const status = rtView.status;

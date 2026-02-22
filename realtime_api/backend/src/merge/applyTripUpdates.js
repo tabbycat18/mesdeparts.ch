@@ -838,6 +838,7 @@ export function applyTripUpdates(baseRows, tripUpdates, options = {}) {
           if (realtimePlatform !== undefined) {
             const currentPlatform = merged?.platform ?? "";
             if (String(currentPlatform) !== String(realtimePlatform)) {
+              merged.previousPlatform = currentPlatform;
               merged.platform = realtimePlatform;
               merged.platformChanged = true;
               // Debug instrumentation for platform changes

@@ -84,3 +84,8 @@ Search-improvement references:
 ## Archive note
 
 - Legacy stack docs remain in `legacy_api/` and are intentionally separate from this active index.
+- Historical incident/debug notes for Problem A are archived at:
+  - `realtime_api/docs/archive/problem-a/PROBLEM_A_ANALYSIS.md`
+  - `realtime_api/docs/archive/problem-a/PROBLEM_A_FIX_SUMMARY.md`
+  - `realtime_api/docs/archive/problem-a/PROBLEM_A_INVESTIGATION_COMPLETE.md`
+  - `realtime_api/docs/archive/problem-a/PROBLEM_A_QUICK_REFERENCE.md`

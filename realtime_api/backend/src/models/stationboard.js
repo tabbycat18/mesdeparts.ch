@@ -328,6 +328,7 @@ export function normalizeDeparture(raw, ctx = {}) {
     delayMin: asNullableNumber(raw?.delayMin),
     platform: asNullableText(raw?.platform),
     platformChanged: bool(raw?.platformChanged),
+    previousPlatform: asNullableText(raw?.previousPlatform),
 
     cancelled: bool(raw?.cancelled) || skippedStopSignal || tripCancelledSignal,
     cancelReasonCode,

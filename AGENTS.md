@@ -48,6 +48,7 @@ If context is still missing after this order, then inspect code.
 ## 5) Compatibility/deprecated files (verified)
 - `realtime_api/backend/routes/searchStops.js` exists but is not mounted by `server.js`.
 - `realtime_api/backend/sql/legacy/schema_gtfs.sql` is legacy-only archival SQL (not active runtime/cutover SQL).
+- Historical incident/debug markdown notes are archived in `realtime_api/docs/archive/problem-a/`.
 - `legacy_api/*` remains archived for reference; active runtime/deploy is under `realtime_api/*`.
 
 ## 6) Where to change X

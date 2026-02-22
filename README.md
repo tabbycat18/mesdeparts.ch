@@ -34,6 +34,7 @@ Quick start (current paths):
 - `realtime_api/`: active stack (backend + RT frontend + edge worker).
 - `legacy_api/`: archived legacy stack (`legacy_api/web-ui/`, archive copies of old worker files).
 - `assets/` and `dev-artifacts/` remain at root because they are not clearly legacy-only.
+- Historical incident/debug markdown files from root are archived under `realtime_api/docs/archive/`.
 
 Legacy policy:
 - `legacy_api/` is archive/read-only and should not be used for active Cloudflare deployment.
@@ -56,7 +57,7 @@ Legacy policy:
 ├── realtime_api/                                    # active RT stack
 │   ├── README_realtime_api.md
 │   ├── backend/                           # Express + Neon + GTFS pipelines
-│   ├── docs/                              # RT ops/zero-downtime docs
+│   ├── docs/                              # RT ops/zero-downtime docs + archive/problem-a notes
 │   ├── edge/                              # active Cloudflare Worker + wrangler config
 │   ├── frontend/               # RT static frontend
 │   └── test/

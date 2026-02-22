@@ -15,8 +15,8 @@ import {
   RT_HARD_CAP_MS,
   shouldApplyIncomingBoard,
   shouldHoldRtDowngrade,
-} from "../logic.v2026-02-21-4.js";
-import { appState, VIEW_MODE_LINE, VIEW_MODE_TIME } from "../state.v2026-02-21-4.js";
+} from "../v20260222.logic.js";
+import { appState, VIEW_MODE_LINE, VIEW_MODE_TIME } from "../v20260222.state.js";
 
 // classifyMode should categorize common transport codes
 assert.equal(classifyMode("IC"), "train");
@@ -106,6 +106,43 @@ assert.equal(computeDelayMin(60, { rounding: "ceil" }), 1);
   });
   assert.equal(cancelled.status, "cancelled");
   assert.equal(String(cancelled.remark || "").length > 0, true);
+}
+
+// bus delayed chip visibility: use backend delayMin threshold (>=2 only)
+{
+  const bus0 = getDisplayedDelayBadge({
+    mode: "bus",
+    vehicleCategory: "bus_tram_metro",
+    delaySeconds: 0,
+    authoritativeDelayMin: 0,
+    cancelled: false,
+    busDelayThresholdMin: 2,
+  });
+  assert.equal(bus0.status, null);
+
+  // Regression: timestamp delta can be ~61s (ceil=2), but backend delayMin=1.
+  // Chip must remain hidden because bus threshold uses backend delayMin as-is.
+  const bus1 = getDisplayedDelayBadge({
+    mode: "bus",
+    vehicleCategory: "bus_tram_metro",
+    delaySeconds: 61,
+    authoritativeDelayMin: 1,
+    cancelled: false,
+    busDelayThresholdMin: 2,
+  });
+  assert.equal(bus1.status, null);
+  assert.equal(bus1.displayedDelayMin, 1);
+
+  const bus2 = getDisplayedDelayBadge({
+    mode: "bus",
+    vehicleCategory: "bus_tram_metro",
+    delaySeconds: 61,
+    authoritativeDelayMin: 2,
+    cancelled: false,
+    busDelayThresholdMin: 2,
+  });
+  assert.equal(bus2.status, "delay");
+  assert.equal(bus2.displayedDelayMin, 2);
 }
 
 // detectNetworkFromStation should pick up city-specific networks

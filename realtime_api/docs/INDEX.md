@@ -256,6 +256,17 @@ See [MIGRATION_GUIDE.md](MIGRATION_GUIDE.md) → Monitoring & Verification
 
 ---
 
+## Archived Incident Notes
+
+Historical investigation/debug notes for delayed-train "Problem A" were moved out of repo root and archived here:
+
+- [archive/problem-a/PROBLEM_A_ANALYSIS.md](archive/problem-a/PROBLEM_A_ANALYSIS.md)
+- [archive/problem-a/PROBLEM_A_FIX_SUMMARY.md](archive/problem-a/PROBLEM_A_FIX_SUMMARY.md)
+- [archive/problem-a/PROBLEM_A_INVESTIGATION_COMPLETE.md](archive/problem-a/PROBLEM_A_INVESTIGATION_COMPLETE.md)
+- [archive/problem-a/PROBLEM_A_QUICK_REFERENCE.md](archive/problem-a/PROBLEM_A_QUICK_REFERENCE.md)
+
+---
+
 ## Summary
 
 This implementation provides:

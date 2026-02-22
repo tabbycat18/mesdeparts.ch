@@ -58,7 +58,7 @@ This project follows the opentransportdata.swiss model:
 - `realtime_api/frontend/`
   - Static UI for the RT board (no build step required).
 - `realtime_api/docs/`
-  - Operational docs and GTFS zero-downtime migration/runbook docs (`INDEX.md` entrypoint).
+  - Operational docs and GTFS zero-downtime migration/runbook docs (`INDEX.md` entrypoint), plus archived incident notes under `docs/archive/`.
 - `realtime_api/data/` (optional local-only folder)
   - Local GTFS snapshots for manual tooling; keep out of git.
 

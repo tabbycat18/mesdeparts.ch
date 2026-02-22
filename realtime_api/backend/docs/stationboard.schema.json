@@ -103,6 +103,7 @@
         "delayMin": { "type": ["integer", "null"] },
         "platform": { "type": ["string", "null"] },
         "platformChanged": { "type": ["boolean", "null"] },
+        "previousPlatform": { "type": ["string", "null"] },
         "cancelled": { "type": "boolean" },
         "status": { "type": ["string", "null"] },
         "cancelReasonCode": { "type": ["string", "null"] },
