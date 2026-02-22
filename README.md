@@ -505,13 +505,21 @@ Unknown (not found in repo): whether production stationboard traffic is currentl
 ### RT Backend Deployment
 
 - Deployment target for `realtime_api/backend`: **Fly.io**.
-- Docker runtime path used in this repo: `realtime_api/backend/Dockerfile`.
-- Backend container port: `8080` (set in `realtime_api/backend/Dockerfile`).
-- Fly config: `fly.toml` at repository root.
-  - App name: `mesdeparts-ch`
-  - Primary region: `ams` (Amsterdam)
-  - Min machines: 1, auto-scaling enabled
-  - Deploy with: `fly deploy`
+- **Docker build structure**:
+  - Dockerfile: `Dockerfile` at repository root (single build configuration for main app)
+  - Build context: `realtime_api/backend/` (source files and dependencies)
+  - Build process: `COPY realtime_api/backend/package*.json ./` + `npm ci --omit=dev` + `COPY realtime_api/backend .`
+  - Backend container port: `8080` (set in `Dockerfile`)
+- **Fly configurations**:
+  - Main app: `fly.toml` at repository root
+    - App name: `mesdeparts-ch`
+    - Primary region: `ams` (Amsterdam)
+    - Min machines: 1, auto-scaling enabled
+    - Dockerfile: references root-level `Dockerfile`
+    - Deploy with: `flyctl deploy` or `fly deploy`
+  - RT poller service: `realtime_api/backend/fly.poller.toml`
+    - App name: `mesdeparts-rt-poller`
+    - Separate Fly.io app for background polling jobs
 
 ## Troubleshooting Playbooks
 
