@@ -1,6 +1,9 @@
 app = "mesdeparts-ch"
 primary_region = "ams"
 
+[build]
+  dockerfile = "realtime_api/backend/Dockerfile"
+
 [http_service]
   internal_port = 8080
   force_https = true
