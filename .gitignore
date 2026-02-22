@@ -6,7 +6,6 @@ node_modules/
 # Backend/runtime artifacts
 rt/backend/node_modules/
 rt/backend/.env
-realtime_api/backend/.env
 rt/backend/gtfs-rt.pb
 rt/backend/gtfs-rt.json
 dev-artifacts/
