@@ -1019,7 +1019,7 @@ export async function fetchStationboardRaw(options = {}) {
       const needsRetry =
         allowRetry &&
         appState.stationId &&
-        (!data?.station || !data?.stationboard || data.stationboard.length === 0);
+        (!data?.station || !Array.isArray(data?.stationboard));
 
       if (needsRetry) {
         const badId = appState.stationId;
