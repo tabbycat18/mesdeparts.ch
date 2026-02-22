@@ -22,8 +22,8 @@ import {
   TRAIN_FILTER_REGIONAL,
   TRAIN_FILTER_LONG_DISTANCE,
   STATION_ID_STORAGE_KEY,
-} from "./v20260222.state.js";
-import { t } from "./v20260222.i18n.js";
+} from "./v20260222-1.state.js";
+import { t } from "./v20260222-1.i18n.js";
 
 // API base can be overridden by setting window.__MD_API_BASE__ before scripts load.
 // Frontend now targets realtime_api/backend endpoints only.
@@ -261,6 +261,7 @@ export function computeDelayMin(delaySeconds, { rounding = "round" } = {}) {
   const sec = Number(delaySeconds);
   if (!Number.isFinite(sec)) return null;
   if (rounding === "ceil") return Math.ceil(sec / 60);
+  if (rounding === "floor") return Math.floor(sec / 60);
   return Math.round(sec / 60);
 }
 
@@ -306,11 +307,17 @@ export function getDisplayedDelayBadge({
   const rawRoundedMin = computeDelayMin(sec, { rounding: "round" });
   const authoritativeRoundedMin = toFiniteMinutesOrNull(authoritativeDelayMin);
 
-  if (rawRoundedMin != null && rawRoundedMin < 0) {
+  // Early: threshold via ceil (badge appears only at >= 60 sec early).
+  // Display via floor so 90 s early shows -2 min, not -1.
+  // ceil(-0.98) = 0 → no badge at 59 sec; ceil(-1) = -1 → badge at 60 sec.
+  // floor(-1.5) = -2 → honest display of how many full minutes ahead.
+  const earlyThreshold = computeDelayMin(sec, { rounding: "ceil" });
+  if (earlyThreshold != null && earlyThreshold < 0) {
+    const earlyDisplayMin = computeDelayMin(sec, { rounding: "floor" });
     const msg = t("remarkEarly");
     return {
       status: "early",
-      displayedDelayMin: rawRoundedMin,
+      displayedDelayMin: earlyDisplayMin,
       remarkWide: msg,
       remarkNarrow: msg,
       remark: msg,

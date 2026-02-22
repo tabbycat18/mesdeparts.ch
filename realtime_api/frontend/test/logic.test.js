@@ -15,8 +15,8 @@ import {
   RT_HARD_CAP_MS,
   shouldApplyIncomingBoard,
   shouldHoldRtDowngrade,
-} from "../v20260222.logic.js";
-import { appState, VIEW_MODE_LINE, VIEW_MODE_TIME } from "../v20260222.state.js";
+} from "../v20260222-1.logic.js";
+import { appState, VIEW_MODE_LINE, VIEW_MODE_TIME } from "../v20260222-1.state.js";
 
 // classifyMode should categorize common transport codes
 assert.equal(classifyMode("IC"), "train");
@@ -808,7 +808,7 @@ assert.equal(
       makeBusEntry({ line: 9, earlyMin: 1 }),
       // Rounded minutes can be -2 around ~1m35s early.
       makeBusEntry({ line: 10, earlySeconds: 96 }),
-      // Regression: -54s must still round to -1 minute.
+      // -54s rounds to -1 min (deltaMin) but is below 60 s threshold → no early badge.
       makeBusEntry({ line: 11, earlySeconds: 54 }),
     ];
 
@@ -837,9 +837,10 @@ assert.equal(
     assert.equal(line10.delaySource, "timestamps");
 
     assert.ok(line11);
-    assert.equal(line11.status, "early");
+    // 54 s early is below the 60 s threshold → no early badge.
+    assert.equal(line11.status, null);
     assert.equal(line11.delayMin, -1);
-    assert.ok(String(line11.remark || "").toLowerCase().includes("avance"));
+    assert.equal(line11.remark, "");
     assert.equal(line11.delaySource, "timestamps");
   } finally {
     appState.STATION = previous.station;

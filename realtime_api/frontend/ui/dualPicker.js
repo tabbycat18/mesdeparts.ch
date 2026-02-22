@@ -1,13 +1,13 @@
-import { t } from "../v20260222.i18n.js";
-import { fetchStationSuggestions, fetchStationsNearby } from "../v20260222.logic.js";
-import { loadFavorites, addFavorite, removeFavorite } from "../v20260222.favourites.js";
+import { t } from "../v20260222-1.i18n.js";
+import { fetchStationSuggestions, fetchStationsNearby } from "../v20260222-1.logic.js";
+import { loadFavorites, addFavorite, removeFavorite } from "../v20260222-1.favourites.js";
 import {
   VIEW_MODE_LINE,
   VIEW_MODE_TIME,
   TRAIN_FILTER_ALL,
   TRAIN_FILTER_REGIONAL,
   TRAIN_FILTER_LONG_DISTANCE,
-} from "../v20260222.state.js";
+} from "../v20260222-1.state.js";
 
 function createPickerTemplate(side) {
   const suffix = side === "right" ? "right" : "left";

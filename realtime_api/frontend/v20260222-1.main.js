@@ -15,7 +15,7 @@ import {
   TRAIN_FILTER_LONG_DISTANCE,
   DEFAULT_STATION_ID,
   STATION_ID_STORAGE_KEY,
-} from "./v20260222.state.js";
+} from "./v20260222-1.state.js";
 
 import {
   detectNetworkFromStation,
@@ -28,7 +28,7 @@ import {
   buildBoardContextKey,
   parseBoardContextKey,
   shouldApplyIncomingBoard,
-} from "./v20260222.logic.js";
+} from "./v20260222-1.logic.js";
 
 import {
   setupClock,
@@ -39,18 +39,18 @@ import {
   publishEmbedState,
   updateCountdownRows,
   renderServiceBanners,
-} from "./v20260222.ui.js";
+} from "./v20260222-1.ui.js";
 
-import { setupInfoButton } from "./v20260222.infoBTN.js";
-import { initI18n, applyStaticTranslations, t } from "./v20260222.i18n.js";
-import { loadFavorites } from "./v20260222.favourites.js";
+import { setupInfoButton } from "./v20260222-1.infoBTN.js";
+import { initI18n, applyStaticTranslations, t } from "./v20260222-1.i18n.js";
+import { loadFavorites } from "./v20260222-1.favourites.js";
 import {
   getHomeStop,
   setHomeStop,
   clearHomeStop,
   shouldShowHomeStopModal,
-} from "./v20260222.homeStop.js";
-import { openHomeStopOnboardingModal } from "./ui/v20260222.homeStopOnboarding.js";
+} from "./v20260222-1.homeStop.js";
+import { openHomeStopOnboardingModal } from "./ui/v20260222-1.homeStopOnboarding.js";
 import {
   initHeaderControls2,
   updateHeaderControls2,
@@ -1160,4 +1160,16 @@ function installDebugHardRefreshShortcut() {
     const bootEnd = performance.now();
     logPerf("boot", { totalMs: bootEnd - bootStart });
   }
+
+  // Auto-reload when the service worker installs a new version.
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.addEventListener("message", (e) => {
+      if (e.data?.type === "SW_UPDATED") setTimeout(() => location.reload(), 100);
+    });
+  }
+
+  // Auto-reload when iOS restores a frozen page from bfcache (bypasses the SW entirely).
+  window.addEventListener("pageshow", (e) => {
+    if (e.persisted) location.reload();
+  });
 })();

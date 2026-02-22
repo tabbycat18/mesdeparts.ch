@@ -14,7 +14,7 @@ Static, dependency-free front-end for mesdeparts.ch. Everything in this folder i
 ## Entry points
 - `index.html`: single-board experience with language switcher, favorites, filters, and the SBB clock iframe (`clock/`).
 - `dual-board.html`: two boards side by side for kiosks/embeds, with separate station pickers and view/filter controls.
-- `manifest.webmanifest` + `service-worker.js`: PWA shell; caches static assets, leaves API requests online-only.
+- `manifest.webmanifest` + `service-worker.js`: PWA shell; caches static assets, leaves API requests online-only. On activation after an update, the SW notifies all open clients (`SW_UPDATED` postMessage) so they auto-reload and pick up the new shell immediately.
 
 ## Architecture (versioned files)
 - `main.v*.js`: boot; reads URL/localStorage defaults (`stationName`/`stationId`, language), wires event handlers, and starts refresh + countdown loops.
@@ -46,7 +46,7 @@ Static, dependency-free front-end for mesdeparts.ch. Everything in this folder i
 
 ## Versioning & deploy notes
 - JS/CSS filenames carry a version tag (`*.vYYYY-MM-DD-N.*`). When you bump assets, update references in `index.html`, `dual-board.html`, and the `CORE_ASSETS`/`LAZY_ASSETS` lists inside `service-worker.js`, plus the visible version tags in the HTML headers.
-- `service-worker.js` derives its cache name from the asset list; keep the list in sync with the actual files so cache busting remains automatic.
+- `service-worker.js` derives its cache name from the asset list; keep the list in sync with the actual files so cache busting remains automatic. A changed asset list (or bumped `CACHE_REV`) produces a new `CACHE_NAME`, triggering install → activate → `SW_UPDATED` → client auto-reload on next visit.
 - The UI is fully static: host this folder on any static host (Netlify/Vercel/S3/nginx/Apache). A `.htaccess` file is not used here; rely on versioned filenames for cache control.
 
 ## API target
@@ -56,4 +56,4 @@ Static, dependency-free front-end for mesdeparts.ch. Everything in this folder i
 ## Behavior/UX notes
 - Filters/view changes are client-side only.
 - Language, favorites, and last station are stored in `localStorage`; nothing leaves the browser.
-- The service worker pre-caches the shell and serves navigations cache-first with background revalidation; API calls always hit the network.
+- The service worker pre-caches the shell and serves navigations cache-first with background revalidation; API calls always hit the network. When a new SW version activates, it sends `SW_UPDATED` to all open tabs; `main.v*.js` listens and calls `location.reload()` so the new shell is served immediately without manual reloading. A `pageshow` + `persisted` listener in `main.v*.js` also handles iOS bfcache restoration (page thawed from freeze bypasses the SW entirely) by triggering an immediate reload.

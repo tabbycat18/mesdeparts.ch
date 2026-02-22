@@ -1,5 +1,3 @@
-@AGENTS.md
-
 # AGENTS.md
 ## 1) Purpose
 - Give contributors and AI agents a fast, verified map of the active stack.
@@ -69,6 +67,8 @@ If context is still missing after this order, then inspect code.
 | Stationboard DB optimization SQL | `realtime_api/backend/sql/optimize_stationboard.sql`, `realtime_api/backend/sql/optimize_stationboard_latency.sql` |
 | Poll cadence/backoff | `realtime_api/backend/scripts/pollLaTripUpdates.js`, `realtime_api/backend/scripts/pollLaServiceAlerts.js` |
 | Frontend polling/render behavior | `realtime_api/frontend/logic.v*.js`, `realtime_api/frontend/ui.v*.js`, `realtime_api/frontend/state.v*.js` |
+| Frontend boot / SW update / bfcache reload | `realtime_api/frontend/v20260222-1.main.js` (SW_UPDATED message listener + pageshow persisted listener at end of boot) |
+| SW update notification to clients | `realtime_api/frontend/service-worker.js` (activate handler: wasUpdate → postMessage SW_UPDATED) |
 | Edge routing/cache/proxy rules | `realtime_api/edge/worker.js`, `realtime_api/edge/wrangler.toml` |
 
 ## 7) Common commands (verified)
