@@ -44,12 +44,15 @@ This project follows the opentransportdata.swiss model:
 
 - **Backend (`realtime_api/backend`) is the source of truth** for RT departures.
 - **Frontend (`realtime_api/frontend`) is only presentation** of backend/API data.
+- **Edge proxy (`realtime_api/edge`) is the active Cloudflare Worker deployment path** for `api.mesdeparts.ch/api/*`.
 - Root `legacy_api/web-ui/` is a separate legacy/simple flow and should be treated independently.
 
 ## Folder Map
 
 - `realtime_api/backend/`
   - Node/Express API, GTFS import/refresh scripts, SQL, stationboard generation.
+- `realtime_api/edge/`
+  - Active Cloudflare Worker (`worker.js`) + Wrangler config (`wrangler.toml`) for edge proxy/routing.
 - `realtime_api/frontend/`
   - Static UI for the RT board (no build step required).
 - `realtime_api/data/` (optional local-only folder)

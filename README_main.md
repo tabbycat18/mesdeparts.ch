@@ -13,8 +13,8 @@ The repository was reorganized to make stack boundaries explicit.
 
 Old path -> new path:
 - `web-ui/` -> `legacy_api/web-ui/`
-- `cloudflare-worker/` -> `legacy_api/cloudflare-worker/`
-- `wrangler.toml` -> `legacy_api/wrangler.toml`
+- `cloudflare-worker/` -> `realtime_api/edge/` (active) and `legacy_api/cloudflare-worker/` (archive copy)
+- `wrangler.toml` -> `realtime_api/edge/wrangler.toml` (active) and `legacy_api/wrangler.toml` (archive copy)
 - `rt/` -> `realtime_api/`
 - top-level zero-downtime docs -> `realtime_api/docs/`
 
@@ -26,13 +26,17 @@ Common example:
 Quick start (current paths):
 - backend tests: `cd realtime_api/backend && npm test`
 - RT frontend tests: `cd realtime_api/frontend && npm test`
+- edge worker deploy: `npx wrangler deploy --config realtime_api/edge/wrangler.toml`
 - legacy frontend tests: `cd legacy_api/web-ui && npm test`
 
 ## Repo Layout
 
-- `realtime_api/`: active stack (backend + RT frontend).
-- `legacy_api/`: legacy stack (`legacy_api/web-ui/`, `legacy_api/cloudflare-worker/`, `legacy_api/wrangler.toml`).
+- `realtime_api/`: active stack (backend + RT frontend + edge worker).
+- `legacy_api/`: archived legacy stack (`legacy_api/web-ui/`, archive copies of old worker files).
 - `assets/` and `dev-artifacts/` remain at root because they are not clearly legacy-only.
+
+Legacy policy:
+- `legacy_api/` is archive/read-only and should not be used for active Cloudflare deployment.
 
 ## Repo Map
 
@@ -40,18 +44,19 @@ Quick start (current paths):
 .
 ├── README_main.md                         # full guide
 ├── LICENSE / NOTICE
-├── legacy_api/wrangler.toml              # Cloudflare Worker config (legacy stack)
+├── legacy_api/wrangler.toml              # archive copy (do not deploy)
 ├── .github/workflows/
 │   ├── gtfs_static_refresh.yml            # hourly static GTFS refresh job
 │   └── backend_schema_check.yml           # stationboard schema JSON parse check
 ├── .wrangler/                             # local Wrangler state directory
 ├── legacy_api/cloudflare-worker/
-│   └── worker.js                          # GET proxy to transport.opendata.ch/v1/*
+│   └── worker.js                          # archive copy (legacy)
 ├── legacy_api/web-ui/                                # legacy static frontend path
 ├── realtime_api/                                    # active RT stack
 │   ├── README_realtime_api.md
 │   ├── backend/                           # Express + Neon + GTFS pipelines
 │   ├── docs/                              # RT ops/zero-downtime docs
+│   ├── edge/                              # active Cloudflare Worker + wrangler config
 │   ├── frontend/               # RT static frontend
 │   └── test/
 ├── assets/                                # shared static assets at repo root
@@ -62,12 +67,13 @@ Quick start (current paths):
 
 - `legacy_api/web-ui/`: legacy/public static UI; entrypoints are `legacy_api/web-ui/index.html`, `legacy_api/web-ui/dual-board.html`, and `legacy_api/web-ui/main.v2025-02-07.js`.
 - `realtime_api/`: active RT stack; backend API entrypoint is `realtime_api/backend/server.js`, RT UI entrypoint is `realtime_api/frontend/index.html`.
-- `legacy_api/cloudflare-worker/`: optional edge proxy/cache/rate-limit layer for `transport.opendata.ch`; entrypoint is `legacy_api/cloudflare-worker/worker.js`.
+- `realtime_api/edge/`: active edge proxy/cache/rate-limit layer; entrypoints are `realtime_api/edge/worker.js` and `realtime_api/edge/wrangler.toml`.
+- `legacy_api/cloudflare-worker/`: archive copy of the previous worker implementation.
 - `.github/workflows/`: CI/automation workflows; files are `.github/workflows/gtfs_static_refresh.yml` and `.github/workflows/backend_schema_check.yml`.
 - `.wrangler/`: local Wrangler tooling state directory.
 - `assets/`: root SVG assets (`assets/location-pin.svg`, `assets/without-icon.svg`).
 - `dev-artifacts/`: sample GTFS-RT artifact files (`dev-artifacts/gtfs-rt.json`, `dev-artifacts/gtfs-rt.pb`).
-- `legacy_api/wrangler.toml`: Worker deployment metadata (`main = "cloudflare-worker/worker.js"`).
+- `legacy_api/wrangler.toml`: archive copy only; active deploy config is `realtime_api/edge/wrangler.toml`.
 
 Unknown (not found in repo): active runtime imports of `assets/` and `dev-artifacts/` by production code paths.
 Unknown (not found in repo): production/runtime relevance of `.wrangler/` content beyond local CLI state.
@@ -81,13 +87,13 @@ Browser
   -> legacy_api/web-ui/index.html + legacy_api/web-ui/logic.v2025-02-07.js
   -> API base selected in UI (board/direct mode)
      -> direct: https://transport.opendata.ch/v1/*
-     -> optional proxy: legacy_api/cloudflare-worker/worker.js -> https://transport.opendata.ch/v1/*
+     -> optional proxy: realtime_api/edge/worker.js -> https://transport.opendata.ch/v1/*
 ```
 
 Relevant files:
 - `legacy_api/web-ui/logic.v2025-02-07.js`
 - `legacy_api/web-ui/main.v2025-02-07.js`
-- `legacy_api/cloudflare-worker/worker.js`
+- `realtime_api/edge/worker.js`
 
 ### RT Path (`realtime_api/`)
 
@@ -420,7 +426,7 @@ Goal:
 Modules involved:
 - `realtime_api/backend/*`
 - `realtime_api/frontend/*`
-- operational deploy config (`legacy_api/wrangler.toml`, hosting configuration)
+- operational deploy config (`realtime_api/edge/wrangler.toml`, hosting configuration)
 
 Acceptance criteria:
 - RT board parity or better for cancellations/replacements/extra trains on target stations.
@@ -474,7 +480,7 @@ Unknown (not found in repo): additional external schedulers (server cron, manage
 
 ### Cloudflare Worker Role
 
-From `legacy_api/cloudflare-worker/worker.js`:
+From `realtime_api/edge/worker.js`:
 - GET-only proxy to `https://transport.opendata.ch/v1/*`
 - path-based edge TTLs
 - CORS headers

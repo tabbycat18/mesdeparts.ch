@@ -50,7 +50,8 @@ Static, dependency-free front-end for mesdeparts.ch. Everything in this folder i
 
 ## Edge cache (Cloudflare Worker) — optional
 - What it does: proxy in front of `transport.opendata.ch` with short TTLs to reduce upstream calls when many users watch the same stop.
-- Files: `legacy_api/cloudflare-worker/worker.js`, `legacy_api/wrangler.toml` (inside `legacy_api/`). Not needed for FTP/static hosting.
+- Active files: `realtime_api/edge/worker.js`, `realtime_api/edge/wrangler.toml`.
+- Archive copies (do not deploy): `legacy_api/cloudflare-worker/worker.js`, `legacy_api/wrangler.toml`.
 - Point the UI: set `window.__MD_API_BASE__ = "https://api.mesdeparts.ch"` near the top of `index.html` to use the proxy; otherwise it calls the public API.
 - Board mode uses the proxy; direct mode calls the public API and auto-reverts to board mode after ~2 minutes unless the user keeps it on.
 
