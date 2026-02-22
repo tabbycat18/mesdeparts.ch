@@ -1,5 +1,6 @@
-# AGENTS.md
+@AGENTS.md
 
+# AGENTS.md
 ## 1) Purpose
 - Give contributors and AI agents a fast, verified map of the active stack.
 - Minimize repeated code-search by using README-first onboarding.
@@ -120,6 +121,14 @@ If context is still missing after this order, then inspect code.
 | `fly.toml` | Deploy main app to Fly.io | resource changes, region changes, health check changes |
 | `fly.poller.toml` | Deploy poller service | poller resource/schedule changes |
 | `.dockerignore` | Exclude build context files | new build artifacts, faster build optimization |
+
+### Cloudflare Edge Configuration
+- **Domain split (authoritative)**:
+  - `mesdeparts.ch` → Cloudflare Pages (serves frontend static files; Worker does NOT intercept this domain)
+  - `api.mesdeparts.ch` → Cloudflare Worker (`realtime_api/edge/worker.js`) → Fly.io backend
+- **Worker config**: `realtime_api/edge/wrangler.toml` — route: `api.mesdeparts.ch/*` only
+- **Deploy Worker**: `npx wrangler deploy --config realtime_api/edge/wrangler.toml`
+- **Pages**: managed via Cloudflare dashboard (not in repo); serves `realtime_api/frontend/` static files
 
 ### Deployment Troubleshooting
 - **"fly.toml not found"**: Ensure `fly.toml` is at repo root (not in subdirectories) and committed to git (`git ls-files fly.toml`)

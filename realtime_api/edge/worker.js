@@ -1,10 +1,10 @@
 /**
  * Routing map (repo-verified)
- * - This Worker is the single entry point for mesdeparts.ch and api.mesdeparts.ch.
+ * - This Worker handles api.mesdeparts.ch/* only.
+ * - mesdeparts.ch (frontend static files) is served by Cloudflare Pages — not this Worker.
  * - All requests are proxied to RT_BACKEND_ORIGIN (Fly.io backend).
  * - Special handling for /api/stationboard: edge-cached with a 15 s TTL.
  * - /api/* routes: proxied to RT_BACKEND_ORIGIN, no edge cache.
- * - Everything else (HTML, JS, CSS, SVG, images): proxied to RT_BACKEND_ORIGIN.
  */
 
 const DEFAULT_RATE_LIMIT_PER_MIN = 120;
