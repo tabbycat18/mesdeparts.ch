@@ -1,34 +1,17 @@
 /**
  * Routing map (repo-verified)
- * - This Worker serves as a GET-only proxy.
- * - It does not serve static site assets/pages.
- * - Default behavior: incoming paths are forwarded to ORIGIN_BASE with a hard "/v1" prefix:
- *   request "/foo?x=1" -> upstream "https://transport.opendata.ch/v1/foo?x=1"
- * - Special stationboard routes:
- *   - "/stationboard" always proxies legacy upstream stationboard.
- *   - "/api/stationboard" proxies RT backend stationboard with edge cache.
- * - API routes:
- *   - "/api/*" (except "/api/stationboard", handled above) proxy to RT_BACKEND_ORIGIN.
- * - Path-specific behavior exists only for cache TTL hints:
- *   "/stationboard", "/connections", "/locations", default.
+ * - This Worker is the single entry point for mesdeparts.ch and api.mesdeparts.ch.
+ * - All requests are proxied to RT_BACKEND_ORIGIN (Fly.io backend).
+ * - Special handling for /api/stationboard: edge-cached with a 15 s TTL.
+ * - /api/* routes: proxied to RT_BACKEND_ORIGIN, no edge cache.
+ * - Everything else (HTML, JS, CSS, SVG, images): proxied to RT_BACKEND_ORIGIN.
  */
-const ORIGIN_BASE = "https://transport.opendata.ch";
 
 const DEFAULT_RATE_LIMIT_PER_MIN = 120;
 const DEFAULT_GLOBAL_LIMIT_PER_DAY = 0;
 const RATE_LIMIT_WINDOW_SEC = 60;
 const GLOBAL_LIMIT_WINDOW_SEC = 86400;
 const STATIONBOARD_CACHE_TTL_SEC = 15;
-
-const ttlFor = (url) => {
-  const path = url.pathname || "";
-  const search = url.searchParams || new URLSearchParams(url.search || "");
-  const hasCoords = search.has("x") && search.has("y");
-  if (path.startsWith("/stationboard")) return 10;       // tighter refresh for delays
-  if (path.startsWith("/connections")) return 25;        // journey details overlay (trips)
-  if (path.startsWith("/locations")) return hasCoords ? 120 : 86400; // near-me lookups change fast
-  return 30;
-};
 
 const addCors = (res, extraHeaders = null) => {
   const out = new Response(res.body, res);
@@ -54,23 +37,15 @@ const parseLimit = (value, fallback) => {
   return Number.isFinite(num) ? num : fallback;
 };
 
-const isLegacyStationboardPath = (pathname) => {
+const isRtStationboardPath = (pathname) => {
   const path = String(pathname || "");
-  return path.startsWith("/stationboard");
+  return path.startsWith("/api/stationboard");
 };
 
 const isApiPath = (pathname) => {
   const path = String(pathname || "");
   return path.startsWith("/api/");
 };
-
-const isRtStationboardPath = (pathname) => {
-  const path = String(pathname || "");
-  return path.startsWith("/api/stationboard");
-};
-
-const isStationboardPath = (pathname) =>
-  isLegacyStationboardPath(pathname) || isRtStationboardPath(pathname);
 
 const shouldBypassStationboardCache = (url) => {
   return (url.searchParams.get("debug") || "") === "1";
@@ -84,35 +59,6 @@ const resolveRtOrigin = (env) => {
   } catch {
     return null;
   }
-};
-
-const resolveStationboardUpstream = (url, env) => {
-  if (isLegacyStationboardPath(url.pathname)) {
-    return {
-      upstream: new URL(`/v1/stationboard${url.search}`, ORIGIN_BASE),
-      mode: "legacy",
-    };
-  }
-
-  const rtOrigin = resolveRtOrigin(env);
-  if (rtOrigin) {
-    return {
-      upstream: new URL(`/api/stationboard${url.search}`, rtOrigin),
-      mode: "rt",
-    };
-  }
-
-  // Safe fallback when RT origin is not configured.
-  return {
-    upstream: new URL(`/v1/stationboard${url.search}`, ORIGIN_BASE),
-    mode: "legacy_fallback",
-  };
-};
-
-const resolveApiUpstream = (url, env) => {
-  const rtOrigin = resolveRtOrigin(env);
-  if (!rtOrigin) return null;
-  return new URL(`${url.pathname}${url.search}`, rtOrigin);
 };
 
 const normalizeStationboardCacheKey = (requestUrl) => {
@@ -226,10 +172,18 @@ export default {
     const workerStartedMs = performance.now();
     const requestId = resolveRequestId(request);
     const url = new URL(request.url);
-    const ttl = ttlFor(url);
-    // Preserve the /v1 prefix for default proxy paths.
-    const upstream = new URL(`/v1${url.pathname}${url.search}`, ORIGIN_BASE);
     const cache = caches.default;
+
+    const rtOrigin = resolveRtOrigin(env);
+    if (!rtOrigin) {
+      return new Response(
+        JSON.stringify({
+          error: "rt_origin_not_configured",
+          detail: "Set RT_BACKEND_ORIGIN (e.g. https://mesdeparts-ch.fly.dev).",
+        }),
+        { status: 503, headers: { "Content-Type": "application/json" } }
+      );
+    }
 
     const rateLimitPerMin = parseLimit(env?.RATE_LIMIT_PER_MIN, DEFAULT_RATE_LIMIT_PER_MIN);
     const globalDailyLimit = parseLimit(env?.GLOBAL_DAILY_LIMIT, DEFAULT_GLOBAL_LIMIT_PER_DAY);
@@ -265,8 +219,9 @@ export default {
       );
     }
 
-    if (isStationboardPath(url.pathname)) {
-      const stationboardTarget = resolveStationboardUpstream(url, env);
+    // /api/stationboard: edge-cached with a short TTL.
+    if (isRtStationboardPath(url.pathname)) {
+      const upstream = new URL(`/api/stationboard${url.search}`, rtOrigin);
       const bypass = shouldBypassStationboardCache(url);
       const stationboardHeaders = (cacheStatus, cacheKey, originMs) => ({
         "x-md-cache": cacheStatus,
@@ -276,17 +231,17 @@ export default {
         "x-md-origin-ms": String(roundMs(originMs)),
         "x-md-worker-total-ms": String(roundMs(performance.now() - workerStartedMs)),
       });
+
       if (bypass) {
         const cacheKey = normalizeStationboardCacheKey(url);
         cacheDebugLog(env, "stationboard bypass", {
           reason: "debug=1",
           path: url.pathname,
-          mode: stationboardTarget.mode,
           requestId,
           key: cacheKey.url,
         });
         const originStartedMs = performance.now();
-        const direct = await fetch(stationboardTarget.upstream.toString(), {
+        const direct = await fetch(upstream.toString(), {
           method: "GET",
           headers: upstreamHeaders(request, requestId),
         });
@@ -294,7 +249,6 @@ export default {
         logStationboardTiming(env, {
           requestId,
           path: url.pathname,
-          mode: stationboardTarget.mode,
           cache: "BYPASS",
           cacheKey: cacheKey.url,
           originMs: roundMs(originMs),
@@ -306,15 +260,10 @@ export default {
       const cacheKey = normalizeStationboardCacheKey(url);
       const cached = await cache.match(cacheKey);
       if (cached) {
-        cacheDebugLog(env, "stationboard hit", {
-          key: cacheKey.url,
-          mode: stationboardTarget.mode,
-          requestId,
-        });
+        cacheDebugLog(env, "stationboard hit", { key: cacheKey.url, requestId });
         logStationboardTiming(env, {
           requestId,
           path: url.pathname,
-          mode: stationboardTarget.mode,
           cache: "HIT",
           cacheKey: cacheKey.url,
           originMs: 0,
@@ -323,13 +272,9 @@ export default {
         return addCors(cached, stationboardHeaders("HIT", cacheKey.url, 0));
       }
 
-      cacheDebugLog(env, "stationboard miss", {
-        key: cacheKey.url,
-        mode: stationboardTarget.mode,
-        requestId,
-      });
+      cacheDebugLog(env, "stationboard miss", { key: cacheKey.url, requestId });
       const originStartedMs = performance.now();
-      const res = await fetch(stationboardTarget.upstream.toString(), {
+      const res = await fetch(upstream.toString(), {
         method: "GET",
         headers: upstreamHeaders(request, requestId),
       });
@@ -346,7 +291,6 @@ export default {
         logStationboardTiming(env, {
           requestId,
           path: url.pathname,
-          mode: stationboardTarget.mode,
           cache: "BYPASS",
           cacheKey: cacheKey.url,
           status: res.status,
@@ -371,7 +315,6 @@ export default {
       logStationboardTiming(env, {
         requestId,
         path: url.pathname,
-        mode: stationboardTarget.mode,
         cache: "MISS",
         cacheKey: cacheKey.url,
         originMs: roundMs(originMs),
@@ -381,63 +324,21 @@ export default {
       return proxyRes;
     }
 
-    if (isApiPath(url.pathname)) {
-      const apiUpstream = resolveApiUpstream(url, env);
-      if (!apiUpstream) {
-        return addCors(
-          new Response(
-            JSON.stringify({
-              error: "rt_origin_not_configured",
-              detail: "Set RT_BACKEND_ORIGIN (e.g. https://api-origin.mesdeparts.ch).",
-            }),
-            { status: 503, headers: { "Content-Type": "application/json" } }
-          )
-        );
-      }
-
-      const res = await fetch(apiUpstream.toString(), {
-        method: "GET",
-        headers: upstreamHeaders(request, requestId),
-      });
-      return addCors(res, {
-        "x-md-cache": "BYPASS",
-        "x-md-rate-remaining": perIp.remaining ?? "",
-        "x-md-request-id": requestId,
-        "x-md-worker-total-ms": String(roundMs(performance.now() - workerStartedMs)),
-      });
-    }
-
-    const cacheKey = new Request(upstream.toString());
-    const cached = await cache.match(cacheKey);
-    if (cached) {
-      return addCors(cached, {
-        "x-md-cache": "HIT",
-        "x-md-rate-remaining": perIp.remaining ?? "",
-        "x-md-request-id": requestId,
-        "x-md-worker-total-ms": String(roundMs(performance.now() - workerStartedMs)),
-      });
-    }
+    // All other requests (API routes + static assets + HTML) → RT_BACKEND_ORIGIN.
+    const upstream = new URL(`${url.pathname}${url.search}`, rtOrigin);
+    const fetchHeaders = { "x-md-request-id": requestId };
+    if (isApiPath(url.pathname)) fetchHeaders["accept"] = "application/json";
+    const acceptLanguage = request.headers.get("accept-language");
+    if (acceptLanguage) fetchHeaders["accept-language"] = acceptLanguage;
 
     const res = await fetch(upstream.toString(), {
       method: "GET",
-      headers: upstreamHeaders(request, requestId),
-      cf: { cacheEverything: true, cacheTtl: ttl },
+      headers: fetchHeaders,
     });
 
-    // Do not cache error responses; just pass them through
-    if (!res.ok) {
-      return addCors(res, {
-        "x-md-cache": "BYPASS",
-        "x-md-request-id": requestId,
-        "x-md-worker-total-ms": String(roundMs(performance.now() - workerStartedMs)),
-      });
-    }
-
     const proxyRes = new Response(res.body, res);
-    // Force short edge cache and minimal browser cache to avoid sticky errors
-    proxyRes.headers.set("Cache-Control", `public, s-maxage=${ttl}, max-age=0`);
     proxyRes.headers.set("Access-Control-Allow-Origin", "*");
-    proxyRes.headers.set("x-md-cache", "MISS");
+    proxyRes.headers.set("x-md-cache", "BYPASS");
     if (perIp.remaining !== null) {
       proxyRes.headers.set("x-md-rate-remaining", String(perIp.remaining));
     }
@@ -447,7 +348,6 @@ export default {
       String(roundMs(performance.now() - workerStartedMs))
     );
 
-    ctx.waitUntil(cache.put(cacheKey, proxyRes.clone()));
     return proxyRes;
   },
 };
