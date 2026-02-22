@@ -10,3 +10,8 @@ yarn-error.log*
 pnpm-debug.log*
 
 realtime_api/backend/.env
+realtime_api/frontend
+legacy_api
+dev-artifacts
+.claude
+.cloudflare
