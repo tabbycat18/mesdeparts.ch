@@ -3,6 +3,7 @@ primary_region = "ams"
 
 [build]
   dockerfile = "realtime_api/backend/Dockerfile"
+  context = "realtime_api/backend"
 
 [http_service]
   internal_port = 8080
