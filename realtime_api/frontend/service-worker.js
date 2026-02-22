@@ -106,7 +106,7 @@ self.addEventListener("fetch", (event) => {
         }
         const response = await fetch(request);
         if (response && response.ok) {
-          cache.put(url.pathname, response.clone());
+          try { await cache.put(url.pathname, response.clone()); } catch {}
         }
         return response;
       })(),
@@ -130,7 +130,7 @@ self.addEventListener("fetch", (event) => {
         const fetchAndUpdate = async () => {
           const response = await fetch(request);
           if (response && response.ok) {
-            cache.put(cachedUrl, response.clone());
+            try { await cache.put(cachedUrl, response.clone()); } catch {}
           }
           return response;
         };
@@ -164,7 +164,7 @@ self.addEventListener("fetch", (event) => {
         try {
           const response = await fetch(request);
           if (response && response.ok) {
-            cache.put(pathname, response.clone());
+            await cache.put(pathname, response.clone());
           }
         } catch {
           // ignore background refresh errors
@@ -180,7 +180,7 @@ self.addEventListener("fetch", (event) => {
       try {
         const response = await fetch(request);
         if (response && response.ok) {
-          cache.put(pathname, response.clone());
+          try { await cache.put(pathname, response.clone()); } catch {}
         }
         return response;
       } catch (err) {
