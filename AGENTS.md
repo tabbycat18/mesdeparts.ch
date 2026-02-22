@@ -1,58 +1,60 @@
 # AGENTS.md
 
-Living coordination file for this repository.
+## 1) Purpose
+- Give contributors and AI agents a verified quick map of the active realtime backend surface.
+- Document only what is confirmed from a small, explicit file set in this phase.
+- Avoid assumptions: unknown areas are marked as `TBD (not verified yet)`.
 
-This file is intentionally lightweight and meant to be updated incrementally.
+## 2) Repo layout (only folders you verified)
+- `realtime_api/backend/`: active realtime backend service (verified via `realtime_api/backend/package.json` and `realtime_api/backend/server.js`).
+- `realtime_api/backend/src/api/`: HTTP route + stationboard handler (verified via `realtime_api/backend/src/api/stationboardRoute.js` and `realtime_api/backend/src/api/stationboard.js`).
+- `realtime_api/backend/src/logic/`: stationboard build pipeline (verified via `realtime_api/backend/src/logic/buildStationboard.js`).
+- `realtime_api/backend/scripts/`: pollers and operational scripts (verified via `realtime_api/backend/scripts/pollLaTripUpdates.js` and scripts listed in `realtime_api/backend/package.json`).
+- `legacy_api/`: legacy stack exists (verified from root `README.md`).
+- `realtime_api/`: current active stack root exists (verified from root `README.md`).
 
-## Purpose
-- Keep project-wide engineering rules in one place.
-- Track current architecture decisions.
-- Document safe operating procedures for backend/frontend/poller work.
+## 3) RT backend entrypoints
+- Service entrypoint: `realtime_api/backend/server.js`
+- NPM entrypoint scripts:
+  - `start`: `TZ=Europe/Zurich node server.js`
+  - `dev`: `TZ=Europe/Zurich NODE_ENV=development node server.js`
+  - `test`: `node --test test/*.test.js`
+  - `poller`: `TZ=Europe/Zurich node scripts/pollFeeds.js`
+  - `poller:trip`: `TZ=Europe/Zurich node scripts/pollLaTripUpdates.js`
+  - `poller:alerts`: `TZ=Europe/Zurich node scripts/pollLaServiceAlerts.js`
+- Stationboard route registration: `app.get("/api/stationboard", stationboardRouteHandler)` in `realtime_api/backend/server.js`.
 
-## Current Repo Layout
-- `legacy_api/`: legacy stack (static UI + optional Cloudflare Worker).
-- `realtime_api/`: active real-time stack (backend + frontend + RT docs).
-- `README.md`: top-level orientation.
+## 4) Stationboard request flow (high-level, bullets)
+- `/api/stationboard` is handled by `createStationboardRouteHandler(...)` in `realtime_api/backend/src/api/stationboardRoute.js`.
+- Route parses query params (`stop_id`, `stationId`, `lang`, `limit`, `window_minutes`, `include_alerts`, `since_rt`) and validates `since_rt`.
+- Route reads RT cache metadata early and may return `204` when `since_rt` indicates no RT change.
+- Otherwise route calls stationboard handler (`getStationboard`) from `realtime_api/backend/src/api/stationboard.js`.
+- Handler resolves stop scope and calls `buildStationboard(...)` from `realtime_api/backend/src/logic/buildStationboard.js`.
+- Handler builds response with `station`, `resolved`, `rt`, `alerts`, `banners`, `departures`; then route applies response/cache headers.
 
-## Core Rules
-- Keep `legacy_api/` and `realtime_api/` changes clearly separated.
-- Do not introduce request-path upstream GTFS-RT calls in stationboard APIs.
-- Poller remains the upstream fetch point for RT/alerts feeds.
-- Keep `/api/stationboard` response contract backward-compatible unless explicitly planned.
+## 5) Realtime data flow (poller -> rt_cache -> merge)
+- TripUpdates poller script: `realtime_api/backend/scripts/pollLaTripUpdates.js`.
+- Poller fetches upstream GTFS-RT TripUpdates and upserts feed payload/state using `getRtCache`/`upsertRtCache` (`realtime_api/backend/src/db/rtCache.js`, imported by poller).
+- Stationboard build path reads scoped RT from cache via `loadScopedRtFromCache` and merges via `applyTripUpdates` (imports visible in `realtime_api/backend/src/logic/buildStationboard.js`).
+- Poller cadence/backoff (TripUpdates, verified):
+  - Base interval from `GTFS_RT_POLL_INTERVAL_MS` default `15000`.
+  - 429 backoff: starts `60000`, exponential, capped `600000`.
+  - Error backoff: starts `15000`, exponential, capped `120000`.
 
-## Realtime Backend Guardrails (`realtime_api/backend`)
-- Scheduled-first stationboard behavior.
-- RT/alerts should degrade safely to scheduled output when cache is missing/stale.
-- Prefer bounded processing for protobuf/merge work (avoid unbounded per-request memory growth).
-- Add/maintain tests for regression-sensitive logic (merge, route parsing, cache guards).
+## 6) Where to change X (short lookup table)
+| Behavior | Primary location |
+| --- | --- |
+| Stationboard response shape | `realtime_api/backend/src/api/stationboard.js` |
+| Realtime merge | `realtime_api/backend/src/logic/buildStationboard.js` (uses `loadScopedRtFromCache` + `applyTripUpdates`) |
+| Stop search | `realtime_api/backend/src/search/stopsSearch.js` (import verified in `realtime_api/backend/server.js`) |
+| Poller cadence/backoff | `realtime_api/backend/scripts/pollLaTripUpdates.js` |
+| Caching headers / Cloudflare behavior | `realtime_api/backend/src/api/stationboardRoute.js` (`Cache-Control`, `CDN-Cache-Control`, `Vary`) |
 
-## Frontend Guardrails (`realtime_api/frontend/web-ui-rt`)
-- Preserve no-flicker behavior for RT rendering.
-- Do not clear board state on HTTP `204` refresh responses.
-- Keep polling/backoff/visibility behavior explicit and testable.
-
-## Legacy Stack Notes (`legacy_api/web-ui`)
-- Legacy UI remains supported but separate.
-- Avoid coupling legacy behavior to realtime-only internals.
-
-## Standard Validation Commands
-- Backend tests:
-  - `cd realtime_api/backend && npm test`
-- Realtime frontend tests:
-  - `cd realtime_api/frontend/web-ui-rt && npm test`
-- Legacy frontend tests:
-  - `cd legacy_api/web-ui && npm test`
-
-## Deployment Notes (High Level)
-- Backend deploy target: Fly.io (`realtime_api/backend`).
-- Poller runs separately and writes to shared DB cache.
-- CDN/edge behavior should not override API correctness guarantees.
-
-## Open Items / Backlog
-- [ ] Keep this file synchronized with major architecture moves.
-- [ ] Add explicit env-var matrix (`dev`, `staging`, `prod`).
-- [ ] Add incident checklist for RT stale/missing behavior.
-- [ ] Add release checklist (backend -> frontend -> poller sequencing).
-
-## Change Log
-- 2026-02-22: Initial scaffold created.
+## 7) Common commands (only what you verify exists)
+- `cd realtime_api/backend && npm run dev`
+- `cd realtime_api/backend && npm start`
+- `cd realtime_api/backend && npm test`
+- `cd realtime_api/backend && npm run poller`
+- `cd realtime_api/backend && npm run poller:trip`
+- `cd realtime_api/backend && npm run poller:alerts`
+- `cd realtime_api/backend && npm run probe:rt`

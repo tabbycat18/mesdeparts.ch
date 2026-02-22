@@ -4,6 +4,9 @@ MesDeparts is a Swiss public-transport departure-board project that currently sh
 
 This guide is intentionally repo-grounded. Any claim not directly verifiable from files in this repository is labeled as `Unknown (not found in repo): ...`.
 
+## For contributors / AI agents
+See `AGENTS.md`.
+
 ## Important Update (Repo Reorganization)
 
 The repository was reorganized to make stack boundaries explicit.
