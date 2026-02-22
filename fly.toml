@@ -1,0 +1,18 @@
+app = "mesdeparts-ch"
+primary_region = "ams"
+
+[build]
+  dockerfile = "realtime_api/backend/Dockerfile"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_start_machines = true
+  auto_stop_machines = "off"
+  min_machines_running = 1
+  processes = ["app"]
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 1024
