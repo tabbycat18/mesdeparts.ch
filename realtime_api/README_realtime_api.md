@@ -43,14 +43,14 @@ This project follows the opentransportdata.swiss model:
 ## What Is Source Of Truth
 
 - **Backend (`realtime_api/backend`) is the source of truth** for RT departures.
-- **Frontend (`realtime_api/frontend/web-ui-rt`) is only presentation** of backend/API data.
+- **Frontend (`realtime_api/frontend`) is only presentation** of backend/API data.
 - Root `legacy_api/web-ui/` is a separate legacy/simple flow and should be treated independently.
 
 ## Folder Map
 
 - `realtime_api/backend/`
   - Node/Express API, GTFS import/refresh scripts, SQL, stationboard generation.
-- `realtime_api/frontend/web-ui-rt/`
+- `realtime_api/frontend/`
   - Static UI for the RT board (no build step required).
 - `realtime_api/data/` (optional local-only folder)
   - Local GTFS snapshots for manual tooling; keep out of git.
@@ -171,7 +171,7 @@ This verifies merge behavior and `cancelled` flag assignment.
 
 ## Frontend Note
 
-`realtime_api/frontend/web-ui-rt` is separate from backend logic.
+`realtime_api/frontend` is separate from backend logic.
 
 - It renders data and applies UI styles/filters.
 - It should not be treated as stationboard business logic source.
@@ -187,7 +187,7 @@ Ignored local snapshots include (when present locally):
 
 ## If You Feel Lost: What To Read First
 
-1. `realtime_api/README.md` (this file)
+1. `realtime_api/README_realtime_api.md` (this file)
 2. `realtime_api/backend/server.js`
 3. `realtime_api/backend/src/api/stationboard.js`
 4. `realtime_api/backend/logic/buildStationboard.js`

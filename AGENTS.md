@@ -10,8 +10,8 @@
 - `realtime_api/backend/src/api/`: HTTP route + stationboard handler (verified via `realtime_api/backend/src/api/stationboardRoute.js` and `realtime_api/backend/src/api/stationboard.js`).
 - `realtime_api/backend/src/logic/`: stationboard build pipeline (verified via `realtime_api/backend/src/logic/buildStationboard.js`).
 - `realtime_api/backend/scripts/`: pollers and operational scripts (verified via `realtime_api/backend/scripts/pollLaTripUpdates.js` and scripts listed in `realtime_api/backend/package.json`).
-- `legacy_api/`: legacy stack exists (verified from root `README.md`).
-- `realtime_api/`: current active stack root exists (verified from root `README.md`).
+- `legacy_api/`: legacy stack exists (verified from root `README_main.md`).
+- `realtime_api/`: current active stack root exists (verified from root `README_main.md`).
 
 ## 3) RT backend entrypoints
 - Service entrypoint: `realtime_api/backend/server.js`
