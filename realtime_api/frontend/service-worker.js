@@ -50,13 +50,18 @@ self.addEventListener("install", (event) => {
   event.waitUntil(
     (async () => {
       const cache = await caches.open(CACHE_NAME);
-      try {
-        await cache.addAll(CORE_ASSETS);
-      } catch (err) {
-        // If an asset is temporarily missing during deploy, keep installing instead of blocking the SW.
-        console.warn("[SW] core assets prefetch incomplete", err);
-      }
-      cache.addAll(LAZY_ASSETS).catch(() => {});
+      // Cache each core asset individually so one missing file doesn't block the rest.
+      const results = await Promise.allSettled(
+        CORE_ASSETS.map((asset) => cache.add(asset)),
+      );
+      results.forEach((result, i) => {
+        if (result.status === "rejected") {
+          console.warn("[SW] failed to prefetch", CORE_ASSETS[i], result.reason);
+        }
+      });
+      LAZY_ASSETS.forEach((asset) => {
+        cache.add(asset).catch(() => {});
+      });
     })(),
   );
   self.skipWaiting();
