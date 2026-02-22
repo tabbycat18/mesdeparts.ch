@@ -1,12 +1,33 @@
 # mesdeparts.ch Mega Repo Guide
 
-MesDeparts is a Swiss public-transport departure-board project that currently ships two parallel tracks in one monorepo: a legacy static frontend (`legacy_api/web-ui/`) and an RT stack (`rt/`) that uses GTFS static + GTFS-RT through an Express backend (`rt/backend`). The migration target in this repo is to make `rt/` the canonical stationboard path while keeping `legacy_api/web-ui/` stable until cutover.
+MesDeparts is a Swiss public-transport departure-board project that currently ships two parallel tracks in one monorepo: a legacy static frontend (`legacy_api/web-ui/`) and an RT stack (`realtime_api/`) that uses GTFS static + GTFS-RT through an Express backend (`realtime_api/backend`).
 
 This guide is intentionally repo-grounded. Any claim not directly verifiable from files in this repository is labeled as `Unknown (not found in repo): ...`.
 
+## Important Update (Repo Reorganization)
+
+The repository was reorganized to make stack boundaries explicit.
+
+Old path -> new path:
+- `web-ui/` -> `legacy_api/web-ui/`
+- `cloudflare-worker/` -> `legacy_api/cloudflare-worker/`
+- `wrangler.toml` -> `legacy_api/wrangler.toml`
+- `rt/` -> `realtime_api/`
+- top-level zero-downtime docs -> `realtime_api/docs/`
+
+If your local scripts/IDE still reference old paths, update them now.
+Common example:
+- old: `rt/backend/.env`
+- new: `realtime_api/backend/.env`
+
+Quick start (current paths):
+- backend tests: `cd realtime_api/backend && npm test`
+- RT frontend tests: `cd realtime_api/frontend/web-ui-rt && npm test`
+- legacy frontend tests: `cd legacy_api/web-ui && npm test`
+
 ## Repo Layout
 
-- `rt/`: active stack (backend + RT frontend).
+- `realtime_api/`: active stack (backend + RT frontend).
 - `legacy_api/`: legacy stack (`legacy_api/web-ui/`, `legacy_api/cloudflare-worker/`, `legacy_api/wrangler.toml`).
 - `assets/` and `dev-artifacts/` remain at root because they are not clearly legacy-only.
 
@@ -24,9 +45,10 @@ This guide is intentionally repo-grounded. Any claim not directly verifiable fro
 ├── legacy_api/cloudflare-worker/
 │   └── worker.js                          # GET proxy to transport.opendata.ch/v1/*
 ├── legacy_api/web-ui/                                # legacy static frontend path
-├── rt/                                    # RT migration path
-│   ├── README.md / README-rt.md
+├── realtime_api/                                    # active RT stack
+│   ├── README.md
 │   ├── backend/                           # Express + Neon + GTFS pipelines
+│   ├── docs/                              # RT ops/zero-downtime docs
 │   ├── frontend/web-ui-rt/               # RT static frontend
 │   └── test/
 ├── assets/                                # shared static assets at repo root
@@ -36,7 +58,7 @@ This guide is intentionally repo-grounded. Any claim not directly verifiable fro
 ## Top-Level Folder Roles
 
 - `legacy_api/web-ui/`: legacy/public static UI; entrypoints are `legacy_api/web-ui/index.html`, `legacy_api/web-ui/dual-board.html`, and `legacy_api/web-ui/main.v2025-02-07.js`.
-- `rt/`: migration track; backend API entrypoint is `rt/backend/server.js`, RT UI entrypoint is `rt/frontend/web-ui-rt/index.html`.
+- `realtime_api/`: active RT stack; backend API entrypoint is `realtime_api/backend/server.js`, RT UI entrypoint is `realtime_api/frontend/web-ui-rt/index.html`.
 - `legacy_api/cloudflare-worker/`: optional edge proxy/cache/rate-limit layer for `transport.opendata.ch`; entrypoint is `legacy_api/cloudflare-worker/worker.js`.
 - `.github/workflows/`: CI/automation workflows; files are `.github/workflows/gtfs_static_refresh.yml` and `.github/workflows/backend_schema_check.yml`.
 - `.wrangler/`: local Wrangler tooling state directory.
@@ -64,41 +86,41 @@ Relevant files:
 - `legacy_api/web-ui/main.v2025-02-07.js`
 - `legacy_api/cloudflare-worker/worker.js`
 
-### RT Path (`rt/`)
+### RT Path (`realtime_api/`)
 
 ```text
 Browser
-  -> rt/frontend/web-ui-rt/*.js
+  -> realtime_api/frontend/web-ui-rt/*.js
   -> GET /api/stops/*, /api/stationboard, /api/journey, /api/connections
-  -> rt/backend/server.js
-      -> resolve stop: rt/backend/src/resolve/resolveStop.js
-      -> build board: rt/backend/src/logic/buildStationboard.js
-      -> merge RT: rt/backend/src/merge/* + rt/backend/loaders/loadRealtime.js
-      -> attach alerts: rt/backend/src/loaders/fetchServiceAlerts.js + rt/backend/src/merge/*
-      -> canonicalize output: rt/backend/src/models/stationboard.js
+  -> realtime_api/backend/server.js
+      -> resolve stop: realtime_api/backend/src/resolve/resolveStop.js
+      -> build board: realtime_api/backend/src/logic/buildStationboard.js
+      -> merge RT: realtime_api/backend/src/merge/* + realtime_api/backend/loaders/loadRealtime.js
+      -> attach alerts: realtime_api/backend/src/loaders/fetchServiceAlerts.js + realtime_api/backend/src/merge/*
+      -> canonicalize output: realtime_api/backend/src/models/stationboard.js
   -> Neon/Postgres tables (gtfs_* + app_stop_aliases + rt_updates)
 ```
 
 Relevant files:
-- `rt/backend/server.js`
-- `rt/backend/src/api/stationboardRoute.js`
-- `rt/backend/src/api/stationboard.js`
-- `rt/backend/src/logic/buildStationboard.js`
-- `rt/backend/src/models/stationboard.js`
+- `realtime_api/backend/server.js`
+- `realtime_api/backend/src/api/stationboardRoute.js`
+- `realtime_api/backend/src/api/stationboard.js`
+- `realtime_api/backend/src/logic/buildStationboard.js`
+- `realtime_api/backend/src/models/stationboard.js`
 
 ## Legacy vs RT (What Differs)
 
 - Legacy `legacy_api/web-ui/` is a static client with direct/open API style calls and optional Worker proxy mode.
-- RT path uses `rt/backend` as a server-side merge layer with SQL + GTFS-RT parsing + canonical stationboard normalization.
-- Migration target in repo docs/code direction: `rt/backend` becomes canonical stationboard source; `legacy_api/web-ui/` stays stable until cutover.
+- RT path uses `realtime_api/backend` as a server-side merge layer with SQL + GTFS-RT parsing + canonical stationboard normalization.
+- Migration target in repo docs/code direction: `realtime_api/backend` becomes canonical stationboard source; `legacy_api/web-ui/` stays stable until cutover.
 
 ## `/api/stationboard` Contract Freeze
 
 Endpoint:
-- `GET /api/stationboard` (registered in `rt/backend/server.js` via `createStationboardRouteHandler(...)`).
+- `GET /api/stationboard` (registered in `realtime_api/backend/server.js` via `createStationboardRouteHandler(...)`).
 
 Route parser and conflict logic source:
-- `rt/backend/src/api/stationboardRoute.js`
+- `realtime_api/backend/src/api/stationboardRoute.js`
 
 ### Request Params
 
@@ -113,7 +135,7 @@ Route parser and conflict logic source:
 - `include_alerts` / `includeAlerts` (`1|true|yes|on` or `0|false|no|off`)
 
 Header used:
-- `Accept-Language` (passed into language preference resolver in `rt/backend/src/api/stationboard.js`).
+- `Accept-Language` (passed into language preference resolver in `realtime_api/backend/src/api/stationboard.js`).
 
 ### Param Precedence and Conflict Rule
 
@@ -134,11 +156,11 @@ Conflict response (HTTP 400) fields from `stationboardRoute.js`:
 - `resolved.stationId.root`
 
 Route tests for this contract:
-- `rt/backend/test/stationboard.route.test.js`
+- `realtime_api/backend/test/stationboard.route.test.js`
 
 ### include_alerts Gate (M2 Feature Gate)
 
-From `rt/backend/src/api/stationboard.js`:
+From `realtime_api/backend/src/api/stationboard.js`:
 - `includeAlertsRequested = includeAlerts !== false`
 - `includeAlertsApplied = (process.env.STATIONBOARD_ENABLE_M2 !== "0") && includeAlertsRequested`
 
@@ -149,7 +171,7 @@ Debug keys (when debug is enabled):
 
 ### Response Shape
 
-Top-level (from `rt/backend/src/api/stationboard.js`):
+Top-level (from `realtime_api/backend/src/api/stationboard.js`):
 - `station`
 - `resolved`
 - `banners`
@@ -157,10 +179,10 @@ Top-level (from `rt/backend/src/api/stationboard.js`):
 - optional `debug`
 
 Canonical schema file:
-- `rt/backend/docs/stationboard.schema.json`
+- `realtime_api/backend/docs/stationboard.schema.json`
 
 Canonical departure normalizer:
-- `rt/backend/src/models/stationboard.js` (`normalizeDeparture`, `computeDisplayFields`)
+- `realtime_api/backend/src/models/stationboard.js` (`normalizeDeparture`, `computeDisplayFields`)
 
 ### Invariants
 
@@ -182,44 +204,44 @@ Status/detail semantics in canonical model:
 ### GTFS Static Ingest/Refresh
 
 Primary refresh script:
-- `rt/backend/scripts/refreshGtfsIfNeeded.js`
+- `realtime_api/backend/scripts/refreshGtfsIfNeeded.js`
 
 Verified flow:
-1. Fetch feed metadata (`scripts/getRtFeedVersion.js`, `scripts/fetchAlertsFeedMeta.js`).
+1. Fetch feed metadata (`realtime_api/backend/scripts/getRtFeedVersion.js`, `realtime_api/backend/scripts/fetchAlertsFeedMeta.js`).
 2. Compare `meta_kv.gtfs_current_feed_version` with RT version.
 3. If changed: download static GTFS permalink, clean required files, import into stage, validate, swap stage to live.
 4. Update `meta_kv` + `rt_feed_meta`.
 
 SQL and shell pieces:
-- `rt/backend/sql/create_stage_tables.sql`
-- `rt/backend/scripts/importGtfsToStage.sh`
-- `rt/backend/sql/validate_stage.sql`
-- `rt/backend/sql/swap_stage_to_live.sql`
+- `realtime_api/backend/sql/create_stage_tables.sql`
+- `realtime_api/backend/scripts/importGtfsToStage.sh`
+- `realtime_api/backend/sql/validate_stage.sql`
+- `realtime_api/backend/sql/swap_stage_to_live_cutover.sql`
+- `realtime_api/backend/sql/cleanup_old_after_swap.sql`
 
 Runtime query source:
-- `rt/backend/src/sql/stationboard.sql`
+- `realtime_api/backend/src/sql/stationboard.sql`
 
-⚠️ **Legacy/dangerous importer** (do not use for production):
-- `rt/backend/scripts/legacy/DANGEROUS-direct-live-import.sh`
-  - Direct truncation and import into live tables (no validation, no rollback).
-  - Kept only for emergency manual recovery. Use `refreshGtfsIfNeeded.js` (staged import) for normal updates.
+Cutover/cleanup SQL currently used by refresh flow:
+- `realtime_api/backend/sql/swap_stage_to_live_cutover.sql`
+- `realtime_api/backend/sql/cleanup_old_after_swap.sql`
 
 ### GTFS-RT TripUpdates
 
-- Fetcher: `rt/backend/src/loaders/fetchTripUpdates.js`
-- Merge/cache/persist layer: `rt/backend/loaders/loadRealtime.js`
-- Merge application to scheduled rows: `rt/backend/src/merge/applyTripUpdates.js`
-- Added trips merge: `rt/backend/src/merge/applyAddedTrips.js`
+- Fetcher: `realtime_api/backend/src/loaders/fetchTripUpdates.js`
+- Merge/cache/persist layer: `realtime_api/backend/loaders/loadRealtime.js`
+- Merge application to scheduled rows: `realtime_api/backend/src/merge/applyTripUpdates.js`
+- Added trips merge: `realtime_api/backend/src/merge/applyAddedTrips.js`
 
 Persistence behavior:
-- `rt/backend/loaders/loadRealtime.js` creates and upserts `public.rt_updates`.
+- `realtime_api/backend/loaders/loadRealtime.js` creates and upserts `public.rt_updates`.
 
 ### GTFS-RT Service Alerts
 
-- Fetch/decode: `rt/backend/src/loaders/fetchServiceAlerts.js`
-- Request-time language resolution: `rt/backend/src/util/i18n.js`
-- Attachment/synthesis: `rt/backend/src/merge/attachAlerts.js`, `rt/backend/src/merge/synthesizeFromAlerts.js`
-- Optional supplement fetch path: `rt/backend/src/merge/supplementFromOtdStationboard.js` (triggered via `getStationboard` flow)
+- Fetch/decode: `realtime_api/backend/src/loaders/fetchServiceAlerts.js`
+- Request-time language resolution: `realtime_api/backend/src/util/i18n.js`
+- Attachment/synthesis: `realtime_api/backend/src/merge/attachAlerts.js`, `realtime_api/backend/src/merge/synthesizeFromAlerts.js`
+- Optional supplement fetch path: `realtime_api/backend/src/merge/supplementFromOtdStationboard.js` (triggered via `getStationboard` flow)
 
 ### SIRI
 
@@ -227,12 +249,12 @@ Unknown (not found in repo): active SIRI ingestion, SIRI endpoint clients, or SI
 
 ## How To Run (Local)
 
-### Backend (`rt/backend`)
+### Backend (`realtime_api/backend`)
 
 Install and start:
 
 ```bash
-cd rt/backend
+cd realtime_api/backend
 npm ci
 npm run dev
 ```
@@ -240,12 +262,12 @@ npm run dev
 Production-like start command:
 
 ```bash
-cd rt/backend
+cd realtime_api/backend
 npm start
 ```
 
 Required env var to boot backend:
-- `DATABASE_URL` (checked in `rt/backend/db.js`)
+- `DATABASE_URL` (checked in `realtime_api/backend/db.js`)
 
 Common API token envs used by loaders/scripts:
 - `OPENTDATA_GTFS_RT_KEY`
@@ -257,36 +279,36 @@ Common API token envs used by loaders/scripts:
 Run tests:
 
 ```bash
-cd rt/backend
+cd realtime_api/backend
 npm test
 ```
 
 Schema drift helper:
 
 ```bash
-cd rt/backend
+cd realtime_api/backend
 npm run schema:drift
 ```
 
-Package scripts available (from `rt/backend/package.json`):
-- `npm run import:gtfs:legacy` ⚠️ (dangerous direct-live import, use only for emergency recovery)
+Package scripts available (from `realtime_api/backend/package.json`):
 - `npm run seed:aliases`
 - `npm run sb:filter`
+- `npm run poller` / `npm run poller:trip` / `npm run poller:alerts`
 
 Debug scripts:
 
 ```bash
-cd rt/backend
+cd realtime_api/backend
 node scripts/debugStationboard.js Parent8501120
 node scripts/debugStationboard.js Parent8501120 | node scripts/filter-stationboard.js vallorbe
 node scripts/debugTripUpdatesCancelCount.js
 ```
 
-### Legacy frontend (`legacy_api/web-ui`) and RT frontend (`rt/frontend/web-ui-rt`)
+### Legacy frontend (`legacy_api/web-ui`) and RT frontend (`realtime_api/frontend/web-ui-rt`)
 
 Both frontend folders are static and have their own readmes:
 - `legacy_api/web-ui/README.md`
-- `rt/frontend/web-ui-rt/README.md`
+- `realtime_api/frontend/web-ui-rt/README.md`
 
 ## Migration Roadmap (M0 -> M5)
 
@@ -298,9 +320,9 @@ Goal:
 - Stable scheduled stationboard from GTFS static.
 
 Modules involved:
-- `rt/backend/src/sql/stationboard.sql`
-- `rt/backend/src/logic/buildStationboard.js`
-- `rt/backend/src/resolve/resolveStop.js`
+- `realtime_api/backend/src/sql/stationboard.sql`
+- `realtime_api/backend/src/logic/buildStationboard.js`
+- `realtime_api/backend/src/resolve/resolveStop.js`
 
 Acceptance criteria:
 - `/api/stationboard` returns deterministic scheduled departures for a known stop.
@@ -316,10 +338,10 @@ Goal:
 - Deterministic TripUpdates merge with canonical cancellation/delay semantics.
 
 Modules involved:
-- `rt/backend/loaders/loadRealtime.js`
-- `rt/backend/src/merge/applyTripUpdates.js`
-- `rt/backend/src/models/stationboard.js`
-- `rt/backend/test/stationboard.model.test.js`
+- `realtime_api/backend/loaders/loadRealtime.js`
+- `realtime_api/backend/src/merge/applyTripUpdates.js`
+- `realtime_api/backend/src/models/stationboard.js`
+- `realtime_api/backend/test/stationboard.model.test.js`
 
 Acceptance criteria:
 - Skipped/suppressed stop is represented as cancelled at stationboard row level.
@@ -335,11 +357,11 @@ Goal:
 - Service Alerts attachment, localization, and gated activation.
 
 Modules involved:
-- `rt/backend/src/loaders/fetchServiceAlerts.js`
-- `rt/backend/src/merge/attachAlerts.js`
-- `rt/backend/src/merge/synthesizeFromAlerts.js`
-- `rt/backend/src/util/i18n.js`
-- `rt/backend/src/api/stationboard.js`
+- `realtime_api/backend/src/loaders/fetchServiceAlerts.js`
+- `realtime_api/backend/src/merge/attachAlerts.js`
+- `realtime_api/backend/src/merge/synthesizeFromAlerts.js`
+- `realtime_api/backend/src/util/i18n.js`
+- `realtime_api/backend/src/api/stationboard.js`
 
 Acceptance criteria:
 - `include_alerts/includeAlerts` intent is parsed.
@@ -356,8 +378,8 @@ Goal:
 - Route/API contract hardening and deterministic route-level behavior.
 
 Modules involved:
-- `rt/backend/src/api/stationboardRoute.js`
-- `rt/backend/test/stationboard.route.test.js`
+- `realtime_api/backend/src/api/stationboardRoute.js`
+- `realtime_api/backend/test/stationboard.route.test.js`
 
 Acceptance criteria:
 - Conflict handling is canonical-root based.
@@ -376,8 +398,8 @@ Goal:
 Modules involved:
 - `.github/workflows/gtfs_static_refresh.yml`
 - `.github/workflows/backend_schema_check.yml`
-- `rt/backend/scripts/refreshGtfsIfNeeded.js`
-- `rt/backend/docs/stationboard.schema.json`
+- `realtime_api/backend/scripts/refreshGtfsIfNeeded.js`
+- `realtime_api/backend/docs/stationboard.schema.json`
 
 Acceptance criteria:
 - Hourly refresh workflow runs with required secrets.
@@ -393,8 +415,8 @@ Goal:
 - Production cutover where RT path is canonical and legacy path becomes fallback/legacy.
 
 Modules involved:
-- `rt/backend/*`
-- `rt/frontend/web-ui-rt/*`
+- `realtime_api/backend/*`
+- `realtime_api/frontend/web-ui-rt/*`
 - operational deploy config (`legacy_api/wrangler.toml`, hosting configuration)
 
 Acceptance criteria:
@@ -413,18 +435,19 @@ Unknown (not found in repo): final production traffic-switch mechanism and relea
 
 - Provide `DATABASE_URL` for backend runtime and scripts.
 - Ensure DB has runtime tables referenced by code/SQL: `gtfs_*`, `app_stop_aliases`, `meta_kv`, `rt_feed_meta`, and `rt_updates`.
-- Run refresh/import scripts from `rt/backend/scripts/*` as needed.
+- Run refresh/import scripts from `realtime_api/backend/scripts/*` as needed.
 
 Unknown (not found in repo): single canonical migration file that creates all base runtime tables (`gtfs_*`, `app_stop_aliases`, `meta_kv`, `rt_feed_meta`) from scratch.
 
 ### Required Tables / Schema Sources in Repo
 
-- Stage-table DDL: `rt/backend/sql/create_stage_tables.sql`
-- Stage validation: `rt/backend/sql/validate_stage.sql`
-- Stage->live swap: `rt/backend/sql/swap_stage_to_live.sql`
-- Runtime stationboard query: `rt/backend/src/sql/stationboard.sql`
-- Legacy schema artifact: `rt/backend/schema_gtfs.sql` (non-`gtfs_` table naming)
-- Drift helper: `rt/backend/scripts/schemaDriftTask.js`
+- Stage-table DDL: `realtime_api/backend/sql/create_stage_tables.sql`
+- Stage validation: `realtime_api/backend/sql/validate_stage.sql`
+- Stage->live swap: `realtime_api/backend/sql/swap_stage_to_live_cutover.sql`
+- Post-cutover cleanup: `realtime_api/backend/sql/cleanup_old_after_swap.sql`
+- Runtime stationboard query: `realtime_api/backend/src/sql/stationboard.sql`
+- Legacy schema artifact: `realtime_api/backend/schema_gtfs.sql` (non-`gtfs_` table naming)
+- Drift helper: `realtime_api/backend/scripts/schemaDriftTask.js`
 
 ### Secrets / Env Vars
 
@@ -440,8 +463,8 @@ Common runtime/script env vars used in backend code:
 
 ### GitHub Actions Behavior
 
-- `gtfs_static_refresh.yml`: hourly + manual, runs `node scripts/refreshGtfsIfNeeded.js` in `rt/backend`.
-- `backend_schema_check.yml`: PR/push/manual, validates JSON parse for `rt/backend/docs/stationboard.schema.json`.
+- `gtfs_static_refresh.yml`: hourly + manual, runs `node scripts/refreshGtfsIfNeeded.js` in `realtime_api/backend`.
+- `backend_schema_check.yml`: PR/push/manual, validates JSON parse for `realtime_api/backend/docs/stationboard.schema.json`.
 - In-repo scheduler currently visible: GitHub Actions cron in `.github/workflows/gtfs_static_refresh.yml`.
 
 Unknown (not found in repo): additional external schedulers (server cron, managed jobs) for GTFS refresh.
@@ -470,9 +493,9 @@ Unknown (not found in repo): whether production stationboard traffic is currentl
 
 ### RT Backend Deployment
 
-- Deployment target for `rt/backend`: **Fly.io**.
-- Docker runtime path used in this repo: `rt/backend/Dockerfile`.
-- Backend container port: `8080` (set in `rt/backend/Dockerfile`).
+- Deployment target for `realtime_api/backend`: **Fly.io**.
+- Docker runtime path used in this repo: `realtime_api/backend/Dockerfile`.
+- Backend container port: `8080` (set in `realtime_api/backend/Dockerfile`).
 
 Unknown (not found in repo): committed Fly config file path (for example `fly.toml`) and app/region/autoscaling values.
 
@@ -481,9 +504,9 @@ Unknown (not found in repo): committed Fly config file path (for example `fly.to
 ### 1) Symptom: cancellations are missing for trains that should be skipped/cancelled
 
 What to inspect:
-- `rt/backend/src/merge/applyTripUpdates.js`
-- `rt/backend/src/models/stationboard.js`
-- `rt/backend/scripts/debugStationboard.js`
+- `realtime_api/backend/src/merge/applyTripUpdates.js`
+- `realtime_api/backend/src/models/stationboard.js`
+- `realtime_api/backend/scripts/debugStationboard.js`
 
 Likely causes:
 - stop-level `SKIPPED` signal not propagated to canonical cancellation fields
@@ -496,9 +519,9 @@ Validate fix:
 ### 2) Symptom: delay values look random (too many 0 or null)
 
 What to inspect:
-- `rt/backend/src/models/stationboard.js` (`computeDisplayFields`)
-- `rt/backend/src/merge/applyTripUpdates.js`
-- `rt/backend/loaders/loadRealtime.js`
+- `realtime_api/backend/src/models/stationboard.js` (`computeDisplayFields`)
+- `realtime_api/backend/src/merge/applyTripUpdates.js`
+- `realtime_api/backend/loaders/loadRealtime.js`
 
 Likely causes:
 - scheduled fallback being interpreted as RT-confirmed
@@ -511,10 +534,10 @@ Validate fix:
 ### 3) Symptom: alerts/replacements/extra trains not visible
 
 What to inspect:
-- `rt/backend/src/api/stationboard.js` (M2 gate and include alerts flow)
-- `rt/backend/src/loaders/fetchServiceAlerts.js`
-- `rt/backend/src/merge/attachAlerts.js`
-- `rt/backend/src/merge/synthesizeFromAlerts.js`
+- `realtime_api/backend/src/api/stationboard.js` (M2 gate and include alerts flow)
+- `realtime_api/backend/src/loaders/fetchServiceAlerts.js`
+- `realtime_api/backend/src/merge/attachAlerts.js`
+- `realtime_api/backend/src/merge/synthesizeFromAlerts.js`
 
 Likely causes:
 - `STATIONBOARD_ENABLE_M2=0`
@@ -528,9 +551,9 @@ Validate fix:
 ### 4) Symptom: stop resolution fails (`unknown_stop`) or wrong station scope
 
 What to inspect:
-- `rt/backend/src/resolve/resolveStop.js`
-- `rt/backend/src/api/stationboardRoute.js`
-- `rt/backend/scripts/seedStopAliases.js`
+- `realtime_api/backend/src/resolve/resolveStop.js`
+- `realtime_api/backend/src/api/stationboardRoute.js`
+- `realtime_api/backend/scripts/seedStopAliases.js`
 
 Likely causes:
 - alias table missing or stale
@@ -543,53 +566,53 @@ Validate fix:
 ### 5) Symptom: SQL/runtime drift confusion (`schema_gtfs.sql` vs `gtfs_*`)
 
 What to inspect:
-- `rt/backend/schema_gtfs.sql`
-- `rt/backend/src/sql/stationboard.sql`
-- `rt/backend/sql/*.sql`
-- `rt/backend/scripts/schemaDriftTask.js`
+- `realtime_api/backend/schema_gtfs.sql`
+- `realtime_api/backend/src/sql/stationboard.sql`
+- `realtime_api/backend/sql/*.sql`
+- `realtime_api/backend/scripts/schemaDriftTask.js`
 
 Likely causes:
 - mixed legacy naming vs current runtime naming
 
 Validate fix:
-- run `cd rt/backend && npm run schema:drift`
+- run `cd realtime_api/backend && npm run schema:drift`
 - reconcile on canonical runtime naming used by active stationboard path
 
 ## Where To Change X
 
-- Stationboard query/window issues: `rt/backend/src/sql/stationboard.sql`, `rt/backend/src/logic/buildStationboard.js`
-- Param parsing/conflict behavior: `rt/backend/src/api/stationboardRoute.js`
-- API response composition and M2 gate: `rt/backend/src/api/stationboard.js`
-- Cancellation/delay/status semantics: `rt/backend/src/models/stationboard.js`
-- TripUpdates merge behavior: `rt/backend/src/merge/applyTripUpdates.js`
-- Alert matching/localization behavior: `rt/backend/src/merge/attachAlerts.js`, `rt/backend/src/util/i18n.js`
-- Stop alias resolution: `rt/backend/src/resolve/resolveStop.js`, `rt/backend/scripts/seedStopAliases.js`
+- Stationboard query/window issues: `realtime_api/backend/src/sql/stationboard.sql`, `realtime_api/backend/src/logic/buildStationboard.js`
+- Param parsing/conflict behavior: `realtime_api/backend/src/api/stationboardRoute.js`
+- API response composition and M2 gate: `realtime_api/backend/src/api/stationboard.js`
+- Cancellation/delay/status semantics: `realtime_api/backend/src/models/stationboard.js`
+- TripUpdates merge behavior: `realtime_api/backend/src/merge/applyTripUpdates.js`
+- Alert matching/localization behavior: `realtime_api/backend/src/merge/attachAlerts.js`, `realtime_api/backend/src/util/i18n.js`
+- Stop alias resolution: `realtime_api/backend/src/resolve/resolveStop.js`, `realtime_api/backend/scripts/seedStopAliases.js`
 - CI refresh/check workflows: `.github/workflows/gtfs_static_refresh.yml`, `.github/workflows/backend_schema_check.yml`
 - Legacy UI tweaks: `legacy_api/web-ui/` (separate track; do not mix with RT backend logic)
 
 ## How To Contribute Safely
 
-- Keep `legacy_api/web-ui/` and `rt/` changes intentionally separated.
+- Keep `legacy_api/web-ui/` and `realtime_api/` changes intentionally separated.
 - For RT backend changes, run:
 
 ```bash
-cd rt/backend
+cd realtime_api/backend
 npm test
 npm run schema:drift
 ```
 
 - Keep `/api/stationboard` contract aligned across these files:
-- `rt/backend/src/api/stationboardRoute.js` (request parsing + conflict behavior)
-- `rt/backend/src/api/stationboard.js` (response assembly + feature gates)
-- `rt/backend/src/models/stationboard.js` (canonical departure semantics)
-- `rt/backend/docs/stationboard.schema.json` (schema artifact checked by CI)
-- Prefer adding regression tests under `rt/backend/test/` for route/model/merge behavior.
+- `realtime_api/backend/src/api/stationboardRoute.js` (request parsing + conflict behavior)
+- `realtime_api/backend/src/api/stationboard.js` (response assembly + feature gates)
+- `realtime_api/backend/src/models/stationboard.js` (canonical departure semantics)
+- `realtime_api/backend/docs/stationboard.schema.json` (schema artifact checked by CI)
+- Prefer adding regression tests under `realtime_api/backend/test/` for route/model/merge behavior.
 
 ## Deep Docs
 
-- `./rt/backend/README.md`
-- `./rt/backend/docs/stationboard.schema.json`
-- `./rt/README.md`
-- `./rt/README-rt.md`
+- `./realtime_api/backend/README.md`
+- `./realtime_api/backend/docs/stationboard.schema.json`
+- `./realtime_api/README.md`
+- `./realtime_api/docs/INDEX.md`
 - `./legacy_api/web-ui/README.md`
-- `./rt/frontend/web-ui-rt/README.md`
+- `./realtime_api/frontend/web-ui-rt/README.md`
