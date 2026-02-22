@@ -517,9 +517,10 @@ Unknown (not found in repo): whether production stationboard traffic is currentl
     - Min machines: 1, auto-scaling enabled
     - Dockerfile: references root-level `Dockerfile`
     - Deploy with: `flyctl deploy` or `fly deploy`
-  - RT poller service: `realtime_api/backend/fly.poller.toml`
+  - RT poller service: `fly.poller.toml` at repository root
     - App name: `mesdeparts-rt-poller`
     - Separate Fly.io app for background polling jobs
+    - Deploy with: `flyctl deploy --config fly.poller.toml`
 
 ## Troubleshooting Playbooks
 
