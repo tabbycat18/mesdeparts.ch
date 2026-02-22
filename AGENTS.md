@@ -107,19 +107,19 @@ If context is still missing after this order, then inspect code.
   - Deploy: `flyctl deploy` or `fly deploy`
   - Status: https://mesdeparts-ch.fly.dev/
 
-- **Poller service** (`realtime_api/backend/fly.poller.toml`):
+- **Poller service** (`fly.poller.toml` at repo root):
   - Separate Fly.io app for background GTFS-RT polling jobs
   - App name: `mesdeparts-rt-poller`
   - Process: runs `npm run poller` (not HTTP; background task)
-  - Deploy: `flyctl deploy --config realtime_api/backend/fly.poller.toml`
+  - Deploy: `flyctl deploy --config fly.poller.toml`
 
 ### When to Update Deployment Files
 | File | Purpose | When to change |
 | --- | --- | --- |
 | `Dockerfile` | Build main backend app | package.json changes, runtime changes, build optimization |
 | `fly.toml` | Deploy main app to Fly.io | resource changes, region changes, health check changes |
+| `fly.poller.toml` | Deploy poller service | poller resource/schedule changes |
 | `.dockerignore` | Exclude build context files | new build artifacts, faster build optimization |
-| `realtime_api/backend/fly.poller.toml` | Deploy poller service | poller resource/schedule changes |
 
 ### Deployment Troubleshooting
 - **"fly.toml not found"**: Ensure `fly.toml` is at repo root (not in subdirectories) and committed to git (`git ls-files fly.toml`)
