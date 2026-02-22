@@ -26,7 +26,7 @@ import {
 import { t } from "./i18n.v2026-02-21-4.js";
 
 // API base can be overridden by setting window.__MD_API_BASE__ before scripts load.
-// Frontend now targets rt/backend endpoints only.
+// Frontend now targets realtime_api/backend endpoints only.
 function shouldForceLocalApi() {
   if (typeof window === "undefined") return false;
   try {

@@ -22,11 +22,11 @@ jobs:
           node-version: "20"
 
       - name: Install backend dependencies
-        working-directory: rt/backend
+        working-directory: realtime_api/backend
         run: npm ci
 
       - name: Refresh GTFS if needed
-        working-directory: rt/backend
+        working-directory: realtime_api/backend
         run: node scripts/refreshGtfsIfNeeded.js
         env:
           DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
@@ -34,7 +34,7 @@ jobs:
           OPENTDATA_GTFS_SA_KEY: ${{ secrets.OPENTDATA_GTFS_SA_KEY }}
 
       - name: Verify canonical stop_search_index state
-        working-directory: rt/backend
+        working-directory: realtime_api/backend
         run: |
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
           DO $$

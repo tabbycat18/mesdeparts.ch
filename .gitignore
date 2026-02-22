@@ -4,10 +4,10 @@ __pycache__/
 node_modules/
 
 # Backend/runtime artifacts
-rt/backend/node_modules/
-rt/backend/.env
-rt/backend/gtfs-rt.pb
-rt/backend/gtfs-rt.json
+realtime_api/backend/node_modules/
+realtime_api/backend/.env
+realtime_api/backend/gtfs-rt.pb
+realtime_api/backend/gtfs-rt.json
 dev-artifacts/
 gtfs-rt.*
 *.pb
@@ -15,10 +15,10 @@ gtfs-rt.*
 *.csv
 
 # Large GTFS data snapshots (local only)
-rt/data/gtfs-static/
-rt/data/**/*.csv
-rt/data/**/*.zip
-!rt/data/README.md
-!rt/data/gtfs-static/README.md
+realtime_api/data/gtfs-static/
+realtime_api/data/**/*.csv
+realtime_api/data/**/*.zip
+!realtime_api/data/README.md
+!realtime_api/data/gtfs-static/README.md
 
-rt/data/gtfs-static-OLD/
+realtime_api/data/gtfs-static-OLD/

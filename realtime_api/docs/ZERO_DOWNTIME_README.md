@@ -15,7 +15,7 @@ This implementation eliminates downtime during GTFS refresh cycles by replacing 
 
 ### Two SQL Files Completely Rewritten
 
-#### 1. `rt/backend/sql/swap_stage_to_live.sql` (147 lines)
+#### 1. `realtime_api/backend/sql/swap_stage_to_live_cutover.sql` (147 lines)
 **Purpose:** Promote staged GTFS data to live tables
 
 **Old approach (problematic):**
@@ -37,7 +37,7 @@ This implementation eliminates downtime during GTFS refresh cycles by replacing 
 - 7 old table cleanups with CASCADE
 - Comprehensive RAISE NOTICE logging
 
-#### 2. `rt/backend/sql/optimize_stop_search.sql` (508 lines)
+#### 2. `realtime_api/backend/sql/optimize_stop_search.sql` (508 lines)
 **Purpose:** Rebuild stop search index atomically
 
 **Old approach (problematic):**
@@ -63,7 +63,7 @@ This implementation eliminates downtime during GTFS refresh cycles by replacing 
 
 ## Detailed Changes
 
-### File 1: swap_stage_to_live.sql
+### File 1: swap_stage_to_live_cutover.sql
 
 #### Before (Lines 1-63 of old version)
 ```sql
@@ -203,7 +203,7 @@ COMMIT;
   ├─ validate_stage.sql [0.1 sec]
   │  └─ Check referential integrity
   │
-  ├─ swap_stage_to_live.sql [⚠️ 5-15 SEC DOWNTIME]
+  ├─ swap_stage_to_live_cutover.sql [⚠️ 5-15 SEC DOWNTIME]
   │  ├─ TRUNCATE public.gtfs_* [2 sec]  ← TABLES EMPTY!
   │  ├─ INSERT ... SELECT [5 sec]        ← SLOW BULK INSERT
   │  └─ Restore app_stop_aliases        ← FK-AWARE INSERT
@@ -234,7 +234,7 @@ TOTAL DOWNTIME: 6-17 seconds ❌ Users see errors!
   ├─ validate_stage.sql [0.1 sec]
   │  └─ Check referential integrity
   │
-  ├─ swap_stage_to_live.sql [✓ 0.05 SEC - ATOMIC]
+  ├─ swap_stage_to_live_cutover.sql [✓ 0.05 SEC - ATOMIC]
   │  ├─ Validate stage tables populated
   │  ├─ Backup app_stop_aliases
   │  ├─ BEGIN TRANSACTION
@@ -318,8 +318,8 @@ SELECT * FROM public.gtfs_stop_times;   -- Still works ✓
 ## Implementation Files
 
 ### Primary Changes
-- ✓ `rt/backend/sql/swap_stage_to_live.sql` — 147 lines, fully rewritten
-- ✓ `rt/backend/sql/optimize_stop_search.sql` — 508 lines, updated to use shadow build + swap
+- ✓ `realtime_api/backend/sql/swap_stage_to_live_cutover.sql` — 147 lines, fully rewritten
+- ✓ `realtime_api/backend/sql/optimize_stop_search.sql` — 508 lines, updated to use shadow build + swap
 
 ### Documentation
 - ✓ `ZERO_DOWNTIME_PLAN.md` — Design rationale, problem analysis, solution approach
@@ -328,9 +328,9 @@ SELECT * FROM public.gtfs_stop_times;   -- Still works ✓
 - ✓ `ZERO_DOWNTIME_README.md` — This file
 
 ### No Changes Required
-- `rt/backend/scripts/refreshGtfsIfNeeded.js` — Calls same SQL files, no code changes
-- `rt/backend/sql/create_stage_tables.sql` — Unchanged
-- `rt/backend/sql/validate_stage.sql` — Unchanged
+- `realtime_api/backend/scripts/refreshGtfsIfNeeded.js` — Calls same SQL files, no code changes
+- `realtime_api/backend/sql/create_stage_tables.sql` — Unchanged
+- `realtime_api/backend/sql/validate_stage.sql` — Unchanged
 - Application code — Zero changes
 
 ---

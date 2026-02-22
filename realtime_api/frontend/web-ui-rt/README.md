@@ -17,7 +17,7 @@ Static, dependency-free front-end for mesdeparts.ch. Everything in this folder i
 ## Architecture (versioned files)
 - `main.v*.js`: boot; reads URL/localStorage defaults (`stationName`/`stationId`, language), wires event handlers, and starts refresh + countdown loops.
 - `state.v*.js`: shared config/constants (refresh cadence, horizons, view modes, thresholds) and mutable `appState`.
-- `logic.v*.js`: `rt/backend` client (`/api/stops/search`, `/api/stops/nearby`, `/api/stationboard`), station resolve/nearby search, delay/remark computation, grouping/sorting, and network detection for line colors.
+- `logic.v*.js`: `realtime_api/backend` client (`/api/stops/search`, `/api/stops/nearby`, `/api/stationboard`), station resolve/nearby search, delay/remark computation, grouping/sorting, and network detection for line colors.
 - `ui.v*.js`: DOM rendering of the board, clocks, station search with suggestions/nearby, filters (line/platform/train service), favorites popovers, view toggle, auto-fit watcher, and embed state publication.
 - `i18n.v*.js`: minimal translations (FR/DE/IT/EN) + language persistence.
 - `favourites.v*.js`: localStorage (`md_favorites_v1`) helpers; no backend.
@@ -36,11 +36,11 @@ Static, dependency-free front-end for mesdeparts.ch. Everything in this folder i
 ## Running locally
 - Static server only; no bundler needed:
   ```sh
-  cd rt/frontend/web-ui-rt
+  cd realtime_api/frontend/web-ui-rt
   python3 -m http.server 8000
   ```
   Then open http://localhost:8000.
-- Tests (Node built-in): `npm test` from `rt/frontend/web-ui-rt/` (checks key helpers in `logic.*.js`). `package.json` has no deps.
+- Tests (Node built-in): `npm test` from `realtime_api/frontend/web-ui-rt/` (checks key helpers in `logic.*.js`). `package.json` has no deps.
 
 ## Versioning & deploy notes
 - JS/CSS filenames carry a version tag (`*.vYYYY-MM-DD-N.*`). When you bump assets, update references in `index.html`, `dual-board.html`, and the `CORE_ASSETS`/`LAZY_ASSETS` lists inside `service-worker.js`, plus the visible version tags in the HTML headers.
@@ -48,7 +48,7 @@ Static, dependency-free front-end for mesdeparts.ch. Everything in this folder i
 - The UI is fully static: host this folder on any static host (Netlify/Vercel/S3/nginx/Apache). A `.htaccess` file is not used here; rely on versioned filenames for cache control.
 
 ## API target
-- This UI is now wired for `rt/backend` API routes only.
+- This UI is now wired for `realtime_api/backend` API routes only.
 - It is not using the old `/locations` + `/stationboard` contract anymore.
 
 ## Behavior/UX notes

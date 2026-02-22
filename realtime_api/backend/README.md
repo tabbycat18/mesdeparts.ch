@@ -3,17 +3,17 @@
 GTFS static datasets must not be committed to git.
 
 Static GTFS is downloaded by CI from the opentransportdata permalink during refresh jobs.
-For local legacy tooling, the default folder name has been renamed to `rt/data/gtfs-static-local`.
+For local manual tooling, use `realtime_api/data/gtfs-static-local` (optional, local-only).
 
 TODO: remove any remaining legacy static dataset directories after the first successful automated import to Neon.
 
 ## Deployment Target
 
 - Runtime target for this backend: **Fly.io**.
-- Container file: `rt/backend/Dockerfile`.
+- Container file: `realtime_api/backend/Dockerfile`.
 - Container listen port: `8080` (`ENV PORT=8080`).
 
-API Fly config is committed at `rt/backend/fly.toml`.
+API Fly config is committed at `realtime_api/backend/fly.toml`.
 
 ## GTFS-RT Option A1 (Global Limit Guarantee)
 
@@ -26,7 +26,7 @@ To guarantee the LA GTFS-RT upstream limit globally (5/min), run one dedicated p
 ### 1) Apply shared cache migration once (Neon)
 
 ```bash
-cd rt/backend
+cd realtime_api/backend
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f sql/create_rt_cache.sql
 ```
 
@@ -51,8 +51,8 @@ If your API app uses a different token env name, set it too (`OPENDATA_SWISS_TOK
 ```bash
 fly deploy \
   -a mesdeparts-rt-poller \
-  -c rt/backend/fly.poller.toml \
-  --dockerfile rt/backend/Dockerfile
+  -c realtime_api/backend/fly.poller.toml \
+  --dockerfile realtime_api/backend/Dockerfile
 ```
 
 Poller runtime command is `npm run poller`.
@@ -182,7 +182,7 @@ curl "http://localhost:3001/api/stationboard?stop_id=<returned_id>&limit=20&debu
 
 ### Schema
 
-- Canonical JSON schema: `rt/backend/docs/stationboard.schema.json`
+- Canonical JSON schema: `realtime_api/backend/docs/stationboard.schema.json`
 
 ## Stop Search Normalization and Ranking (Developer Note)
 

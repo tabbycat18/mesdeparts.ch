@@ -214,9 +214,9 @@ All operations use **IF EXISTS / IF NOT EXISTS** patterns:
 
 ## Files to Modify
 
-- [x] `rt/backend/sql/swap_stage_to_live.sql` → replace with zero-downtime version
-- [x] `rt/backend/sql/optimize_stop_search.sql` → replace with zero-downtime version
-- [x] `rt/backend/scripts/refreshGtfsIfNeeded.js` → no changes needed (calls same SQL files)
+- [x] `realtime_api/backend/sql/swap_stage_to_live.sql` → replace with zero-downtime version
+- [x] `realtime_api/backend/sql/optimize_stop_search.sql` → replace with zero-downtime version
+- [x] `realtime_api/backend/scripts/refreshGtfsIfNeeded.js` → no changes needed (calls same SQL files)
 - [x] Documentation in code comments
 
 ---

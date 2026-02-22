@@ -5,9 +5,9 @@
 This guide explains the changes made to eliminate downtime during GTFS refresh cycles. The new approach uses **atomic table renames** instead of **TRUNCATE+INSERT**, reducing cutover downtime from 5-15 seconds to <100ms.
 
 ### Files Changed
-- `rt/backend/sql/swap_stage_to_live.sql` — Cutover mechanism (full replacement)
-- `rt/backend/sql/optimize_stop_search.sql` — Stop search rebuild (updated to use shadow build + swap)
-- `rt/backend/scripts/refreshGtfsIfNeeded.js` — **No changes required**
+- `realtime_api/backend/sql/swap_stage_to_live.sql` — Cutover mechanism (full replacement)
+- `realtime_api/backend/sql/optimize_stop_search.sql` — Stop search rebuild (updated to use shadow build + swap)
+- `realtime_api/backend/scripts/refreshGtfsIfNeeded.js` — **No changes required**
 
 ### Backwards Compatibility
 ✅ **100% backwards compatible** — No changes to application code, table names, or APIs.
@@ -173,7 +173,7 @@ psql $TEST_DATABASE_URL << 'EOF'
 BEGIN;
 
 -- Run the swap script (will show NOTICE messages)
-\i rt/backend/sql/swap_stage_to_live.sql
+\i realtime_api/backend/sql/swap_stage_to_live.sql
 
 -- Check that tables were swapped
 SELECT table_name FROM information_schema.tables
@@ -378,7 +378,7 @@ NODE_ENV=staging npm run refresh:gtfs
 
 ### Step 4: Deploy
 ```bash
-git add rt/backend/sql/swap_stage_to_live.sql rt/backend/sql/optimize_stop_search.sql
+git add realtime_api/backend/sql/swap_stage_to_live.sql realtime_api/backend/sql/optimize_stop_search.sql
 git commit -m "feat: zero-downtime GTFS refresh via atomic table swap"
 git push origin main
 ```

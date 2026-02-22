@@ -37,12 +37,12 @@ Start here if you're reviewing the code:
 
 ### SQL Implementation
 ```
-✓ rt/backend/sql/swap_stage_to_live.sql
+✓ realtime_api/backend/sql/swap_stage_to_live.sql
   - 63 lines → 147 lines (full rewrite)
   - Atomic table rename strategy instead of TRUNCATE+INSERT
   - Downtime: 5-15 seconds → 50ms
 
-✓ rt/backend/sql/optimize_stop_search.sql
+✓ realtime_api/backend/sql/optimize_stop_search.sql
   - 95 lines → 508 lines (enhanced)
   - Shadow build + atomic swap strategy
   - Downtime: 1-2 seconds → 50ms

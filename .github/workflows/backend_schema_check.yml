@@ -3,13 +3,13 @@ name: Backend Schema Check
 on:
   pull_request:
     paths:
-      - "rt/backend/**"
+      - "realtime_api/backend/**"
       - ".github/workflows/backend_schema_check.yml"
   push:
     branches:
       - main
     paths:
-      - "rt/backend/**"
+      - "realtime_api/backend/**"
       - ".github/workflows/backend_schema_check.yml"
   workflow_dispatch:
 
@@ -27,11 +27,11 @@ jobs:
 
       - name: Validate stationboard schema JSON
         run: |
-          node -e "JSON.parse(require('fs').readFileSync('rt/backend/docs/stationboard.schema.json','utf8')); console.log('stationboard.schema.json: ok')"
+          node -e "JSON.parse(require('fs').readFileSync('realtime_api/backend/docs/stationboard.schema.json','utf8')); console.log('stationboard.schema.json: ok')"
 
       - name: Lint SQL — no bare RAISE NOTICE
         run: |
-          if grep -Pn '^RAISE\s' rt/backend/sql/*.sql 2>/dev/null; then
+          if grep -Pn '^RAISE\s' realtime_api/backend/sql/*.sql 2>/dev/null; then
             echo "ERROR: Bare RAISE NOTICE found outside a DO block — use psql \\echo or wrap in DO \$\$...\$\$" >&2
             exit 1
           fi

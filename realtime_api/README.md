@@ -1,6 +1,6 @@
 # RT Stack Overview
 
-This `rt/` folder contains the real-time (GTFS static + GTFS-RT) implementation.
+This `realtime_api/` folder contains the real-time (GTFS static + GTFS-RT) implementation.
 
 ## Swiss GTFS Context (Operational Model)
 
@@ -42,18 +42,18 @@ This project follows the opentransportdata.swiss model:
 
 ## What Is Source Of Truth
 
-- **Backend (`rt/backend`) is the source of truth** for RT departures.
-- **Frontend (`rt/frontend/web-ui-rt`) is only presentation** of backend/API data.
+- **Backend (`realtime_api/backend`) is the source of truth** for RT departures.
+- **Frontend (`realtime_api/frontend/web-ui-rt`) is only presentation** of backend/API data.
 - Root `legacy_api/web-ui/` is a separate legacy/simple flow and should be treated independently.
 
 ## Folder Map
 
-- `rt/backend/`
+- `realtime_api/backend/`
   - Node/Express API, GTFS import/refresh scripts, SQL, stationboard generation.
-- `rt/frontend/web-ui-rt/`
+- `realtime_api/frontend/web-ui-rt/`
   - Static UI for the RT board (no build step required).
-- `rt/data/`
-  - Local/legacy data artifacts (do not commit GTFS datasets).
+- `realtime_api/data/` (optional local-only folder)
+  - Local GTFS snapshots for manual tooling; keep out of git.
 
 ## Why `src/` Was Added
 
@@ -61,11 +61,11 @@ You asked for M1 modular boundaries without rewriting.
 
 The current backend now has:
 
-- `rt/backend/src/api/stationboard.js`
+- `realtime_api/backend/src/api/stationboard.js`
   - Thin API entry wrapper (`getStationboard`) for stationboard generation.
-- `rt/backend/src/rt/fetchTripUpdates.js`
+- `realtime_api/backend/src/rt/fetchTripUpdates.js`
   - Thin GTFS-RT trip updates fetch/normalize wrapper.
-- `rt/backend/src/merge/applyTripUpdates.js`
+- `realtime_api/backend/src/merge/applyTripUpdates.js`
   - Merge module applying RT updates to scheduled rows.
 
 These are wrappers/boundaries.
@@ -75,13 +75,13 @@ They sit in front of existing implementation so future refactors can happen safe
 
 ## Current Runtime Flow (Stationboard)
 
-1. `GET /api/stationboard` hits `rt/backend/server.js`.
-2. Server calls `getStationboard(...)` from `rt/backend/src/api/stationboard.js`.
-3. Wrapper delegates to existing pipeline in `rt/backend/logic/buildStationboard.js`.
+1. `GET /api/stationboard` hits `realtime_api/backend/server.js`.
+2. Server calls `getStationboard(...)` from `realtime_api/backend/src/api/stationboard.js`.
+3. Wrapper delegates to existing pipeline in `realtime_api/backend/logic/buildStationboard.js`.
 4. `buildStationboard`:
-   - loads scheduled base rows using `rt/backend/queries/stationboard.sql`
-   - loads realtime index via `rt/backend/loaders/loadRealtime.js`
-   - merges with `applyTripUpdates(...)` from `rt/backend/src/merge/applyTripUpdates.js`
+   - loads scheduled base rows using `realtime_api/backend/src/sql/stationboard.sql`
+   - loads realtime index via `realtime_api/backend/loaders/loadRealtime.js`
+   - merges with `applyTripUpdates(...)` from `realtime_api/backend/src/merge/applyTripUpdates.js`
 5. Response is returned to frontend.
 
 ## `cancelled` Field (M1)
@@ -101,7 +101,7 @@ No cancellation inference from delay values.
 
 Single scheduled base-board query remains:
 
-- `rt/backend/queries/stationboard.sql`
+- `realtime_api/backend/src/sql/stationboard.sql`
 
 No duplicate parallel SQL query was introduced for M1.
 
@@ -109,7 +109,7 @@ No duplicate parallel SQL query was introduced for M1.
 
 Main script:
 
-- `rt/backend/scripts/refreshGtfsIfNeeded.js`
+- `realtime_api/backend/scripts/refreshGtfsIfNeeded.js`
 
 It:
 
@@ -129,14 +129,15 @@ Alignment expectation:
 
 Related scripts/sql:
 
-- `rt/backend/scripts/importGtfsToStage.sh`
-- `rt/backend/sql/create_stage_tables.sql`
-- `rt/backend/sql/validate_stage.sql`
-- `rt/backend/sql/swap_stage_to_live.sql`
+- `realtime_api/backend/scripts/importGtfsToStage.sh`
+- `realtime_api/backend/sql/create_stage_tables.sql`
+- `realtime_api/backend/sql/validate_stage.sql`
+- `realtime_api/backend/sql/swap_stage_to_live_cutover.sql`
+- `realtime_api/backend/sql/cleanup_old_after_swap.sql`
 
 ## Run Backend Locally
 
-From `rt/backend`:
+From `realtime_api/backend`:
 
 ```bash
 npm install
@@ -155,21 +156,22 @@ Compatibility keys still used by legacy RT loader path:
 
 ## Tests
 
-From `rt/backend`:
+From `realtime_api/backend`:
 
 ```bash
 npm test
 ```
 
-Current M1 test:
+Core tests:
 
-- `rt/backend/test/stationboard.cancelled.test.js`
+- `realtime_api/backend/test/stationboard.cancelled.test.js`
+- plus the rest of the suite under `realtime_api/backend/test/*.test.js`
 
 This verifies merge behavior and `cancelled` flag assignment.
 
 ## Frontend Note
 
-`rt/frontend/web-ui-rt` is separate from backend logic.
+`realtime_api/frontend/web-ui-rt` is separate from backend logic.
 
 - It renders data and applies UI styles/filters.
 - It should not be treated as stationboard business logic source.
@@ -178,19 +180,19 @@ This verifies merge behavior and `cancelled` flag assignment.
 
 Do not commit GTFS datasets.
 
-Ignored local snapshots include:
+Ignored local snapshots include (when present locally):
 
-- `rt/data/gtfs-static/`
-- `rt/data/gtfs-static-OLD/`
+- `realtime_api/data/gtfs-static/`
+- `realtime_api/data/gtfs-static-OLD/`
 
 ## If You Feel Lost: What To Read First
 
-1. `rt/README.md` (this file)
-2. `rt/backend/server.js`
-3. `rt/backend/src/api/stationboard.js`
-4. `rt/backend/logic/buildStationboard.js`
-5. `rt/backend/src/merge/applyTripUpdates.js`
-6. `rt/backend/loaders/loadRealtime.js`
-7. `rt/backend/queries/stationboard.sql`
+1. `realtime_api/README.md` (this file)
+2. `realtime_api/backend/server.js`
+3. `realtime_api/backend/src/api/stationboard.js`
+4. `realtime_api/backend/logic/buildStationboard.js`
+5. `realtime_api/backend/src/merge/applyTripUpdates.js`
+6. `realtime_api/backend/loaders/loadRealtime.js`
+7. `realtime_api/backend/src/sql/stationboard.sql`
 
 That gives the complete backend execution path in order.

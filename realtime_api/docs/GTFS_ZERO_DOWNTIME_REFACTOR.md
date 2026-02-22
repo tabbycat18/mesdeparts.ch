@@ -90,29 +90,29 @@ COMMIT;
 ## Files Modified
 
 ### New Files Created
-1. **rt/backend/sql/swap_stage_to_live_cutover.sql** (150 lines)
+1. **realtime_api/backend/sql/swap_stage_to_live_cutover.sql** (150 lines)
    - Performs atomic cutover without dropping old tables
    - Includes all validation and app_stop_aliases restoration logic
    - Runs as part of importIntoStage() in refreshGtfsIfNeeded.js
 
-2. **rt/backend/sql/cleanup_old_after_swap.sql** (24 lines)
+2. **realtime_api/backend/sql/cleanup_old_after_swap.sql** (24 lines)
    - Drops old _old tables in separate transaction
    - Non-critical: failure logs warning but doesn't fail refresh
    - Runs after optimize_stop_search.sql succeeds
 
 ### Files Modified
-1. **rt/backend/scripts/refreshGtfsIfNeeded.js**
+1. **realtime_api/backend/scripts/refreshGtfsIfNeeded.js**
    - Line 255: Changed `swap_stage_to_live.sql` → `swap_stage_to_live_cutover.sql`
    - Added `cleanupOldAfterSwap()` function (non-fatal cleanup handler)
    - Line 514-515: Call cleanup after optimize_stop_search
 
-2. **rt/backend/scripts/schemaDriftTask.js**
+2. **realtime_api/backend/scripts/schemaDriftTask.js**
    - Updated FILES list to reference new files
    - Removed old swap_stage_to_live.sql reference
    - Added swap_stage_to_live_cutover.sql and cleanup_old_after_swap.sql
 
 ### Files Deprecated
-1. **rt/backend/sql/swap_stage_to_live.sql** (replaced)
+1. **realtime_api/backend/sql/swap_stage_to_live.sql** (replaced)
    - Converted to deprecation notice pointing to new files
    - No longer called by any code
 
@@ -192,7 +192,7 @@ Note: "post-cutover" refers to cleanup which does NOT hold locks on live tables 
 ### Smoke Test
 ```bash
 # Run against staging database to verify cutover logic
-DATABASE_URL="postgresql://..." node rt/backend/scripts/refreshGtfsIfNeeded.js
+DATABASE_URL="postgresql://..." node realtime_api/backend/scripts/refreshGtfsIfNeeded.js
 
 # Check that:
 # 1. Stage tables are populated
@@ -233,7 +233,7 @@ psql $DATABASE_URL -c "
 
 ## References
 
-- New cutover logic: [swap_stage_to_live_cutover.sql](rt/backend/sql/swap_stage_to_live_cutover.sql)
-- Cleanup logic: [cleanup_old_after_swap.sql](rt/backend/sql/cleanup_old_after_swap.sql)
-- Orchestration: [refreshGtfsIfNeeded.js:249-515](rt/backend/scripts/refreshGtfsIfNeeded.js)
-- Index rebuild: [optimize_stop_search.sql](rt/backend/sql/optimize_stop_search.sql)
+- New cutover logic: [swap_stage_to_live_cutover.sql](realtime_api/backend/sql/swap_stage_to_live_cutover.sql)
+- Cleanup logic: [cleanup_old_after_swap.sql](realtime_api/backend/sql/cleanup_old_after_swap.sql)
+- Orchestration: [refreshGtfsIfNeeded.js:249-515](realtime_api/backend/scripts/refreshGtfsIfNeeded.js)
+- Index rebuild: [optimize_stop_search.sql](realtime_api/backend/sql/optimize_stop_search.sql)
