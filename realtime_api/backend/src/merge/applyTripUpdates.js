@@ -840,6 +840,17 @@ export function applyTripUpdates(baseRows, tripUpdates, options = {}) {
             if (String(currentPlatform) !== String(realtimePlatform)) {
               merged.platform = realtimePlatform;
               merged.platformChanged = true;
+              // Debug instrumentation for platform changes
+              if (process.env.DEBUG === "1") {
+                console.log("[applyTripUpdates] Platform change detected", {
+                  trip_id: row.trip_id,
+                  stop_id: row.stop_id,
+                  scheduledStopId,
+                  realtimeStopId,
+                  prevPlatform: currentPlatform,
+                  newPlatform: realtimePlatform,
+                });
+              }
             }
           }
         }

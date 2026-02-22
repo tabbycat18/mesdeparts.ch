@@ -499,6 +499,14 @@ export async function buildStationboard(locationId, options = {}) {
     childStops.map((row) => [row.stop_id, row.platform_code || ""])
   );
 
+  if (debugEnabled) {
+    console.log("[buildStationboard] platformByStopId populated", {
+      requestId: timings.requestId,
+      count: platformByStopId.size,
+      entries: Array.from(platformByStopId.entries()),
+    });
+  }
+
   const onlyChildren = childStops.filter((s) => s.stop_id !== stationGroupId);
   let childStopIds = onlyChildren.map((r) => r.stop_id);
   if (childStopIds.length === 0) childStopIds = [stationGroupId];
