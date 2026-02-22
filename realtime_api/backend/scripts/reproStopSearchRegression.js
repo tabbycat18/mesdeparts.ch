@@ -20,6 +20,8 @@ const QUERIES = [
   "grande-borde",
   "bel air",
   "bel aie",
+  "bel air lausanne",
+  "bel air geneve",
 ];
 
 const EXPECTED_NAMES = {
@@ -29,6 +31,8 @@ const EXPECTED_NAMES = {
   "grande-borde": ["lausanne, grande borde"],
   "bel air": ["lausanne, bel air", "geneve, bel air"],
   "bel aie": ["lausanne, bel air", "geneve, bel air"],
+  "bel air lausanne": ["lausanne, bel air"],
+  "bel air geneve": ["geneve, bel air"],
 };
 
 const BASE_URL = String(process.env.STOP_SEARCH_BASE_URL || "http://127.0.0.1:3001").trim();

@@ -472,6 +472,8 @@ test("acceptance criteria queries return expected stops in top 10", () => {
     { query: "grande-borde", expectAny: ["Parent8591979"] },
     { query: "bel air", expectAll: ["Parent8587055", "Parent8587387"] },
     { query: "bel aie", expectAny: ["Parent8587055", "Parent8587387"] },
+    { query: "bel air lausanne", expectAny: ["Parent8587055"] },
+    { query: "bel air geneve", expectAny: ["Parent8587387"] },
     { query: "st francois", expectAny: ["Parent8591191"] },
     { query: "lausanne st francois", expectAny: ["Parent8591191"] },
     { query: "lausanne francois", expectAny: ["Parent8591191"] },

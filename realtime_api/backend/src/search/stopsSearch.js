@@ -415,11 +415,16 @@ function scoreCandidate(row, queryCtx) {
   const cityName = extractCityName(stopName, row?.city_name);
   const cityNorm = normalizeSearchText(cityName);
 
+  const cityMatchByToken = (token) =>
+    !!token &&
+    (cityNorm === token || nameNorm.startsWith(`${token} `) || nameNorm === token);
+
+  // Check city match from query head (first token) and also from query tail
+  // (last token) to handle reversed-order queries like "bel air lausanne".
   const cityMatch =
-    !!queryCtx.cityToken &&
-    (cityNorm === queryCtx.cityToken ||
-      nameNorm.startsWith(`${queryCtx.cityToken} `) ||
-      nameNorm === queryCtx.cityToken);
+    cityMatchByToken(queryCtx.cityToken) ||
+    (queryCtx.queryLastToken !== queryCtx.cityToken &&
+      cityMatchByToken(queryCtx.queryLastToken));
 
   const hasHubTokenFlag = toBoolean(row?.has_hub_token);
   const candidateHasHubToken =
@@ -495,6 +500,8 @@ function scoreCandidate(row, queryCtx) {
       startsMatch,
       tokenContains,
       cityMatch,
+      cityMatchByHead: cityMatchByToken(queryCtx.cityToken),
+      cityMatchByTail: queryCtx.queryLastToken !== queryCtx.cityToken && cityMatchByToken(queryCtx.queryLastToken),
       parentLike,
       parentPreference,
       candidateHasHubToken,
@@ -525,6 +532,13 @@ export function rankStopCandidatesDetailed(rows, query, limit = DEFAULT_LIMIT) {
   const queryHeadTokens = tokenize(queryCommaParts[0] || queryNorm);
   const queryPostCommaTokens = tokenize(queryCommaParts.slice(1).join(" "));
   const cityToken = queryHeadTokens[0] || queryTokens[0] || "";
+  // When the query has no comma, the user may type "stop-name city" (reversed order).
+  // Also track the last token as a candidate city so we can reward city matches
+  // even when the city appears at the end of the query (e.g. "bel air lausanne").
+  const queryLastToken =
+    !queryHasComma && queryTokens.length > 1
+      ? queryTokens[queryTokens.length - 1]
+      : "";
 
   const queryCtx = {
     queryNorm,
@@ -534,6 +548,7 @@ export function rankStopCandidatesDetailed(rows, query, limit = DEFAULT_LIMIT) {
     queryHeadTokens,
     queryPostCommaTokens,
     cityToken,
+    queryLastToken,
     isShortQuery: queryNorm.length <= 6,
     queryHasHubToken: hasHubWord(queryTokens),
     fuzzyThreshold: similarityThreshold(queryNorm.length),
@@ -700,7 +715,7 @@ WITH params AS (
     ARRAY(
       SELECT tok
       FROM regexp_split_to_table(public.normalize_stop_search_text($1::text), '\s+') AS tok
-      WHERE length(tok) >= 4
+      WHERE length(tok) >= 3
     ) AS q_sig_tokens
 ),
 alias_hits AS (
@@ -794,7 +809,7 @@ WITH params AS (
     ARRAY(
       SELECT tok
       FROM regexp_split_to_table($1::text, '\s+') AS tok
-      WHERE length(tok) >= 4
+      WHERE length(tok) >= 3
     ) AS q_sig_tokens
 )
 SELECT
