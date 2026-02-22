@@ -507,8 +507,11 @@ Unknown (not found in repo): whether production stationboard traffic is currentl
 - Deployment target for `realtime_api/backend`: **Fly.io**.
 - Docker runtime path used in this repo: `realtime_api/backend/Dockerfile`.
 - Backend container port: `8080` (set in `realtime_api/backend/Dockerfile`).
-
-Unknown (not found in repo): committed Fly config file path (for example `fly.toml`) and app/region/autoscaling values.
+- Fly config: `fly.toml` at repository root.
+  - App name: `mesdeparts-ch`
+  - Primary region: `ams` (Amsterdam)
+  - Min machines: 1, auto-scaling enabled
+  - Deploy with: `fly deploy`
 
 ## Troubleshooting Playbooks
 
