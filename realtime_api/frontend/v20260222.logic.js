@@ -166,9 +166,9 @@ export function detectNetworkFromStation(name) {
     /lausanne|renens|pully|epalinges|ecublens|crissier|prilly|tl\b/.test(n);
   if (isLausanne) return "tl";
 
-  // Geneva / TPG – Versoix, Genève, Thônex, Aïre, etc.
+  // Geneva / TPG – Versoix, Genève, Thônex, Aïre, Grand-Saconnex, etc.
   const isGeneva =
-    /genève|geneve|versoix|thonex|thônex|lancy|carouge|meyrin|onex|bernex|aire|aïre|plan-les-ouates|pregny|chêne-bourg|chene-bourg|chêne-bougeries|chene-bougeries/.test(n);
+    /genève|geneve|versoix|thonex|thônex|lancy|carouge|meyrin|onex|bernex|aire|aïre|plan-les-ouates|pregny|chêne-bourg|chene-bourg|chêne-bougeries|chene-bougeries|grand-saconnex|grand saconnex/.test(n);
   if (isGeneva) return "tpg";
 
   // Zürich / VBZ
@@ -177,7 +177,7 @@ export function detectNetworkFromStation(name) {
   if (isZurich) return "vbz";
 
   // Nyon / TPN
-  const isNyon = /nyon|rolle|gland|st-cergue|prangins|tpn\b/.test(n);
+  const isNyon = /nyon|rolle|gland|st-cergue|prangins|tpn\b|céligny|celigny/.test(n);
   if (isNyon) return "tpn";
 
   // Morges / MBC
