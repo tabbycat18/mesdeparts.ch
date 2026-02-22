@@ -10,8 +10,8 @@ Static, dependency-free front-end for mesdeparts.ch. Everything in this folder i
 - Multilingual (FR/DE/IT/EN), deep links via `?stationName=...&stationId=...`, installable PWA shell (API stays online).
 
 ## Entry points
-- `web-ui/index.html`: single-board experience with language switcher, favorites, filters, and the SBB clock iframe (`clock/`).
-- `web-ui/dual-board.html`: two boards side by side for kiosks/embeds, with separate station pickers and view/filter controls.
+- `index.html`: single-board experience with language switcher, favorites, filters, and the SBB clock iframe (`clock/`).
+- `dual-board.html`: two boards side by side for kiosks/embeds, with separate station pickers and view/filter controls.
 - `manifest.webmanifest` + `service-worker.js`: PWA shell; caches static assets, leaves API requests online-only.
 
 ## Architecture (versioned files)
@@ -36,11 +36,11 @@ Static, dependency-free front-end for mesdeparts.ch. Everything in this folder i
 ## Running locally
 - Static server only; no bundler needed:
   ```sh
-  cd web-ui
+  cd rt/frontend/web-ui-rt
   python3 -m http.server 8000
   ```
   Then open http://localhost:8000.
-- Tests (Node built-in): `npm test` from `web-ui/` (checks key helpers in `logic.*.js`). `package.json` has no deps.
+- Tests (Node built-in): `npm test` from `rt/frontend/web-ui-rt/` (checks key helpers in `logic.*.js`). `package.json` has no deps.
 
 ## Versioning & deploy notes
 - JS/CSS filenames carry a version tag (`*.vYYYY-MM-DD-N.*`). When you bump assets, update references in `index.html`, `dual-board.html`, and the `CORE_ASSETS`/`LAZY_ASSETS` lists inside `service-worker.js`, plus the visible version tags in the HTML headers.

@@ -1,8 +1,14 @@
 # mesdeparts.ch Mega Repo Guide
 
-MesDeparts is a Swiss public-transport departure-board project that currently ships two parallel tracks in one monorepo: a legacy static frontend (`web-ui/`) and an RT stack (`rt/`) that uses GTFS static + GTFS-RT through an Express backend (`rt/backend`). The migration target in this repo is to make `rt/` the canonical stationboard path while keeping `web-ui/` stable until cutover.
+MesDeparts is a Swiss public-transport departure-board project that currently ships two parallel tracks in one monorepo: a legacy static frontend (`legacy_api/web-ui/`) and an RT stack (`rt/`) that uses GTFS static + GTFS-RT through an Express backend (`rt/backend`). The migration target in this repo is to make `rt/` the canonical stationboard path while keeping `legacy_api/web-ui/` stable until cutover.
 
 This guide is intentionally repo-grounded. Any claim not directly verifiable from files in this repository is labeled as `Unknown (not found in repo): ...`.
+
+## Repo Layout
+
+- `rt/`: active stack (backend + RT frontend).
+- `legacy_api/`: legacy stack (`legacy_api/web-ui/`, `legacy_api/cloudflare-worker/`, `legacy_api/wrangler.toml`).
+- `assets/` and `dev-artifacts/` remain at root because they are not clearly legacy-only.
 
 ## Repo Map
 
@@ -10,14 +16,14 @@ This guide is intentionally repo-grounded. Any claim not directly verifiable fro
 .
 ├── README.md                              # this guide
 ├── LICENSE / NOTICE
-├── wrangler.toml                          # Cloudflare Worker config (root)
+├── legacy_api/wrangler.toml              # Cloudflare Worker config (legacy stack)
 ├── .github/workflows/
 │   ├── gtfs_static_refresh.yml            # hourly static GTFS refresh job
 │   └── backend_schema_check.yml           # stationboard schema JSON parse check
 ├── .wrangler/                             # local Wrangler state directory
-├── cloudflare-worker/
+├── legacy_api/cloudflare-worker/
 │   └── worker.js                          # GET proxy to transport.opendata.ch/v1/*
-├── web-ui/                                # legacy static frontend path
+├── legacy_api/web-ui/                                # legacy static frontend path
 ├── rt/                                    # RT migration path
 │   ├── README.md / README-rt.md
 │   ├── backend/                           # Express + Neon + GTFS pipelines
@@ -29,34 +35,34 @@ This guide is intentionally repo-grounded. Any claim not directly verifiable fro
 
 ## Top-Level Folder Roles
 
-- `web-ui/`: legacy/public static UI; entrypoints are `web-ui/index.html`, `web-ui/dual-board.html`, and `web-ui/main.v2025-02-07.js`.
+- `legacy_api/web-ui/`: legacy/public static UI; entrypoints are `legacy_api/web-ui/index.html`, `legacy_api/web-ui/dual-board.html`, and `legacy_api/web-ui/main.v2025-02-07.js`.
 - `rt/`: migration track; backend API entrypoint is `rt/backend/server.js`, RT UI entrypoint is `rt/frontend/web-ui-rt/index.html`.
-- `cloudflare-worker/`: optional edge proxy/cache/rate-limit layer for `transport.opendata.ch`; entrypoint is `cloudflare-worker/worker.js`.
+- `legacy_api/cloudflare-worker/`: optional edge proxy/cache/rate-limit layer for `transport.opendata.ch`; entrypoint is `legacy_api/cloudflare-worker/worker.js`.
 - `.github/workflows/`: CI/automation workflows; files are `.github/workflows/gtfs_static_refresh.yml` and `.github/workflows/backend_schema_check.yml`.
 - `.wrangler/`: local Wrangler tooling state directory.
 - `assets/`: root SVG assets (`assets/location-pin.svg`, `assets/without-icon.svg`).
 - `dev-artifacts/`: sample GTFS-RT artifact files (`dev-artifacts/gtfs-rt.json`, `dev-artifacts/gtfs-rt.pb`).
-- `wrangler.toml`: Worker deployment metadata (`main = "cloudflare-worker/worker.js"`).
+- `legacy_api/wrangler.toml`: Worker deployment metadata (`main = "cloudflare-worker/worker.js"`).
 
 Unknown (not found in repo): active runtime imports of `assets/` and `dev-artifacts/` by production code paths.
 Unknown (not found in repo): production/runtime relevance of `.wrangler/` content beyond local CLI state.
 
 ## Architecture
 
-### Legacy Path (`web-ui/`)
+### Legacy Path (`legacy_api/web-ui/`)
 
 ```text
 Browser
-  -> web-ui/index.html + web-ui/logic.v2025-02-07.js
+  -> legacy_api/web-ui/index.html + legacy_api/web-ui/logic.v2025-02-07.js
   -> API base selected in UI (board/direct mode)
      -> direct: https://transport.opendata.ch/v1/*
-     -> optional proxy: cloudflare-worker/worker.js -> https://transport.opendata.ch/v1/*
+     -> optional proxy: legacy_api/cloudflare-worker/worker.js -> https://transport.opendata.ch/v1/*
 ```
 
 Relevant files:
-- `web-ui/logic.v2025-02-07.js`
-- `web-ui/main.v2025-02-07.js`
-- `cloudflare-worker/worker.js`
+- `legacy_api/web-ui/logic.v2025-02-07.js`
+- `legacy_api/web-ui/main.v2025-02-07.js`
+- `legacy_api/cloudflare-worker/worker.js`
 
 ### RT Path (`rt/`)
 
@@ -82,9 +88,9 @@ Relevant files:
 
 ## Legacy vs RT (What Differs)
 
-- Legacy `web-ui/` is a static client with direct/open API style calls and optional Worker proxy mode.
+- Legacy `legacy_api/web-ui/` is a static client with direct/open API style calls and optional Worker proxy mode.
 - RT path uses `rt/backend` as a server-side merge layer with SQL + GTFS-RT parsing + canonical stationboard normalization.
-- Migration target in repo docs/code direction: `rt/backend` becomes canonical stationboard source; `web-ui/` stays stable until cutover.
+- Migration target in repo docs/code direction: `rt/backend` becomes canonical stationboard source; `legacy_api/web-ui/` stays stable until cutover.
 
 ## `/api/stationboard` Contract Freeze
 
@@ -276,10 +282,10 @@ node scripts/debugStationboard.js Parent8501120 | node scripts/filter-stationboa
 node scripts/debugTripUpdatesCancelCount.js
 ```
 
-### Legacy frontend (`web-ui`) and RT frontend (`rt/frontend/web-ui-rt`)
+### Legacy frontend (`legacy_api/web-ui`) and RT frontend (`rt/frontend/web-ui-rt`)
 
 Both frontend folders are static and have their own readmes:
-- `web-ui/README.md`
+- `legacy_api/web-ui/README.md`
 - `rt/frontend/web-ui-rt/README.md`
 
 ## Migration Roadmap (M0 -> M5)
@@ -302,7 +308,7 @@ Acceptance criteria:
 
 Risks + rollback:
 - Risk: schema mismatch (`gtfs_*` not present in DB).
-- Rollback: keep legacy `web-ui/` path as production path while fixing DB/runtime schema.
+- Rollback: keep legacy `legacy_api/web-ui/` path as production path while fixing DB/runtime schema.
 
 ### M1
 
@@ -389,7 +395,7 @@ Goal:
 Modules involved:
 - `rt/backend/*`
 - `rt/frontend/web-ui-rt/*`
-- operational deploy config (`wrangler.toml`, hosting configuration)
+- operational deploy config (`legacy_api/wrangler.toml`, hosting configuration)
 
 Acceptance criteria:
 - RT board parity or better for cancellations/replacements/extra trains on target stations.
@@ -397,7 +403,7 @@ Acceptance criteria:
 
 Risks + rollback:
 - Risk: runtime regressions under production load.
-- Rollback: direct traffic back to legacy `web-ui/` path while investigating RT regressions.
+- Rollback: direct traffic back to legacy `legacy_api/web-ui/` path while investigating RT regressions.
 
 Unknown (not found in repo): final production traffic-switch mechanism and release orchestration tooling.
 
@@ -442,7 +448,7 @@ Unknown (not found in repo): additional external schedulers (server cron, manage
 
 ### Cloudflare Worker Role
 
-From `cloudflare-worker/worker.js`:
+From `legacy_api/cloudflare-worker/worker.js`:
 - GET-only proxy to `https://transport.opendata.ch/v1/*`
 - path-based edge TTLs
 - CORS headers
@@ -559,11 +565,11 @@ Validate fix:
 - Alert matching/localization behavior: `rt/backend/src/merge/attachAlerts.js`, `rt/backend/src/util/i18n.js`
 - Stop alias resolution: `rt/backend/src/resolve/resolveStop.js`, `rt/backend/scripts/seedStopAliases.js`
 - CI refresh/check workflows: `.github/workflows/gtfs_static_refresh.yml`, `.github/workflows/backend_schema_check.yml`
-- Legacy UI tweaks: `web-ui/` (separate track; do not mix with RT backend logic)
+- Legacy UI tweaks: `legacy_api/web-ui/` (separate track; do not mix with RT backend logic)
 
 ## How To Contribute Safely
 
-- Keep `web-ui/` and `rt/` changes intentionally separated.
+- Keep `legacy_api/web-ui/` and `rt/` changes intentionally separated.
 - For RT backend changes, run:
 
 ```bash
@@ -585,5 +591,5 @@ npm run schema:drift
 - `./rt/backend/docs/stationboard.schema.json`
 - `./rt/README.md`
 - `./rt/README-rt.md`
-- `./web-ui/README.md`
+- `./legacy_api/web-ui/README.md`
 - `./rt/frontend/web-ui-rt/README.md`

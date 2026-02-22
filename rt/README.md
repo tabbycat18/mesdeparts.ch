@@ -44,7 +44,7 @@ This project follows the opentransportdata.swiss model:
 
 - **Backend (`rt/backend`) is the source of truth** for RT departures.
 - **Frontend (`rt/frontend/web-ui-rt`) is only presentation** of backend/API data.
-- Root `web-ui/` is a separate legacy/simple flow and should be treated independently.
+- Root `legacy_api/web-ui/` is a separate legacy/simple flow and should be treated independently.
 
 ## Folder Map
 

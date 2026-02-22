@@ -9,4 +9,4 @@ This folder contains the GTFS static + GTFS-RT stack (backend + UI).
 
 ID rules: RT endpoints and UI expect GTFS `stop_id` values from the feed (including platform/parent suffixes like `Parent8501120`). There is no transport.opendata.ch fallback; station search (`/api/stops/search`, `/api/stops/nearby`) returns GTFS IDs to keep stationboard calls consistent with the Neon/PostgreSQL data.
 
-The legacy simple-API UI remains under `web-ui/` at the repo root; keep the two variants separate.
+The legacy simple-API UI remains under `legacy_api/web-ui/` at the repo root; keep the two variants separate.
