@@ -367,9 +367,9 @@
 }
 
 .hc2__search {
-  --hc2-search-actions-gap: 7px;
+  --hc2-search-actions-gap: 10px;
   --hc2-search-actions-pad-inline: 10px;
-  --hc2-search-actions-pill-width: 20px;
+  --hc2-search-actions-pill-width: 22px;
   --hc2-search-actions-width: calc(
     (var(--hc2-search-actions-pill-width) * 3) +
     (var(--hc2-search-actions-gap) * 2)
@@ -438,6 +438,11 @@
   border-radius: 0;
   background: transparent;
   color: rgba(255, 255, 255, 0.88);
+}
+
+.hc2__searchActions .hc2__pillControl svg {
+  width: 19px;
+  height: 19px;
 }
 
 .hc2__searchActions .hc2__pillControl:hover,
