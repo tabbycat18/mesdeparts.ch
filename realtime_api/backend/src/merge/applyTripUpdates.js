@@ -59,6 +59,11 @@ const ZURICH_YMD_FORMATTER = new Intl.DateTimeFormat("en-CA", {
   day: "2-digit",
 });
 
+// Swiss platform stop IDs in static GTFS are typically like "8587387:0:A".
+// We only derive parent/root variants for this tight shape to avoid broad matches.
+const SWISS_PLATFORM_CHILD_STOP_ID_RE = /^(\d{7}):0:([A-Za-z0-9]{1,2})$/;
+const SWISS_PLATFORM_PARENT_STOP_ID_RE = /^(\d{7}):0$/;
+
 function ymdZurichFromIso(value) {
   const ms = Date.parse(String(value || ""));
   if (!Number.isFinite(ms)) return "";
@@ -71,24 +76,24 @@ function ymdZurichFromIso(value) {
 }
 
 function stopIdVariants(stopId) {
-  if (!stopId) return [];
-  const variants = new Set([String(stopId)]);
+  const base = String(stopId || "").trim();
+  if (!base) return [];
 
-  const parts = String(stopId).split(":");
-  if (parts.length >= 3) {
-    const last = parts[parts.length - 1];
-    if (String(last).length <= 2) {
-      variants.add(parts.slice(0, parts.length - 1).join(":"));
-    }
+  const variants = [base];
+  const childMatch = base.match(SWISS_PLATFORM_CHILD_STOP_ID_RE);
+  if (childMatch) {
+    const root = childMatch[1];
+    variants.push(`${root}:0`);
+    variants.push(root);
+    return variants;
   }
 
-  // Also add numeric root (e.g. "8587387" from "8587387:0:A" or "8503000:0:2").
-  // RT feeds often use the parent numeric stop ID while static GTFS uses child stops.
-  if (parts.length >= 2 && /^\d+$/.test(parts[0])) {
-    variants.add(parts[0]);
+  const parentMatch = base.match(SWISS_PLATFORM_PARENT_STOP_ID_RE);
+  if (parentMatch) {
+    variants.push(parentMatch[1]);
   }
 
-  return Array.from(variants);
+  return variants;
 }
 
 function getTripUpdate(entity) {

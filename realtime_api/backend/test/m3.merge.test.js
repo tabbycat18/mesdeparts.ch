@@ -385,8 +385,8 @@ test("applyTripUpdates: GTFS child stop '8587387:0:A' matches RT numeric root '8
   assert.equal(row.source, "tripupdate");
 });
 
-test("applyTripUpdates: numeric root from a *different* station does NOT produce stop-level match (negative guard)", () => {
-  // "8587389" is a completely different station than "8587387".
+test("applyTripUpdates: numeric root 8587388 does NOT match scheduled child stop 8587387:0:A (negative guard)", () => {
+  // "8587388" is a different station than "8587387".
   // Stop-level matching must be exact per variant — wrong root must not match.
   //
   // NOTE: The trip-fallback mechanism (propagates delay to nearby stop_sequences)
@@ -429,7 +429,7 @@ test("applyTripUpdates: numeric root from a *different* station does NOT produce
           },
           stopTimeUpdate: [
             {
-              stopId: "8587389",    // DIFFERENT numeric root — wrong station
+              stopId: "8587388",    // DIFFERENT numeric root — wrong station
               stopSequence: 50,     // far from seq 5 → trip-fallback gap 45 > max(4) → no fallback
               departure: {
                 delay: 120,

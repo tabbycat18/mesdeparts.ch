@@ -918,6 +918,8 @@ export async function buildStationboard(locationId, options = {}) {
   timings.rtLoadMs = Number((performance.now() - rtLoadStartedMs).toFixed(1));
   debugMeta.rtTripUpdates = {
     ...rtMeta,
+    rtEnabledForRequest,
+    rtMetaReason: typeof rtMeta.reason === "string" ? rtMeta.reason : null,
     debugRtMode,
     scopedTripCount: tripIds.length,
     scopedStopCount: queryStopIds.length,

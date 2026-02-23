@@ -155,6 +155,8 @@ Primary responsibilities:
   - trip-level suppression flags for short-turn inference
 - Apply RT to each base row:
   - choose best delay match (exact first, then controlled fallback)
+  - for Swiss platform IDs, stop matching variants are tried in order: exact -> `:0` parent -> numeric root
+  - parent/root expansion is regex-guarded to Swiss platform shape (`^[0-9]{7}:0:[A-Za-z0-9]{1,2}$`) to avoid broad matches
   - compute `realtimeDeparture` and `delayMin` from RT timestamps/fields
   - mark cancellation/suppression and service tags (`skipped_stop`, `short_turn`)
   - set `source = "tripupdate"` when RT matched
@@ -214,6 +216,7 @@ Primary responsibilities:
 - Scope entities to current board context:
   - requested trip ids (`scopeTripIds`)
   - requested stop scope (`scopeStopIds` with stop-id variants)
+  - same Swiss platform variant guard/order as merge: exact -> `:0` parent -> numeric root
   - ADDED trips additionally constrained by board time window
 - Guardrails against request-path blowups:
   - max processing ms

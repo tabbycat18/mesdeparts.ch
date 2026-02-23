@@ -70,6 +70,15 @@ async function main() {
   const payload = await response.json();
   const departures = toArray(payload?.departures);
   const banners = toArray(payload?.banners);
+  const tripRtDebug =
+    payload?.debug &&
+    typeof payload.debug === "object" &&
+    payload.debug?.rt &&
+    typeof payload.debug.rt === "object" &&
+    payload.debug.rt?.tripUpdates &&
+    typeof payload.debug.rt.tripUpdates === "object"
+      ? payload.debug.rt.tripUpdates
+      : null;
 
   const cancelledByReason = {};
   const delayBuckets = { null: 0, "0": 0, ">0": 0, "<0": 0 };
@@ -105,6 +114,25 @@ async function main() {
       cancelled: departures.filter((dep) => dep?.cancelled === true).length,
       banners: banners.length,
     },
+    rtDiagnostics: tripRtDebug
+      ? {
+          rtEnabledForRequest: tripRtDebug.rtEnabledForRequest === true,
+          rtMetaReason: normalizeText(tripRtDebug.rtMetaReason || null),
+          reason: normalizeText(tripRtDebug.reason || null),
+          scopedEntities:
+            Number.isFinite(Number(tripRtDebug.scopedEntities))
+              ? Number(tripRtDebug.scopedEntities)
+              : null,
+          scopedTripCount:
+            Number.isFinite(Number(tripRtDebug.scopedTripCount))
+              ? Number(tripRtDebug.scopedTripCount)
+              : null,
+          scopedStopCount:
+            Number.isFinite(Number(tripRtDebug.scopedStopCount))
+              ? Number(tripRtDebug.scopedStopCount)
+              : null,
+        }
+      : null,
     cancelledByReason,
     delayBuckets,
     skippedStopSamples,

@@ -95,6 +95,7 @@ STATIONBOARD_BASE_URL=https://api.mesdeparts.ch node scripts/debugStop.js "Lausa
 
 - `debugStationboard.js`
   - Fetches one stationboard with `debug=1`, prints cancellation/delay/source summaries.
+  - Includes `rtDiagnostics` (`rtEnabledForRequest`, `rtMetaReason`, `reason`, scoped counters).
 
 - `filter-stationboard.js`
   - Filters stationboard JSON from stdin for quick CLI inspection.

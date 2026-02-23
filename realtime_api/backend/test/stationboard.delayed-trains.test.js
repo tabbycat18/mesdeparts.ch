@@ -84,6 +84,66 @@ test("applyTripUpdates: overnight trip WITH serviceDate matches RT entity on cor
   );
 });
 
+test("applyTripUpdates: overnight platform stop uses previous service day start_date and numeric root RT stop_id", () => {
+  const scheduledTime = new Date("2026-02-23T00:30:00.000Z"); // 01:30 CET
+  const realtimeTime = new Date("2026-02-23T00:33:00.000Z"); // +3 min
+
+  const baseRows = [
+    {
+      trip_id: "overnight-platform-trip",
+      stop_id: "8587387:0:A", // static platform child stop
+      stop_sequence: 5,
+      category: "B",
+      number: "12",
+      line: "12",
+      name: "12",
+      destination: "Genève, Cornavin",
+      operator: "TPG",
+      scheduledDeparture: scheduledTime.toISOString(),
+      realtimeDeparture: scheduledTime.toISOString(),
+      serviceDate: "20260222", // previous service day
+      delayMin: 0,
+      minutesLeft: 0,
+      platform: "A",
+      platformChanged: false,
+      source: "scheduled",
+      tags: [],
+    },
+  ];
+
+  const tripUpdates = {
+    entities: [
+      {
+        tripUpdate: {
+          trip: {
+            tripId: "overnight-platform-trip",
+            startDate: "20260222", // previous service day in RT
+            scheduleRelationship: "SCHEDULED",
+          },
+          stopTimeUpdate: [
+            {
+              stopId: "8587387", // numeric root in RT
+              stopSequence: 5,
+              departure: {
+                delay: 180,
+                time: Math.floor(realtimeTime.getTime() / 1000),
+              },
+            },
+          ],
+        },
+      },
+    ],
+  };
+
+  const merged = applyTripUpdates(baseRows, tripUpdates);
+  assert.equal(merged.length, 1);
+  const row = merged[0];
+  assert.equal(row._rtMatched, true);
+  assert.equal(row.delayMin, 3);
+  assert.equal(row.source, "tripupdate");
+  assert.equal(row.realtimeDeparture, realtimeTime.toISOString());
+});
+
 test("applyTripUpdates: overnight trip WITHOUT serviceDate fails to match RT entity on previous service date", () => {
   // Regression guard: without the fix (no serviceDate field), ymdZurichFromIso
   // of "2026-02-23T00:30:00Z" returns "20260223", but RT startDate is "20260222".

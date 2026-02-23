@@ -29,6 +29,11 @@ const EMPTY_SCOPED_RT = Object.freeze({ entities: [], entity: [] });
 const INSTANCE_LABEL = `${String(process.env.FLY_ALLOC_ID || os.hostname() || "local").trim()}:${process.pid}`;
 let lastObservedFetchedAtMs = null;
 
+// Swiss platform stop IDs in static GTFS are typically like "8587387:0:A".
+// We only derive parent/root variants for this tight shape to avoid broad matches.
+const SWISS_PLATFORM_CHILD_STOP_ID_RE = /^(\d{7}):0:([A-Za-z0-9]{1,2})$/;
+const SWISS_PLATFORM_PARENT_STOP_ID_RE = /^(\d{7}):0$/;
+
 function text(value) {
   return String(value || "").trim();
 }
@@ -52,21 +57,20 @@ function stopIdVariants(stopId) {
   const base = text(stopId);
   if (!base) return [];
 
-  const out = new Set([base]);
-  const parts = base.split(":");
-  if (parts.length >= 3) {
-    const last = parts[parts.length - 1];
-    if (last.length <= 2) {
-      out.add(parts.slice(0, -1).join(":"));
-    }
+  const out = [base];
+  const childMatch = base.match(SWISS_PLATFORM_CHILD_STOP_ID_RE);
+  if (childMatch) {
+    const root = childMatch[1];
+    out.push(`${root}:0`);
+    out.push(root);
+    return out;
   }
-  // Add numeric root (e.g. "8587387" from "8587387:0:A").
-  // RT feeds often use the parent numeric stop ID while static GTFS uses child stops.
-  // Guard: only if the first colon-segment is all digits (Swiss UIC stop IDs).
-  if (parts.length >= 2 && /^\d+$/.test(parts[0])) {
-    out.add(parts[0]);
+
+  const parentMatch = base.match(SWISS_PLATFORM_PARENT_STOP_ID_RE);
+  if (parentMatch) {
+    out.push(parentMatch[1]);
   }
-  return Array.from(out);
+  return out;
 }
 
 function stopScopeSet(stopIds = []) {

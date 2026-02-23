@@ -588,6 +588,13 @@ function toRtTripUpdatesDebug(rtMeta, departureAuditRows) {
 
   const normalizedReason = normalizeRtReason(base.reason, base.applied === true);
   return {
+    rtEnabledForRequest: base.rtEnabledForRequest === true,
+    rtMetaReason:
+      typeof base.rtMetaReason === "string"
+        ? base.rtMetaReason
+        : typeof base.reason === "string"
+          ? base.reason
+          : null,
     cacheStatus: String(base.cacheStatus || "MISS"),
     fetchedAtUtc: base.fetchedAt || base.fetchedAtUtc || null,
     ageSec: Number.isFinite(base.ageSeconds)
