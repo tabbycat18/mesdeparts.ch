@@ -1235,6 +1235,21 @@ function isRtAppliedPayload(payload) {
   return payload?.rt?.applied === true;
 }
 
+export function isRtUnavailableFromStationboardPayload(payload) {
+  const data = payload && typeof payload === "object" ? payload : {};
+  const meta = data.meta && typeof data.meta === "object" ? data.meta : null;
+  const metaRtStatus = String(meta?.rtStatus || "").trim().toLowerCase();
+  if (metaRtStatus) {
+    return metaRtStatus !== "applied";
+  }
+
+  const rt = data.rt && typeof data.rt === "object" ? data.rt : {};
+  if (rt.applied === true) return false;
+  const reason = String(rt.reason || "").trim().toLowerCase();
+  if (reason === "fresh") return false;
+  return true;
+}
+
 export function shouldApplyIncomingBoard(
   currentState,
   incomingPayload,

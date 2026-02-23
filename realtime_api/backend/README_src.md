@@ -92,6 +92,8 @@ Always-on top-level stationboard `meta` (Model A contract):
   - `applied`, `stale_cache`, `skipped_budget`, `disabled`, `missing_cache`, `guarded_error`
 - `alertsStatus` values:
   - `applied`, `skipped_budget`, `disabled`, `missing_cache`, `error_fallback`
+- Operational diagnosis should start from `meta.rtStatus`:
+  `disabled` (feature/env), `missing_cache` (poller/cache), `stale_cache` (freshness), `skipped_budget` (threshold tuning).
 
 Important design guard:
 - Request-path upstream RT/alerts fetches are blocked by `guardStationboardRequestPathUpstream(...)`.

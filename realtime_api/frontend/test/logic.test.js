@@ -14,6 +14,7 @@ import {
   parseApiDate,
   RT_HARD_CAP_MS,
   buildBoardContextKey,
+  isRtUnavailableFromStationboardPayload,
   shouldApplyIncomingBoard,
   shouldHoldRtDowngrade,
 } from "../v20260223-2.logic.js";
@@ -176,6 +177,78 @@ assert.equal(
   }),
   false
 );
+
+// RT unavailable notice source of truth: prefer meta.rtStatus, fallback to legacy rt fields.
+{
+  assert.equal(
+    isRtUnavailableFromStationboardPayload({
+      meta: { rtStatus: "applied" },
+    }),
+    false
+  );
+  assert.equal(
+    isRtUnavailableFromStationboardPayload({
+      meta: { rtStatus: "disabled" },
+    }),
+    true
+  );
+  assert.equal(
+    isRtUnavailableFromStationboardPayload({
+      meta: { rtStatus: "missing_cache" },
+    }),
+    true
+  );
+  assert.equal(
+    isRtUnavailableFromStationboardPayload({
+      meta: { rtStatus: "stale_cache" },
+    }),
+    true
+  );
+  assert.equal(
+    isRtUnavailableFromStationboardPayload({
+      meta: { rtStatus: "skipped_budget" },
+    }),
+    true
+  );
+  assert.equal(
+    isRtUnavailableFromStationboardPayload({
+      meta: { rtStatus: "guarded_error" },
+    }),
+    true
+  );
+
+  // Fallback when meta is missing.
+  assert.equal(
+    isRtUnavailableFromStationboardPayload({
+      rt: { applied: true, reason: "missing" },
+    }),
+    false
+  );
+  assert.equal(
+    isRtUnavailableFromStationboardPayload({
+      rt: { applied: false, reason: "fresh" },
+    }),
+    false
+  );
+  assert.equal(
+    isRtUnavailableFromStationboardPayload({
+      rt: { applied: false, reason: "missing" },
+    }),
+    true
+  );
+
+  // Unknown/malformed values default to unavailable unless explicit applied signal exists.
+  assert.equal(
+    isRtUnavailableFromStationboardPayload({
+      meta: { rtStatus: "WAT" },
+    }),
+    true
+  );
+  assert.equal(
+    isRtUnavailableFromStationboardPayload({}),
+    true
+  );
+}
 
 // Strict no-downgrade decision matrix:
 // keep RT snapshot on scheduled-only responses unless forced or hard-cap exceeded.

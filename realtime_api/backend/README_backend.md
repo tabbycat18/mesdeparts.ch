@@ -149,6 +149,27 @@ Status semantics:
 For normal production deploys, keep `fly.toml` free of stationboard emergency overrides
 and only tune these values if a measured incident requires it.
 
+### Tuning playbook when RT is skipped by budget
+
+Use `meta` first to classify the issue before changing thresholds:
+
+- `rtStatus=disabled` -> feature/env toggle issue
+- `rtStatus=missing_cache` -> poller/cache health issue
+- `rtStatus=stale_cache` -> stale feed path
+- `rtStatus=skipped_budget` -> budget tuning candidate
+
+Recommended first tuning set (keep route timeout cap at 5000 ms):
+
+- `STATIONBOARD_MIN_REMAINING_SPARSE_RETRY_MS=900`
+- `STATIONBOARD_MIN_REMAINING_SCOPE_FALLBACK_MS=800`
+- `STATIONBOARD_MIN_REMAINING_RT_APPLY_MS=500`
+- `STATIONBOARD_MIN_REMAINING_ALERTS_MS=700`
+- `STATIONBOARD_MIN_REMAINING_SUPPLEMENT_MS=950`
+
+Adjustment rule:
+- If `skipped_budget` remains frequent and DB/pool is healthy -> lower `RT_APPLY` by 100 ms.
+- If p95/p99 worsens -> raise `SPARSE_RETRY`/`SUPPLEMENT` thresholds first.
+
 ## Stationboard Performance
 
 If stationboard requests are slow/time out on large datasets, run:

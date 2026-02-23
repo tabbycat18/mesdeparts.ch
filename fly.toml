@@ -8,6 +8,14 @@ primary_region = 'ams'
 
 [build]
 
+[env]
+  # Model A threshold tuning: keep static-first while allowing RT apply under normal latency.
+  STATIONBOARD_MIN_REMAINING_SPARSE_RETRY_MS = "900"
+  STATIONBOARD_MIN_REMAINING_SCOPE_FALLBACK_MS = "800"
+  STATIONBOARD_MIN_REMAINING_RT_APPLY_MS = "500"
+  STATIONBOARD_MIN_REMAINING_ALERTS_MS = "700"
+  STATIONBOARD_MIN_REMAINING_SUPPLEMENT_MS = "950"
+
 [http_service]
   internal_port = 8080
   force_https = true

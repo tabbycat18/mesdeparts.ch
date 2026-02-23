@@ -26,6 +26,7 @@ import {
   isTransientFetchError,
   RT_HARD_CAP_MS,
   buildBoardContextKey,
+  isRtUnavailableFromStationboardPayload,
   parseBoardContextKey,
   shouldApplyIncomingBoard,
 } from "./v20260223-2.logic.js";
@@ -809,6 +810,7 @@ async function refreshDepartures({
       },
       nowMs
     );
+    const rtUnavailable = isRtUnavailableFromStationboardPayload(data);
 
     if (!decision.apply) {
       appState.boardContextKey = nextContextKey || appState.boardContextKey || null;
@@ -821,7 +823,7 @@ async function refreshDepartures({
             : nowMs,
         reason: String(data?.rt?.reason || "stale_or_unavailable"),
       };
-      setBoardNoticeHint(t("rtTemporarilyUnavailable"), { ttlMs: REFRESH_DEPARTURES + 1_500 });
+      setBoardNoticeHint(rtUnavailable ? t("rtTemporarilyUnavailable") : "");
       refreshSucceeded = true;
       publishEmbedState();
       return;
@@ -839,7 +841,6 @@ async function refreshDepartures({
         staleSinceMs: null,
         reason: String(data?.rt?.reason || "fresh"),
       };
-      setBoardNoticeHint("");
     } else {
       if (appState.currentBoardHasRtSnapshot === true) {
         lastRtAppliedSnapshot = null;
@@ -852,8 +853,8 @@ async function refreshDepartures({
         staleSinceMs: null,
         reason: String(data?.rt?.reason || "scheduled_only"),
       };
-      setBoardNoticeHint("");
     }
+    setBoardNoticeHint(rtUnavailable ? t("rtTemporarilyUnavailable") : "");
     // Reset consecutive 204 counter on successful response
     if (consecutive204Count > 0 && DEBUG_RT_CLIENT) {
       // eslint-disable-next-line no-console
