@@ -64,17 +64,22 @@ STATIONBOARD_BASE_URL=https://api.mesdeparts.ch node scripts/debugStop.js "Lausa
   - Polls LA GTFS-RT TripUpdates feed and writes snapshots/metadata to `rt_cache`.
   - Default interval: `GTFS_RT_POLL_INTERVAL_MS` (default `15000` ms).
   - Has 429/error backoff logic.
+  - Skips redundant writes when payload is unchanged within `RT_CACHE_MIN_WRITE_INTERVAL_MS`.
+  - Uses advisory xact lock on writes to avoid concurrent writer churn across duplicate pollers.
 
 - `pollLaServiceAlerts.js`
   - Polls LA GTFS Service Alerts feed and writes snapshots/metadata to `rt_cache`.
   - Default interval: `GTFS_SA_POLL_INTERVAL_MS` (default `60000` ms, min `15000`).
   - Has 429/error backoff logic.
+  - Skips redundant writes when payload is unchanged within `RT_CACHE_MIN_WRITE_INTERVAL_MS`.
+  - Uses advisory xact lock on writes to avoid concurrent writer churn across duplicate pollers.
 
 ### Static GTFS refresh / import
 
 - `refreshGtfsIfNeeded.js`
   - End-to-end static refresh orchestrator (download, clean, import stage/live, SQL setup, metadata updates).
-  - Uses advisory locking to avoid concurrent imports.
+  - Uses global advisory locking so only one DB-heavy refresh/rebuild can run at a time.
+  - No-op fast paths skip import/search rebuild when static SHA is unchanged unless rebuild is explicitly requested.
 
 - `importGtfsToStage.sh`
   - Low-level import helper used by refresh flow.

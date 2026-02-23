@@ -165,6 +165,9 @@ function baseMeta(nowMs) {
     scannedEntities: 0,
     scopedEntities: 0,
     scopedStopUpdates: 0,
+    rtReadSource: null,
+    rtCacheHit: false,
+    rtDecodeMs: null,
     processingMs: 0,
     nowIso: new Date(nowMs).toISOString(),
     instance: INSTANCE_LABEL,
@@ -260,6 +263,12 @@ export async function loadScopedRtFromCache(options = {}) {
   meta.lastStatus = Number.isFinite(Number(cache?.lastStatus)) ? Number(cache.lastStatus) : null;
   meta.lastError = text(cache?.lastError) || null;
   meta.etag = text(cache?.etag) || null;
+  meta.rtReadSource =
+    cache?.rtReadSource === "memory" || cache?.rtReadSource === "db"
+      ? cache.rtReadSource
+      : null;
+  meta.rtCacheHit = cache?.rtCacheHit === true;
+  meta.rtDecodeMs = Number.isFinite(Number(cache?.rtDecodeMs)) ? Number(cache.rtDecodeMs) : null;
   meta.entityCount = getEntityCount(cache?.feed);
   if (Number.isFinite(fetchedAtMs) && fetchedAtMs > 0 && fetchedAtMs !== lastObservedFetchedAtMs) {
     const previousFetchedAtMs = lastObservedFetchedAtMs;

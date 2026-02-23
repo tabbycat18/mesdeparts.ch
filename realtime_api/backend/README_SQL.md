@@ -33,10 +33,17 @@ This file documents SQL files used by the active realtime backend.
 2. import shell script (`scripts/importGtfsToStage.sh`)
 3. `validate_stage.sql`
 4. `swap_stage_to_live_cutover.sql`
-5. `optimize_stop_search.sql` (fatal if it fails)
+5. `optimize_stop_search.sql` (fatal if it fails, only when rebuild is needed)
 6. `cleanup_old_after_swap.sql` (non-fatal if it fails)
 
 Behavior notes:
+- A session advisory lock gates DB-heavy refresh/rebuild sections (`pg_try_advisory_lock`); concurrent runs exit with `refresh already running`.
+- Fast no-op path: if static SHA256 equals `meta_kv.gtfs_static_sha256`, import and search rebuild are skipped.
+- `stop_search_index` rebuild is idempotent and guarded by metadata:
+  - request flag: `meta_kv.gtfs_stop_search_rebuild_requested`
+  - last rebuild SHA: `meta_kv.gtfs_stop_search_last_rebuild_sha256`
+  - last rebuild timestamp: `meta_kv.gtfs_stop_search_last_rebuild_at`
+  - minimum interval: `GTFS_STOP_SEARCH_REBUILD_MIN_INTERVAL_HOURS` (default `6`)
 - `optimize_stop_search.sql` failure is treated as hard failure.
 - `cleanup_old_after_swap.sql` failure is logged as non-fatal and can be retried.
 - After search optimization, alias sync script is attempted (`syncStopSearchAliases.js`) as non-fatal.
@@ -189,6 +196,8 @@ After any stop-search SQL change:
 
 1. Rebuild/swap search SQL objects:
    - `psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f sql/optimize_stop_search.sql`
+   - Optional request-path trigger for next refresh run:
+     - `INSERT INTO public.meta_kv(key, value, updated_at) VALUES ('gtfs_stop_search_rebuild_requested','1',NOW()) ON CONFLICT (key) DO UPDATE SET value='1', updated_at=NOW();`
 2. Run app-level regression checks:
    - `node --test test/stopSearch.test.js test/stopSearch.degraded.test.js test/stopSearch.route.test.js`
    - `npm run search:repro-regression`

@@ -26,7 +26,23 @@ const STATIC_PERMALINK = "https://data.opentransportdata.swiss/fr/dataset/timeta
 // Stable integer used as a PostgreSQL session-level advisory lock key.
 // Any concurrent caller (CI, manual, local) that cannot acquire this lock will
 // exit cleanly rather than racing against an in-progress import.
-const GTFS_IMPORT_LOCK_ID = 7_483_920;
+const GTFS_REFRESH_LOCK_ID = 7_483_920;
+const META_KEYS = Object.freeze({
+  staticEtag: "gtfs_static_etag",
+  staticLastModified: "gtfs_static_last_modified",
+  staticSha256: "gtfs_static_sha256",
+  currentFeedVersion: "gtfs_current_feed_version",
+  staticCheckedAt: "gtfs_static_checked_at",
+  stopSearchRebuildRequested: "gtfs_stop_search_rebuild_requested",
+  stopSearchLastRebuildSha256: "gtfs_stop_search_last_rebuild_sha256",
+  stopSearchLastRebuildAt: "gtfs_stop_search_last_rebuild_at",
+});
+const STOP_SEARCH_REBUILD_MIN_INTERVAL_HOURS = Math.max(
+  1,
+  Number(process.env.GTFS_STOP_SEARCH_REBUILD_MIN_INTERVAL_HOURS || "6")
+);
+const STOP_SEARCH_REBUILD_MIN_INTERVAL_MS =
+  STOP_SEARCH_REBUILD_MIN_INTERVAL_HOURS * 60 * 60 * 1000;
 const REQUIRED_FILES = [
   "agency.txt",
   "stops.txt",
@@ -49,6 +65,38 @@ const CUTOVER_OLD_TABLES = [
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const SQL_DIR = path.resolve(__dirname, "../sql");
+
+function redactSecrets(value) {
+  let text = String(value ?? "");
+  const dbUrl = process.env.DATABASE_URL;
+  if (dbUrl) {
+    text = text.split(dbUrl).join("[redacted:DATABASE_URL]");
+  }
+  text = text.replace(
+    /\bpostgres(?:ql)?:\/\/([^:\s]+):([^@\s]+)@/gi,
+    "postgresql://$1:[redacted]@"
+  );
+  return text;
+}
+
+function logSafe(level, prefix, payload) {
+  const line = `${prefix}${payload == null ? "" : redactSecrets(payload)}`;
+  if (level === "error") {
+    console.error(line);
+    return;
+  }
+  if (level === "warn") {
+    console.warn(line);
+    return;
+  }
+  console.log(line);
+}
+
+function attachClientErrorLog(client, label) {
+  client.on("error", (err) => {
+    logSafe("error", `[pg] unexpected error event on ${label}: `, err?.message || err);
+  });
+}
 
 function requireEnv(name) {
   const value = process.env[name];
@@ -198,7 +246,7 @@ async function runSqlFile(sqlFile, env) {
   try {
     await runCommand("psql", [env.DATABASE_URL, "-v", "ON_ERROR_STOP=1", "-f", sqlFile]);
   } catch (err) {
-    const message = err?.message || String(err);
+    const message = redactSecrets(err?.message || String(err));
     throw new Error(`[refresh][sql] ${path.basename(sqlFile)} failed (psql ON_ERROR_STOP=1): ${message}`);
   }
 }
@@ -260,6 +308,56 @@ async function getMetaKvMulti(client, keys) {
   return out;
 }
 
+function isTrueLike(value) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
+}
+
+function parseIsoMs(value) {
+  const ms = new Date(value).getTime();
+  return Number.isFinite(ms) ? ms : null;
+}
+
+function buildStopSearchRebuildDecision({
+  requested = false,
+  currentSha256 = null,
+  lastRebuildSha256 = null,
+  lastRebuildAt = null,
+  nowMs = Date.now(),
+} = {}) {
+  if (!currentSha256 && !requested) {
+    return { shouldRebuild: false, reason: "missing_sha" };
+  }
+
+  const sameSha =
+    !!currentSha256 &&
+    !!lastRebuildSha256 &&
+    String(currentSha256).trim() === String(lastRebuildSha256).trim();
+  const lastRebuildAtMs = parseIsoMs(lastRebuildAt);
+  const rebuiltRecently =
+    sameSha &&
+    Number.isFinite(lastRebuildAtMs) &&
+    nowMs - lastRebuildAtMs < STOP_SEARCH_REBUILD_MIN_INTERVAL_MS;
+
+  if (requested) {
+    if (rebuiltRecently) {
+      return { shouldRebuild: false, reason: "requested_but_rate_limited" };
+    }
+    return { shouldRebuild: true, reason: "requested" };
+  }
+
+  if (!sameSha) {
+    return { shouldRebuild: true, reason: "sha_changed" };
+  }
+
+  return { shouldRebuild: false, reason: rebuiltRecently ? "same_sha_rate_limited" : "same_sha_already_built" };
+}
+
+export async function tryAcquireSessionAdvisoryLock(client, lockId) {
+  const lockResult = await client.query(`SELECT pg_try_advisory_lock($1) AS acquired`, [lockId]);
+  return lockResult.rows[0]?.acquired === true;
+}
+
 async function importIntoStage(cleanDir, env) {
   await runSqlFile(path.join(SQL_DIR, "create_stage_tables.sql"), env);
   await runCommand(path.resolve(__dirname, "importGtfsToStage.sh"), [cleanDir], {
@@ -281,7 +379,7 @@ async function runStopSearchSetup(env) {
     });
     console.log("[refresh][search-setup] syncStopSearchAliases.js: ok");
   } catch (err) {
-    console.warn(`[refresh][search-setup] syncStopSearchAliases.js failed (non-fatal): ${err?.message || err}`);
+    logSafe("warn", "[refresh][search-setup] syncStopSearchAliases.js failed (non-fatal): ", err?.message || err);
   }
 }
 
@@ -290,8 +388,12 @@ async function cleanupOldAfterSwap(env) {
     await runSqlFile(path.join(SQL_DIR, "cleanup_old_after_swap.sql"), env);
     return { status: "ok", step: "cleanup_old_after_swap.sql" };
   } catch (err) {
-    console.warn(`[refresh] cleanup_old_after_swap.sql failed (non-fatal): ${err?.message || err}`);
-    return { status: "failed", step: "cleanup_old_after_swap.sql", error: String(err?.message || err) };
+    logSafe("warn", "[refresh] cleanup_old_after_swap.sql failed (non-fatal): ", err?.message || err);
+    return {
+      status: "failed",
+      step: "cleanup_old_after_swap.sql",
+      error: redactSecrets(String(err?.message || err)),
+    };
   }
 }
 
@@ -323,7 +425,7 @@ async function getStaticVersionHeaders() {
       lastModified: response.headers.get("last-modified") ?? null,
     };
   } catch (err) {
-    console.warn("[refresh] HEAD check failed (network?); will proceed with download:", err?.message || err);
+    logSafe("warn", "[refresh] HEAD check failed (network?); will proceed with download: ", err?.message || err);
     return { etag: null, lastModified: null };
   }
 }
@@ -382,10 +484,11 @@ async function logCutoverPreflight(client) {
 
 // ── main ──────────────────────────────────────────────────────────────────────
 
-async function run() {
+export async function runRefreshGtfsIfNeeded() {
   const DATABASE_URL = requireEnv("DATABASE_URL");
   const OPENTDATA_GTFS_RT_KEY = process.env.OPENTDATA_GTFS_RT_KEY ?? "";
   const OPENTDATA_GTFS_SA_KEY = process.env.OPENTDATA_GTFS_SA_KEY ?? "";
+  const nowIso = new Date().toISOString();
 
   // ── Step 1: HEAD check — free, unauthenticated, zero rate-limit impact ──────
   const { etag, lastModified } = await getStaticVersionHeaders();
@@ -397,9 +500,7 @@ async function run() {
   // Do NOT keep this connection open during file operations (download/unzip/clean).
   console.log("[pg] connecting for initial checks…");
   const checkClient = new Client({ connectionString: DATABASE_URL });
-  checkClient.on("error", (err) => {
-    console.error("[pg] unexpected error event on checkClient:", err?.message || err);
-  });
+  attachClientErrorLog(checkClient, "checkClient");
   await checkClient.connect();
   console.log("[pg] connected");
 
@@ -412,32 +513,98 @@ async function run() {
     }
 
     const stored = await getMetaKvMulti(checkClient, [
-      "gtfs_static_etag",
-      "gtfs_static_last_modified",
-      "gtfs_static_sha256",
-      "gtfs_current_feed_version",
+      META_KEYS.staticEtag,
+      META_KEYS.staticLastModified,
+      META_KEYS.staticSha256,
+      META_KEYS.currentFeedVersion,
+      META_KEYS.stopSearchRebuildRequested,
+      META_KEYS.stopSearchLastRebuildSha256,
+      META_KEYS.stopSearchLastRebuildAt,
     ]);
+    const storedSha256 = stored[META_KEYS.staticSha256] ?? null;
+    const stopSearchRebuildRequested = isTrueLike(stored[META_KEYS.stopSearchRebuildRequested]);
 
     // ── Step 2b: ETag / Last-Modified comparison ────────────────────────────
     // Normalize stored ETag to match the same format as the live header value.
-    const storedEtag = normalizeEtag(stored["gtfs_static_etag"]);
-    const storedLastMod = stored["gtfs_static_last_modified"] ?? null;
+    const storedEtag = normalizeEtag(stored[META_KEYS.staticEtag]);
+    const storedLastMod = stored[META_KEYS.staticLastModified] ?? null;
 
     const etagMatch = etag !== null && etag === storedEtag;
     const lastModMatch = etag === null && lastModified !== null && lastModified === storedLastMod;
+    const headersMatch = !dbEmpty && (etagMatch || lastModMatch);
 
-    if (!dbEmpty && (etagMatch || lastModMatch)) {
-      console.log("[refresh] Static GTFS unchanged (ETag/Last-Modified match). No update needed.");
-      await setMetaKv(checkClient, "gtfs_static_checked_at", new Date().toISOString());
-      await runStopSearchSetup({ DATABASE_URL });
+    if (headersMatch) {
+      const rebuildDecision = buildStopSearchRebuildDecision({
+        requested: stopSearchRebuildRequested,
+        currentSha256: storedSha256,
+        lastRebuildSha256: stored[META_KEYS.stopSearchLastRebuildSha256] ?? null,
+        lastRebuildAt: stored[META_KEYS.stopSearchLastRebuildAt] ?? null,
+      });
+      if (!rebuildDecision.shouldRebuild) {
+        console.log(
+          `[refresh] Static GTFS unchanged (headers match). skip_import=1, skip_stop_search=1 (${rebuildDecision.reason}).`
+        );
+        await setMetaKv(checkClient, META_KEYS.staticCheckedAt, nowIso);
+        return;
+      }
+      console.log(
+        `[refresh] Static headers unchanged but stop_search rebuild requested (${rebuildDecision.reason}). import=0 rebuild=1.`
+      );
+      await checkClient.end();
+
+      const dbClient = new Client({ connectionString: DATABASE_URL });
+      attachClientErrorLog(dbClient, "dbClient");
+      await dbClient.connect();
+      try {
+        const acquired = await tryAcquireSessionAdvisoryLock(dbClient, GTFS_REFRESH_LOCK_ID);
+        if (!acquired) {
+          console.log("[refresh] refresh already running; exiting without import/rebuild.");
+          return;
+        }
+        console.log("[refresh] Advisory lock acquired.");
+
+        const lockedMeta = await getMetaKvMulti(dbClient, [
+          META_KEYS.staticSha256,
+          META_KEYS.stopSearchRebuildRequested,
+          META_KEYS.stopSearchLastRebuildSha256,
+          META_KEYS.stopSearchLastRebuildAt,
+        ]);
+        const lockedDecision = buildStopSearchRebuildDecision({
+          requested: isTrueLike(lockedMeta[META_KEYS.stopSearchRebuildRequested]),
+          currentSha256: lockedMeta[META_KEYS.staticSha256] ?? storedSha256,
+          lastRebuildSha256: lockedMeta[META_KEYS.stopSearchLastRebuildSha256] ?? null,
+          lastRebuildAt: lockedMeta[META_KEYS.stopSearchLastRebuildAt] ?? null,
+        });
+        if (!lockedDecision.shouldRebuild) {
+          console.log(
+            `[refresh] stop_search rebuild skipped after lock (${lockedDecision.reason}); nothing else to do.`
+          );
+          await setMetaKv(dbClient, META_KEYS.staticCheckedAt, nowIso);
+          return;
+        }
+
+        await runStopSearchSetup({ DATABASE_URL });
+        const rebuildSha = lockedMeta[META_KEYS.staticSha256] ?? storedSha256;
+        if (rebuildSha) {
+          await setMetaKv(dbClient, META_KEYS.stopSearchLastRebuildSha256, rebuildSha);
+        }
+        await setMetaKv(dbClient, META_KEYS.stopSearchLastRebuildAt, new Date().toISOString());
+        await setMetaKv(dbClient, META_KEYS.stopSearchRebuildRequested, "0");
+        await setMetaKv(dbClient, META_KEYS.staticCheckedAt, nowIso);
+      } finally {
+        console.log("[pg] closing connection…");
+        await dbClient.end();
+        console.log("[pg] closed");
+      }
       return;
     }
 
-    // ── Step 3: Download zip ────────────────────────────────────────────────
+    // ── Step 3: Download zip for SHA preflight ──────────────────────────────
     const tempRoot = await fsp.mkdtemp(path.join(os.tmpdir(), "gtfs-refresh-"));
     const zipPath = path.join(tempRoot, "static_gtfs.zip");
     const unzipDir = path.join(tempRoot, "unzipped");
     const cleanDir = path.join(tempRoot, "clean");
+    let shouldImport = dbEmpty;
 
     await fsp.mkdir(unzipDir, { recursive: true });
 
@@ -454,66 +621,66 @@ async function run() {
 
     // ── Step 4: SHA-256 guard — skip import if content identical ───────────
     const zipSha256 = await computeFileSha256(zipPath);
-    const storedSha256 = stored["gtfs_static_sha256"] ?? null;
     console.log(
       `[refresh] zip sha256=${zipSha256.slice(0, 16)}… (stored=${storedSha256?.slice(0, 16) ?? "none"})`
     );
+    shouldImport = dbEmpty || zipSha256 !== storedSha256;
+    const preflightRebuildDecision = buildStopSearchRebuildDecision({
+      requested: stopSearchRebuildRequested,
+      currentSha256: zipSha256,
+      lastRebuildSha256: stored[META_KEYS.stopSearchLastRebuildSha256] ?? null,
+      lastRebuildAt: stored[META_KEYS.stopSearchLastRebuildAt] ?? null,
+    });
 
-    if (!dbEmpty && zipSha256 === storedSha256) {
-      console.log("[refresh] Zip content unchanged (sha256 match). Refreshing markers only.");
+    if (!shouldImport && !preflightRebuildDecision.shouldRebuild) {
+      console.log(
+        `[refresh] static zip unchanged; skip_import=1 skip_stop_search=1 (${preflightRebuildDecision.reason}).`
+      );
       // Reconnect for the metadata-only updates
       console.log("[pg] reconnecting for metadata-only update…");
       const updateClient = new Client({ connectionString: DATABASE_URL });
-      updateClient.on("error", (err) => {
-        console.error("[pg] unexpected error event on updateClient:", err?.message || err);
-      });
+      attachClientErrorLog(updateClient, "updateClient");
       await updateClient.connect();
       console.log("[pg] connected");
       try {
-        if (etag) await setMetaKv(updateClient, "gtfs_static_etag", etag);
-        if (lastModified) await setMetaKv(updateClient, "gtfs_static_last_modified", lastModified);
-        await setMetaKv(updateClient, "gtfs_static_checked_at", new Date().toISOString());
+        if (etag) await setMetaKv(updateClient, META_KEYS.staticEtag, etag);
+        if (lastModified) await setMetaKv(updateClient, META_KEYS.staticLastModified, lastModified);
+        await setMetaKv(updateClient, META_KEYS.staticCheckedAt, nowIso);
       } finally {
         console.log("[pg] closing connection…");
         await updateClient.end();
         console.log("[pg] closed");
       }
-      await runStopSearchSetup({ DATABASE_URL });
       return;
     }
 
-    // ── Step 5a: Unzip and clean files (disconnected) ──────────────────────
-    console.log("[refresh] unzipping static GTFS zip");
-    const unzipStart = Date.now();
-    await unzipToDir(zipPath, unzipDir);
-    const unzipTime = Date.now() - unzipStart;
-    console.log(`[refresh] unzip completed in ${unzipTime}ms`);
+    if (shouldImport) {
+      // ── Step 5a: Unzip and clean files (disconnected) ────────────────────
+      console.log("[refresh] unzipping static GTFS zip");
+      const unzipStart = Date.now();
+      await unzipToDir(zipPath, unzipDir);
+      const unzipTime = Date.now() - unzipStart;
+      console.log(`[refresh] unzip completed in ${unzipTime}ms`);
 
-    console.log("[refresh] cleaning required GTFS files");
-    const cleanStart = Date.now();
-    await buildCleanGtfsFiles(unzipDir, cleanDir);
-    const cleanTime = Date.now() - cleanStart;
-    console.log(`[refresh] clean completed in ${cleanTime}ms`);
+      console.log("[refresh] cleaning required GTFS files");
+      const cleanStart = Date.now();
+      await buildCleanGtfsFiles(unzipDir, cleanDir);
+      const cleanTime = Date.now() - cleanStart;
+      console.log(`[refresh] clean completed in ${cleanTime}ms`);
+    }
 
     // ── Step 5b: Reconnect and acquire advisory lock ────────────────────────
     // Lock is held ONLY for the duration of DB mutations.
     console.log("[pg] reconnecting for database operations…");
     const dbClient = new Client({ connectionString: DATABASE_URL });
-    dbClient.on("error", (err) => {
-      console.error("[pg] unexpected error event on dbClient:", err?.message || err);
-    });
+    attachClientErrorLog(dbClient, "dbClient");
     await dbClient.connect();
     console.log("[pg] connected");
 
     try {
-      // pg_try_advisory_lock is session-scoped and released on client.end().
-      // Using try-variant so concurrent callers skip rather than queue.
-      const lockResult = await dbClient.query(
-        `SELECT pg_try_advisory_lock($1) AS acquired`,
-        [GTFS_IMPORT_LOCK_ID]
-      );
-      if (!lockResult.rows[0].acquired) {
-        console.log("[refresh] Advisory lock not available — another import is already in progress. Skipping.");
+      const acquired = await tryAcquireSessionAdvisoryLock(dbClient, GTFS_REFRESH_LOCK_ID);
+      if (!acquired) {
+        console.log("[refresh] refresh already running; exiting without import/rebuild.");
         return;
       }
       console.log("[refresh] Advisory lock acquired.");
@@ -521,46 +688,74 @@ async function run() {
       // ── Sanity check: ensure connection is still alive after lock acquire ────
       // (cheap defense against race conditions between lock and import)
       await dbClient.query("SELECT 1");
-      await logCutoverPreflight(dbClient);
+      const lockedMeta = await getMetaKvMulti(dbClient, [
+        META_KEYS.staticSha256,
+        META_KEYS.stopSearchRebuildRequested,
+        META_KEYS.stopSearchLastRebuildSha256,
+        META_KEYS.stopSearchLastRebuildAt,
+      ]);
+      const lockedRebuildDecision = buildStopSearchRebuildDecision({
+        requested: isTrueLike(lockedMeta[META_KEYS.stopSearchRebuildRequested]),
+        currentSha256: zipSha256,
+        lastRebuildSha256: lockedMeta[META_KEYS.stopSearchLastRebuildSha256] ?? null,
+        lastRebuildAt: lockedMeta[META_KEYS.stopSearchLastRebuildAt] ?? null,
+      });
 
-      // ── Step 5c: Full import ───────────────────────────────────────────────
-      console.log("[refresh] importing cleaned GTFS into stage/live tables");
-      await importIntoStage(cleanDir, { DATABASE_URL });
-      await runStopSearchSetup({ DATABASE_URL });
-      const cleanupResult = await cleanupOldAfterSwap({ DATABASE_URL });
-      console.log(`[refresh] cleanup result: ${JSON.stringify(cleanupResult)}`);
+      if (shouldImport) {
+        await logCutoverPreflight(dbClient);
+        console.log("[refresh] importing cleaned GTFS into stage/live tables");
+        await importIntoStage(cleanDir, { DATABASE_URL });
+      } else {
+        console.log("[refresh] import skipped (sha unchanged); lock held for optional stop_search rebuild only.");
+      }
 
-      // ── Step 6: Fetch RT / SA meta — ONLY now, only for logging ────────────
+      if (lockedRebuildDecision.shouldRebuild) {
+        console.log(`[refresh] running stop_search rebuild (${lockedRebuildDecision.reason}).`);
+        await runStopSearchSetup({ DATABASE_URL });
+        await setMetaKv(dbClient, META_KEYS.stopSearchLastRebuildSha256, zipSha256);
+        await setMetaKv(dbClient, META_KEYS.stopSearchLastRebuildAt, new Date().toISOString());
+        await setMetaKv(dbClient, META_KEYS.stopSearchRebuildRequested, "0");
+      } else {
+        console.log(`[refresh] stop_search rebuild skipped (${lockedRebuildDecision.reason}).`);
+      }
+
+      if (shouldImport) {
+        const cleanupResult = await cleanupOldAfterSwap({ DATABASE_URL });
+        console.log(`[refresh] cleanup result: ${JSON.stringify(cleanupResult)}`);
+      }
+
+      // ── Step 6: Fetch RT / SA meta — only after static import ──────────────
       let tripMeta = null;
       let alertsMeta = null;
-      if (OPENTDATA_GTFS_RT_KEY) {
+      if (shouldImport && OPENTDATA_GTFS_RT_KEY) {
         try {
           tripMeta = await fetchTripUpdatesMeta(OPENTDATA_GTFS_RT_KEY);
         } catch (err) {
-          console.warn("[refresh] Could not fetch trip-updates meta (non-fatal):", err?.message || err);
+          logSafe("warn", "[refresh] Could not fetch trip-updates meta (non-fatal): ", err?.message || err);
         }
       }
-      if (OPENTDATA_GTFS_SA_KEY) {
+      if (shouldImport && OPENTDATA_GTFS_SA_KEY) {
         try {
           alertsMeta = await fetchServiceAlertsMeta(OPENTDATA_GTFS_SA_KEY);
         } catch (err) {
-          console.warn("[refresh] Could not fetch service-alerts meta (non-fatal):", err?.message || err);
+          logSafe("warn", "[refresh] Could not fetch service-alerts meta (non-fatal): ", err?.message || err);
         }
       }
 
       // ── Step 7: Persist version markers ────────────────────────────────────
-      if (etag) await setMetaKv(dbClient, "gtfs_static_etag", etag);
-      if (lastModified) await setMetaKv(dbClient, "gtfs_static_last_modified", lastModified);
-      await setMetaKv(dbClient, "gtfs_static_sha256", zipSha256);
+      if (etag) await setMetaKv(dbClient, META_KEYS.staticEtag, etag);
+      if (lastModified) await setMetaKv(dbClient, META_KEYS.staticLastModified, lastModified);
+      await setMetaKv(dbClient, META_KEYS.staticCheckedAt, nowIso);
+      await setMetaKv(dbClient, META_KEYS.staticSha256, zipSha256);
 
       // Keep gtfs_current_feed_version: use RT version if available, else sha256 prefix.
       const newVersion = tripMeta?.feedVersion || zipSha256.slice(0, 16);
-      await setMetaKv(dbClient, "gtfs_current_feed_version", newVersion);
+      await setMetaKv(dbClient, META_KEYS.currentFeedVersion, newVersion);
 
-      if (tripMeta) {
+      if (shouldImport && tripMeta) {
         await upsertFeedMeta(dbClient, "trip_updates", tripMeta.feedVersion, tripMeta.headerTimestamp);
       }
-      if (alertsMeta) {
+      if (shouldImport && alertsMeta) {
         await upsertFeedMeta(
           dbClient,
           "service_alerts",
@@ -570,35 +765,39 @@ async function run() {
       }
 
       // ── Step 8: Log static ingest for alignment auditing ───────────────────
-      try {
-        const snap = await fetchCurrentStaticSnapshot(dbClient);
-        await insertStaticIngestLog(dbClient, {
-          feedName: "opentransportdata_gtfs_static",
-          feedVersion: newVersion,
-          startDate: snap?.start_date || null,
-          endDate: snap?.end_date || null,
-          stopsCount: snap?.stops_count || null,
-          routesCount: snap?.routes_count || null,
-          tripsCount: snap?.trips_count || null,
-          stopTimesCount: snap?.stop_times_count || null,
-          notes: `refreshGtfsIfNeeded: sha256=${zipSha256.slice(0, 16)}, etag=${etag ?? "none"}`,
-        });
-        console.log(`[refresh] logged static ingest to gtfs_static_ingest_log`);
-      } catch (logErr) {
-        console.warn(`[refresh] non-fatal: failed to log static ingest:`, logErr?.message || logErr);
+      if (shouldImport) {
+        try {
+          const snap = await fetchCurrentStaticSnapshot(dbClient);
+          await insertStaticIngestLog(dbClient, {
+            feedName: "opentransportdata_gtfs_static",
+            feedVersion: newVersion,
+            startDate: snap?.start_date || null,
+            endDate: snap?.end_date || null,
+            stopsCount: snap?.stops_count || null,
+            routesCount: snap?.routes_count || null,
+            tripsCount: snap?.trips_count || null,
+            stopTimesCount: snap?.stop_times_count || null,
+            notes: `refreshGtfsIfNeeded: sha256=${zipSha256.slice(0, 16)}, etag=${etag ?? "none"}`,
+          });
+          console.log("[refresh] logged static ingest to gtfs_static_ingest_log");
+        } catch (logErr) {
+          logSafe("warn", "[refresh] non-fatal: failed to log static ingest: ", logErr?.message || logErr);
+        }
       }
 
-      console.log(`[refresh] completed: version=${newVersion}, sha256=${zipSha256.slice(0, 16)}…`);
+      console.log(
+        `[refresh] completed: import=${shouldImport ? 1 : 0}, version=${newVersion}, sha256=${zipSha256.slice(0, 16)}…`
+      );
     } finally {
       console.log("[pg] closing connection…");
       await dbClient.end();
       console.log("[pg] closed");
     }
   } catch (err) {
-    console.error("[refresh] unhandled error:", err?.stack || err?.message || err);
+    logSafe("error", "[refresh] unhandled error: ", err?.stack || err?.message || err);
     throw err;
   } finally {
-    // Ensure checkClient is closed if we took the early-exit path (ETag/Last-Modified match)
+    // Ensure checkClient is closed if we took an early-exit path.
     try {
       await checkClient.end();
     } catch {
@@ -607,7 +806,9 @@ async function run() {
   }
 }
 
-run().catch((error) => {
-  console.error(error.stack || error.message);
-  process.exit(1);
-});
+if (import.meta.url === `file://${process.argv[1]}`) {
+  runRefreshGtfsIfNeeded().catch((error) => {
+    logSafe("error", "", error?.stack || error?.message || error);
+    process.exit(1);
+  });
+}

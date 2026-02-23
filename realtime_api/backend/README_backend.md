@@ -18,6 +18,23 @@ TODO: remove any remaining legacy static dataset directories after the first suc
 
 API Fly config is committed at `realtime_api/backend/fly.toml`.
 
+## Secrets And Rotation Runbook
+
+Credential sources used by this stack:
+
+- Local development: `realtime_api/backend/.env` (`DATABASE_URL`, poller tokens). This file must stay git-ignored.
+- Fly runtime: app secrets on both `mesdeparts-ch` and `mesdeparts-rt-poller` (`fly secrets set ...`).
+- GitHub Actions refresh workflow: repository secrets `NEON_DATABASE_URL`, `OPENTDATA_GTFS_RT_KEY`, `OPENTDATA_GTFS_SA_KEY`.
+
+Rotation checklist (no secrets in repo):
+
+1. Rotate credentials at the provider first (Neon and API token issuer).
+2. Update Fly secrets for both apps.
+3. Update GitHub repository secrets used by `.github/workflows/gtfs_static_refresh.yml`.
+4. Update local `.env` files used for manual scripts.
+5. Restart poller/API processes and run one refresh dry run.
+6. Validate that logs contain no raw DSN/password values (workflow now masks these values by default).
+
 ## Runtime Truth Map (verified)
 
 Use this map first to avoid chasing outdated paths:
@@ -96,6 +113,37 @@ fly secrets set -a mesdeparts-ch DATABASE_URL="postgresql://...same-neon-url..."
 ```
 
 This Option A1 layout guarantees all LA GTFS-RT upstream calls come from a single process (the poller), while API machines remain DB-cache readers.
+
+## GTFS Refresh Lock + Idempotency
+
+`scripts/refreshGtfsIfNeeded.js` now enforces a single DB-heavy refresh at a time via PostgreSQL session advisory lock.
+
+- Lock key: dedicated global key in refresh script.
+- Concurrent runner behavior: immediate clean exit with `refresh already running`.
+- Fast no-op path:
+  - if static SHA256 is unchanged, import is skipped
+  - stop-search rebuild is skipped unless explicitly requested
+- stop-search rebuild metadata keys:
+  - `gtfs_stop_search_rebuild_requested`
+  - `gtfs_stop_search_last_rebuild_sha256`
+  - `gtfs_stop_search_last_rebuild_at`
+- Rebuild rate limit: `GTFS_STOP_SEARCH_REBUILD_MIN_INTERVAL_HOURS` (default `6`).
+
+This prevents repeated `optimize_stop_search.sql` rebuild churn on unchanged hourly runs.
+
+## RT Cache Pressure Controls
+
+To reduce per-request DB pressure and poller write churn:
+
+- Stationboard TripUpdates reads use a short in-process decoded-feed cache (`RT_DECODED_FEED_CACHE_MS`, clamped `5s..15s`) with in-flight read coalescing.
+- `debug=1` diagnostics now include:
+  - `debug.rt.tripUpdates.rtReadSource` (`memory` or `db`)
+  - `debug.rt.tripUpdates.rtCacheHit`
+  - `debug.rt.tripUpdates.rtDecodeMs`
+- Pollers avoid redundant writes:
+  - unchanged `200` payloads are skipped when fetched recently (`RT_CACHE_MIN_WRITE_INTERVAL_MS`, default `30000`)
+  - frequent `304` status writes are throttled by the same interval
+  - payload/status upserts use advisory xact lock per feed to avoid concurrent writer churn across poller replicas.
 
 ## Stationboard Latency Guard
 

@@ -248,6 +248,7 @@ Primary responsibilities:
 
 Primary responsibilities:
 - Read `la_tripupdates` cache snapshot via `loaders/loadRealtime.js`.
+  - TripUpdates payload decode reads are memory-cached per feed key for a short TTL (`RT_DECODED_FEED_CACHE_MS`, clamped `5s..15s`) with in-flight coalescing.
 - Enforce freshness threshold (`STATIONBOARD_RT_FRESH_MAX_AGE_MS`, default 45s).
 - Scope entities to current board context:
   - requested trip ids (`scopeTripIds`)
@@ -259,7 +260,7 @@ Primary responsibilities:
   - max scanned entities
   - max scoped entities
   - max scoped stop updates
-- Return `tripUpdates` plus rich `meta` (`applied`, `reason`, `cacheAgeMs`, `instance`, counters).
+- Return `tripUpdates` plus rich `meta` (`applied`, `reason`, `cacheAgeMs`, `instance`, counters, `rtReadSource`, `rtCacheHit`, `rtDecodeMs`).
 - `meta.reason` is the raw scoped-loader reason (for example `applied`, `stale_cache`, `guard_tripped`)
   and is surfaced as `debug.rt.tripUpdates.rtMetaReason` by stationboard debug output.
 

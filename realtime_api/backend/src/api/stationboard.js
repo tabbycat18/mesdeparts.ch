@@ -676,6 +676,12 @@ function toRtTripUpdatesDebug(rtMeta, departureAuditRows) {
       : Number.isFinite(base.fetchMs)
         ? Number(base.fetchMs)
         : null,
+    rtReadSource:
+      base.rtReadSource === "memory" || base.rtReadSource === "db"
+        ? base.rtReadSource
+        : null,
+    rtCacheHit: base.rtCacheHit === true,
+    rtDecodeMs: Number.isFinite(base.rtDecodeMs) ? Number(base.rtDecodeMs) : null,
     entityCount: Number.isFinite(base.entityCount) ? Number(base.entityCount) : null,
     scopedEntities: Number.isFinite(base.scopedEntities) ? Number(base.scopedEntities) : null,
     scopedTripCount: Number.isFinite(base.scopedTripCount) ? Number(base.scopedTripCount) : null,

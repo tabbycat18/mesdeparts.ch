@@ -16,6 +16,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Mask secrets in logs
+        run: |
+          echo "::add-mask::${{ secrets.NEON_DATABASE_URL }}"
+          echo "::add-mask::${{ secrets.OPENTDATA_GTFS_RT_KEY }}"
+          echo "::add-mask::${{ secrets.OPENTDATA_GTFS_SA_KEY }}"
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -27,7 +33,9 @@ jobs:
 
       - name: Refresh GTFS if needed
         working-directory: realtime_api/backend
-        run: node scripts/refreshGtfsIfNeeded.js
+        run: |
+          set +x
+          node scripts/refreshGtfsIfNeeded.js
         env:
           DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
           OPENTDATA_GTFS_RT_KEY: ${{ secrets.OPENTDATA_GTFS_RT_KEY }}
@@ -36,6 +44,7 @@ jobs:
       - name: Verify canonical stop_search_index state
         working-directory: realtime_api/backend
         run: |
+          set +x
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
           DO $$
           DECLARE

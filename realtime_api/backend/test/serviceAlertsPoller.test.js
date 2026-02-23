@@ -15,6 +15,14 @@ function rateLimitResponse() {
   };
 }
 
+function okResponse(payload, etag = "etag-200") {
+  return {
+    status: 200,
+    headers: new Headers({ etag }),
+    arrayBuffer: async () => Buffer.from(payload),
+  };
+}
+
 test("service alerts poller tick calls upstream once and returns >=60s backoff on 429", async () => {
   const createLaServiceAlertsPoller = await loadPollerFactory();
   let fetchCalls = 0;
@@ -70,4 +78,30 @@ test("service alerts poller run loop sleeps backoff before any next upstream fet
   await assert.rejects(() => poller.runForever(), stop);
   assert.equal(fetchCalls, 1);
   assert.ok(Number.isFinite(sleptMs) && sleptMs >= 60_000);
+});
+
+test("service alerts poller skips payload upsert on unchanged 200 payload within write interval", async () => {
+  const createLaServiceAlertsPoller = await loadPollerFactory();
+  const payload = Buffer.from("same-alerts-payload");
+  const upsertCalls = [];
+  const poller = createLaServiceAlertsPoller({
+    token: "test-token",
+    fetchLike: async () => okResponse(payload, "etag-same"),
+    getRtCacheLike: async () => ({
+      payloadBytes: payload,
+      fetched_at: new Date(Date.now() - 2_000),
+      etag: "etag-same",
+      last_status: 200,
+      last_error: null,
+    }),
+    upsertRtCacheLike: async (...args) => {
+      upsertCalls.push(args);
+      return null;
+    },
+    logLike: () => {},
+  });
+
+  const waitMs = await poller.tick();
+  assert.equal(waitMs, 60_000);
+  assert.equal(upsertCalls.length, 0);
 });

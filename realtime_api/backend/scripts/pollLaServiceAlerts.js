@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { createHash } from "node:crypto";
 
 import {
   LA_GTFS_RT_SERVICE_ALERTS_URL,
@@ -27,7 +28,12 @@ const BACKOFF_429_BASE_MS = 60_000;
 const BACKOFF_429_MAX_MS = 10 * 60_000;
 const BACKOFF_ERR_BASE_MS = 15_000;
 const BACKOFF_ERR_MAX_MS = 2 * 60_000;
+const RT_CACHE_MIN_WRITE_INTERVAL_MS = Math.max(
+  5_000,
+  Number(process.env.RT_CACHE_MIN_WRITE_INTERVAL_MS || "30000")
+);
 const FEED_KEY = LA_SERVICEALERTS_FEED_KEY;
+const FEED_WRITE_LOCK_ID = 7_483_922;
 const UPSTREAM_URL =
   String(process.env.LA_GTFS_SA_URL || "").trim() || LA_GTFS_RT_SERVICE_ALERTS_URL;
 
@@ -90,6 +96,23 @@ function calcAgeMs(fetchedAt) {
   return Math.max(0, Date.now() - ms);
 }
 
+function payloadSha256Hex(payloadBytes) {
+  const payloadBuffer = Buffer.isBuffer(payloadBytes)
+    ? payloadBytes
+    : Buffer.from(payloadBytes || []);
+  if (!payloadBuffer.length) return null;
+  return createHash("sha256").update(payloadBuffer).digest("hex");
+}
+
+function shouldSkipUnchangedPayloadWrite(cacheRow, payloadBytes, currentAgeMs) {
+  if (!cacheRow?.payloadBytes) return false;
+  if (!Number.isFinite(currentAgeMs) || currentAgeMs >= RT_CACHE_MIN_WRITE_INTERVAL_MS) return false;
+  const incomingHash = payloadSha256Hex(payloadBytes);
+  const existingHash = payloadSha256Hex(cacheRow.payloadBytes);
+  if (!incomingHash || !existingHash) return false;
+  return incomingHash === existingHash;
+}
+
 function sleep(ms) {
   const timeoutMs = Math.max(0, Number(ms) || 0);
   return new Promise((resolve) => setTimeout(resolve, timeoutMs));
@@ -147,16 +170,20 @@ export function createLaServiceAlertsPoller({
   }
 
   async function persistStatusKeepingPayload(cacheRow, { status, errorText, etag, updateFetchedAt }) {
-    if (!cacheRow?.payloadBytes) return false;
-    await upsertRtCacheLike(
+    if (!cacheRow?.payloadBytes) return { updated: false, lockSkipped: false };
+    const writeResult = await upsertRtCacheLike(
       feedKey,
       cacheRow.payloadBytes,
       updateFetchedAt ? new Date(nowLike()) : cacheRow.fetched_at,
       toTextOrNull(etag) || toTextOrNull(cacheRow.etag),
       status == null ? null : Number(status),
-      toTextOrNull(errorText)
+      toTextOrNull(errorText),
+      { writeLockId: FEED_WRITE_LOCK_ID }
     );
-    return true;
+    return {
+      updated: writeResult?.writeSkippedByLock !== true,
+      lockSkipped: writeResult?.writeSkippedByLock === true,
+    };
   }
 
   async function fetchServiceAlertsBytes({ etag }) {
@@ -219,7 +246,35 @@ export function createLaServiceAlertsPoller({
 
     if (response.status === 200) {
       const payloadBytes = Buffer.from(await response.arrayBuffer());
-      await upsertRtCacheLike(feedKey, payloadBytes, new Date(nowLike()), responseEtag, 200, null);
+      if (shouldSkipUnchangedPayloadWrite(cacheRow, payloadBytes, currentAgeMs)) {
+        resetBackoffState();
+        logLine("service_alerts_poller_fetch_200_unchanged_skip_write", {
+          status: 200,
+          backoffMs: 0,
+          lastFetchedAgeMs: currentAgeMs,
+          etagPresent: !!responseEtag,
+        });
+        return INTERVAL_MS;
+      }
+      const writeResult = await upsertRtCacheLike(
+        feedKey,
+        payloadBytes,
+        new Date(nowLike()),
+        responseEtag,
+        200,
+        null,
+        { writeLockId: FEED_WRITE_LOCK_ID }
+      );
+      if (writeResult?.writeSkippedByLock === true) {
+        resetBackoffState();
+        logLine("service_alerts_poller_write_locked_skip", {
+          status: 200,
+          backoffMs: 0,
+          lastFetchedAgeMs: currentAgeMs,
+          etagPresent: !!responseEtag,
+        });
+        return INTERVAL_MS;
+      }
       resetBackoffState();
       logLine("service_alerts_poller_fetch_200", {
         status: 200,
@@ -231,13 +286,34 @@ export function createLaServiceAlertsPoller({
     }
 
     if (response.status === 304) {
-      const updated = await persistStatusKeepingPayload(cacheRow, {
+      if (Number.isFinite(currentAgeMs) && currentAgeMs < RT_CACHE_MIN_WRITE_INTERVAL_MS) {
+        resetBackoffState();
+        logLine("service_alerts_poller_fetch_304_skip_write", {
+          status: 304,
+          backoffMs: 0,
+          lastFetchedAgeMs: currentAgeMs,
+          etagPresent: !!responseEtag,
+        });
+        return INTERVAL_MS;
+      }
+
+      const persisted = await persistStatusKeepingPayload(cacheRow, {
         status: 304,
         errorText: null,
         etag: responseEtag,
         updateFetchedAt: true,
       });
-      if (!updated) {
+      if (!persisted.updated) {
+        if (persisted.lockSkipped) {
+          resetBackoffState();
+          logLine("service_alerts_poller_write_locked_skip", {
+            status: 304,
+            backoffMs: 0,
+            lastFetchedAgeMs: calcAgeMs(cacheRow?.fetched_at),
+            etagPresent: !!responseEtag,
+          });
+          return INTERVAL_MS;
+        }
         const backoffMs = backoffErrMs();
         consecutive429Count = 0;
         logLine("service_alerts_poller_error_backoff", {
