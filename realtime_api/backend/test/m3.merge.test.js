@@ -309,6 +309,148 @@ test("applyTripUpdates matches stop variant without sequence as stop_noseq", () 
   assert.equal(merged[0]._rawRtDelaySecUsed, 126);
 });
 
+// ---------------------------------------------------------------------------
+// Regression B: numeric root (parent) stop ID matching
+// ---------------------------------------------------------------------------
+//
+// Swiss static GTFS uses child stop IDs like "8587387:0:A" (platform-level),
+// while RT feeds often publish the parent/numeric stop ID "8587387".
+// applyTripUpdates must match across this boundary.
+//
+// Also includes a negative test to confirm a *different* numeric root (a
+// distinct station) does NOT produce a false match.
+
+test("applyTripUpdates: GTFS child stop '8587387:0:A' matches RT numeric root '8587387' (platform/parent variant)", () => {
+  const scheduledTime = new Date("2026-02-22T10:00:00.000Z");
+  const realtimeTime  = new Date("2026-02-22T10:02:00.000Z"); // 2-min delay
+
+  const baseRows = [
+    {
+      trip_id: "trip-bel-air",
+      stop_id: "8587387:0:A",      // child stop from static GTFS
+      stop_sequence: 5,
+      category: "B",
+      number: "3",
+      line: "3",
+      name: "3",
+      destination: "Genève, Nations",
+      operator: "TPG",
+      scheduledDeparture: scheduledTime.toISOString(),
+      realtimeDeparture: scheduledTime.toISOString(),
+      serviceDate: "20260222",
+      delayMin: 0,
+      minutesLeft: 0,
+      platform: "A",
+      platformChanged: false,
+      source: "scheduled",
+      tags: [],
+    },
+  ];
+
+  const tripUpdates = {
+    entities: [
+      {
+        tripUpdate: {
+          trip: {
+            tripId: "trip-bel-air",
+            startDate: "20260222",
+            scheduleRelationship: "SCHEDULED",
+          },
+          stopTimeUpdate: [
+            {
+              stopId: "8587387",    // numeric root from RT feed
+              stopSequence: 5,
+              departure: {
+                delay: 120,         // 2 minutes
+                time: Math.floor(realtimeTime.getTime() / 1000),
+              },
+            },
+          ],
+        },
+      },
+    ],
+  };
+
+  const merged = applyTripUpdates(baseRows, tripUpdates);
+
+  assert.equal(merged.length, 1);
+  const row = merged[0];
+  assert.equal(row._rtMatched, true,  "GTFS child stop must match RT numeric root");
+  assert.equal(row.delayMin, 2,       "2-minute delay should be applied");
+  assert.equal(
+    row.realtimeDeparture,
+    realtimeTime.toISOString(),
+    "realtimeDeparture must reflect the delay"
+  );
+  assert.equal(row.source, "tripupdate");
+});
+
+test("applyTripUpdates: numeric root from a *different* station does NOT produce stop-level match (negative guard)", () => {
+  // "8587389" is a completely different station than "8587387".
+  // Stop-level matching must be exact per variant — wrong root must not match.
+  //
+  // NOTE: The trip-fallback mechanism (propagates delay to nearby stop_sequences)
+  // is intentionally avoided here by placing the RT stop_sequence far outside
+  // the default gap window (RT_TRIP_FALLBACK_MAX_SEQ_GAP = 4):
+  //   |50 - 5| = 45  →  no trip-fallback match either.
+  const scheduledTime = new Date("2026-02-22T10:00:00.000Z");
+
+  const baseRows = [
+    {
+      trip_id: "trip-bel-air-neg",
+      stop_id: "8587387:0:A",
+      stop_sequence: 5,
+      category: "B",
+      number: "3",
+      line: "3",
+      name: "3",
+      destination: "Genève, Nations",
+      operator: "TPG",
+      scheduledDeparture: scheduledTime.toISOString(),
+      realtimeDeparture: scheduledTime.toISOString(),
+      serviceDate: "20260222",
+      delayMin: 0,
+      minutesLeft: 0,
+      platform: "A",
+      platformChanged: false,
+      source: "scheduled",
+      tags: [],
+    },
+  ];
+
+  const tripUpdates = {
+    entities: [
+      {
+        tripUpdate: {
+          trip: {
+            tripId: "trip-bel-air-neg",
+            startDate: "20260222",
+            scheduleRelationship: "SCHEDULED",
+          },
+          stopTimeUpdate: [
+            {
+              stopId: "8587389",    // DIFFERENT numeric root — wrong station
+              stopSequence: 50,     // far from seq 5 → trip-fallback gap 45 > max(4) → no fallback
+              departure: {
+                delay: 120,
+                time: Math.floor(new Date("2026-02-22T10:02:00.000Z").getTime() / 1000),
+              },
+            },
+          ],
+        },
+      },
+    ],
+  };
+
+  const merged = applyTripUpdates(baseRows, tripUpdates);
+
+  assert.equal(merged.length, 1);
+  const row = merged[0];
+  assert.equal(row._rtMatched, false, "Different numeric root must NOT produce stop-level match");
+  assert.equal(row.delayMin, 0,       "No delay should be applied for wrong station");
+  assert.equal(row.source, "scheduled");
+});
+
 test("applyTripUpdates marks platformChanged when RT stop_id points to another platform", () => {
   const baseRows = [
     {

@@ -248,3 +248,76 @@ test("loadScopedRtFromCache applies scoped filtering by trip/stop/window", async
   assert.equal(Array.isArray(out.tripUpdates.entities), true);
   assert.equal(out.tripUpdates.entities.length, 2);
 });
+
+// ---------------------------------------------------------------------------
+// Regression: ADDED trip with numeric root stop ID must be scoped in when
+// scopeStopIds contains child stop IDs.
+//
+// Before the fix, loadScopedRtFromCache.stopIdVariants() did not include the
+// numeric root, so scopeStops built from "8503000:0:3" (child stop) did not
+// contain "8503000". An ADDED RT entity with stop_id "8503000" was therefore
+// excluded by the stop-based inclusion filter.
+// ---------------------------------------------------------------------------
+
+test("loadScopedRtFromCache: ADDED trip with numeric root stop_id is scoped in via child scopeStopId (regression)", async () => {
+  const loadScopedRtFromCache = await loadScopedRtFromCacheFn();
+  const nowMs = Date.now();
+  const nowSec = Math.floor(nowMs / 1000);
+
+  const entities = [
+    {
+      id: "added-numeric-root",
+      trip_update: {
+        trip: {
+          trip_id: "trip-ev-added",
+          schedule_relationship: "ADDED",
+        },
+        stop_time_update: [
+          {
+            stop_id: "8503000",     // numeric root — no trip_id in scopeTrips
+            stop_sequence: 1,
+            departure: {
+              time: nowSec + 300,   // within window
+            },
+          },
+        ],
+      },
+    },
+    {
+      id: "unrelated-added",
+      trip_update: {
+        trip: {
+          trip_id: "trip-ev-other",
+          schedule_relationship: "ADDED",
+        },
+        stop_time_update: [
+          {
+            stop_id: "9990000",     // completely different station — must be excluded
+            stop_sequence: 1,
+            departure: {
+              time: nowSec + 300,
+            },
+          },
+        ],
+      },
+    },
+  ];
+
+  const out = await loadScopedRtFromCache({
+    enabled: true,
+    nowMs,
+    windowStartEpochSec: nowSec - 60,
+    windowEndEpochSec: nowSec + 900,
+    scopeTripIds: [],                        // no scheduled trips in scope
+    scopeStopIds: ["8503000:0:3"],           // child stop — numeric root "8503000" must expand
+    readCacheLike: async () => makeCachePayload({ entities }),
+  });
+
+  assert.equal(out.meta.applied, true, "RT should be applied");
+  assert.equal(out.tripUpdates.entities.length, 1, "only the matching ADDED entity should be included");
+  assert.equal(
+    out.tripUpdates.entities[0].trip_update.trip.trip_id,
+    "trip-ev-added",
+    "correct entity included"
+  );
+});

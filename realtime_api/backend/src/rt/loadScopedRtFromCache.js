@@ -60,6 +60,12 @@ function stopIdVariants(stopId) {
       out.add(parts.slice(0, -1).join(":"));
     }
   }
+  // Add numeric root (e.g. "8587387" from "8587387:0:A").
+  // RT feeds often use the parent numeric stop ID while static GTFS uses child stops.
+  // Guard: only if the first colon-segment is all digits (Swiss UIC stop IDs).
+  if (parts.length >= 2 && /^\d+$/.test(parts[0])) {
+    out.add(parts[0]);
+  }
   return Array.from(out);
 }
 
