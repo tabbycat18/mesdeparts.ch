@@ -784,7 +784,7 @@ test("stationboard route does not call upstream fetch on request path", async ()
   }
 });
 
-test("stationboard route returns 504 when build times out and no cache exists", async () => {
+test("stationboard route returns static-only 200 when build times out and no cache exists", async () => {
   await withEnv("STATIONBOARD_ROUTE_TIMEOUT_MS", "20", async () => {
     const handler = createRouteHandler({
       getStationboardLike: async () => {
@@ -805,11 +805,55 @@ test("stationboard route returns 504 when build times out and no cache exists", 
       query: {
         stop_id: "Parent8509999",
         lang: "fr",
+        debug: "1",
       },
     });
-    assert.equal(res.statusCode, 504);
-    assert.equal(res.body?.error, "stationboard_timeout");
+    assert.equal(res.statusCode, 200);
+    assert.ok(Array.isArray(res.body?.departures));
+    assert.equal(res.body.departures.length, 0);
+    assert.equal(res.body?.debug?.degraded, true);
+    assert.ok(
+      Array.isArray(res.body?.debug?.skippedSteps) &&
+        res.body.debug.skippedSteps.includes("build_timeout_static_fallback")
+    );
+    assert.equal(res.headers["x-md-stale"], "1");
   });
+});
+
+test("stationboard route returns cached stale payload when builder throws db timeout", async () => {
+  let callCount = 0;
+  const handler = createRouteHandler({
+    getStationboardLike: async (input) => {
+      callCount += 1;
+      if (callCount === 1) {
+        return {
+          station: { id: input.stopId || "Parent8501120", name: "Lausanne" },
+          departures: [{ line: "R1", destination: "Renens" }],
+        };
+      }
+      const err = new Error("query timeout");
+      err.code = "query_timeout";
+      throw err;
+    },
+    resolveStopLike: makeResolveStopStub({
+      "stop:Parent8501120": { resolvedStopId: "Parent8501120", resolvedRootId: "Parent8501120" },
+    }),
+    dbQueryLike: async () => ({ rows: [] }),
+    logger: { log() {}, error() {} },
+  });
+
+  const first = await invokeRoute(handler, {
+    query: { stop_id: "Parent8501120", lang: "fr" },
+  });
+  assert.equal(first.statusCode, 200);
+  assert.equal(first.body?.departures?.[0]?.line, "R1");
+
+  const second = await invokeRoute(handler, {
+    query: { stop_id: "Parent8501120", lang: "fr" },
+  });
+  assert.equal(second.statusCode, 200);
+  assert.equal(second.body?.departures?.[0]?.line, "R1");
+  assert.equal(second.headers["x-md-stale"], "1");
 });
 
 test("stationboard route coalesces identical in-flight builds", async () => {

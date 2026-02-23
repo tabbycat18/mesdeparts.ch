@@ -842,6 +842,7 @@ export async function getStationboard({
     buildStationboardMs: 0,
     sparseRetryTriggered: false,
     sparseRetryMs: 0,
+    stopScopeFallbackMs: 0,
     scopeStopIdsMs: 0,
     alertsWaitMs: 0,
     alertsMergeMs: 0,
@@ -1025,6 +1026,8 @@ export async function getStationboard({
   const buildLatencySafeDebug = ({ boardTimings = null } = {}) => ({
     degradedMode,
     degradedReasons: Array.from(new Set(degradedReasons)),
+    degraded: degradedMode,
+    skippedSteps: Array.from(new Set(degradedReasons)),
     totalBudgetMs,
     remainingBudgetMs: Math.max(0, Math.round(budgetLeft())),
     lowBudgetThresholdMs: LOW_BUDGET_THRESHOLD_MS,
@@ -1052,6 +1055,8 @@ export async function getStationboard({
       orchestrator: { ...timing },
       buildStationboard: boardTimings,
     },
+    buildSteps:
+      board && board.debugMeta && board.debugMeta.steps ? board.debugMeta.steps : null,
   });
   const resolvedScope = {
     stationGroupId: locationId,
@@ -1071,6 +1076,8 @@ export async function getStationboard({
     debug: debugEnabled,
     rtDebugMode,
     requestId,
+    requestStartedMs,
+    requestBudgetMs: totalBudgetMs,
     resolvedScope,
     debugLog: (event, payload) => {
       debugLog(event, payload);
@@ -1115,10 +1122,14 @@ export async function getStationboard({
       const canonicalIsParent = String(resolved?.canonical?.kind || "").trim() === "parent";
       const childIds = uniqueStopIds((resolved?.children || []).map((child) => child?.id));
       if (canonicalIsParent && childIds.length > 0) {
+        const scopeFallbackStartedMs = performance.now();
         const childrenScoped = await buildStationboard(locationId, {
           ...buildOptionsBase,
           scopeQueryMode: "children_only",
         });
+        timing.stopScopeFallbackMs = roundMs(
+          performance.now() - scopeFallbackStartedMs
+        );
         const childRowCount = sumScheduledRows(childrenScoped);
         if ((childrenScoped?.departures?.length || 0) > 0 || childRowCount > 0) {
           board = childrenScoped;
@@ -1127,10 +1138,14 @@ export async function getStationboard({
           debugState.flags.push("resolution:children_fallback_empty");
         }
       } else if (!canonicalIsParent) {
+        const scopeFallbackStartedMs = performance.now();
         const parentScoped = await buildStationboard(locationId, {
           ...buildOptionsBase,
           scopeQueryMode: "parent_only",
         });
+        timing.stopScopeFallbackMs = roundMs(
+          performance.now() - scopeFallbackStartedMs
+        );
         const parentRowCount = sumScheduledRows(parentScoped);
         if ((parentScoped?.departures?.length || 0) > 0 || parentRowCount > 0) {
           board = parentScoped;
@@ -1310,6 +1325,23 @@ export async function getStationboard({
       outcome: "ok_no_alerts",
       departures: baseResponse.departures.length,
       buildTimings: board?.debugMeta?.timings || null,
+      buildSteps: board?.debugMeta?.steps || null,
+    });
+    console.info("[API] /api/stationboard timing", {
+      requestId,
+      stopId: locationId,
+      windowMinutes: baseWindowMinutes,
+      debug: debugEnabled,
+      totalMs: roundMs(performance.now() - requestStartedMs),
+      resolveStopMs: timing.resolveStopMs,
+      sparseRetryMs: timing.sparseRetryMs,
+      stopScopeFallbackMs: timing.stopScopeFallbackMs,
+      alertsWaitMs: timing.alertsWaitMs,
+      alertsMergeMs: timing.alertsMergeMs,
+      buildTimings: board?.debugMeta?.timings || null,
+      buildSteps: board?.debugMeta?.steps || null,
+      degradedMode,
+      skippedSteps: Array.from(new Set(degradedReasons)),
     });
     return baseResponse;
   }
@@ -1367,6 +1399,23 @@ export async function getStationboard({
       outcome: "ok_budget_exhausted_no_alerts",
       departures: baseResponse.departures.length,
       buildTimings: board?.debugMeta?.timings || null,
+      buildSteps: board?.debugMeta?.steps || null,
+    });
+    console.info("[API] /api/stationboard timing", {
+      requestId,
+      stopId: locationId,
+      windowMinutes: baseWindowMinutes,
+      debug: debugEnabled,
+      totalMs: roundMs(performance.now() - requestStartedMs),
+      resolveStopMs: timing.resolveStopMs,
+      sparseRetryMs: timing.sparseRetryMs,
+      stopScopeFallbackMs: timing.stopScopeFallbackMs,
+      alertsWaitMs: timing.alertsWaitMs,
+      alertsMergeMs: timing.alertsMergeMs,
+      buildTimings: board?.debugMeta?.timings || null,
+      buildSteps: board?.debugMeta?.steps || null,
+      degradedMode,
+      skippedSteps: Array.from(new Set(degradedReasons)),
     });
     return baseResponse;
   }
@@ -1557,9 +1606,29 @@ export async function getStationboard({
       departures: response.departures.length,
       banners: Array.isArray(response?.banners) ? response.banners.length : 0,
       buildTimings: board?.debugMeta?.timings || null,
+      buildSteps: board?.debugMeta?.steps || null,
+    });
+    console.info("[API] /api/stationboard timing", {
+      requestId,
+      stopId: locationId,
+      windowMinutes: baseWindowMinutes,
+      debug: debugEnabled,
+      totalMs: roundMs(performance.now() - requestStartedMs),
+      resolveStopMs: timing.resolveStopMs,
+      sparseRetryMs: timing.sparseRetryMs,
+      stopScopeFallbackMs: timing.stopScopeFallbackMs,
+      alertsWaitMs: timing.alertsWaitMs,
+      alertsMergeMs: timing.alertsMergeMs,
+      supplementMs: timing.supplementMs,
+      buildTimings: board?.debugMeta?.timings || null,
+      buildSteps: board?.debugMeta?.steps || null,
+      degradedMode,
+      skippedSteps: Array.from(new Set(degradedReasons)),
     });
     return response;
   } catch (err) {
+    degradedMode = true;
+    degradedReasons.push("alerts_failed_fallback_static");
     const response = {
       ...baseResponse,
       banners: [],
@@ -1610,6 +1679,24 @@ export async function getStationboard({
       departures: response.departures.length,
       error: String(err?.message || err),
       buildTimings: board?.debugMeta?.timings || null,
+      buildSteps: board?.debugMeta?.steps || null,
+    });
+    console.info("[API] /api/stationboard timing", {
+      requestId,
+      stopId: locationId,
+      windowMinutes: baseWindowMinutes,
+      debug: debugEnabled,
+      totalMs: roundMs(performance.now() - requestStartedMs),
+      resolveStopMs: timing.resolveStopMs,
+      sparseRetryMs: timing.sparseRetryMs,
+      stopScopeFallbackMs: timing.stopScopeFallbackMs,
+      alertsWaitMs: timing.alertsWaitMs,
+      alertsMergeMs: timing.alertsMergeMs,
+      buildTimings: board?.debugMeta?.timings || null,
+      buildSteps: board?.debugMeta?.steps || null,
+      degradedMode,
+      skippedSteps: Array.from(new Set(degradedReasons)),
+      error: String(err?.message || err),
     });
     return response;
   }

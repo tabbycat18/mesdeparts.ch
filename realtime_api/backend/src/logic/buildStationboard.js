@@ -104,6 +104,28 @@ async function runTimedQuery(sql, params, timeoutMs) {
     text: sql,
     values: params,
     query_timeout: effectiveTimeoutMs,
+    statement_timeout: effectiveTimeoutMs,
+  });
+}
+
+function withTimeout(promise, timeoutMs, code = "timeout") {
+  const effectiveTimeoutMs = Math.max(100, Math.trunc(Number(timeoutMs) || 0));
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      const err = new Error(code);
+      err.code = code;
+      reject(err);
+    }, effectiveTimeoutMs);
+
+    Promise.resolve(promise)
+      .then((value) => {
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
   });
 }
 
@@ -248,6 +270,8 @@ export async function buildStationboard(locationId, options = {}) {
     debug = false,
     debugLog,
     requestId = "",
+    requestStartedMs = null,
+    requestBudgetMs = null,
     resolvedScope = null,
     scopeQueryMode = "mixed",
     rtDebugMode = "",
@@ -256,14 +280,39 @@ export async function buildStationboard(locationId, options = {}) {
   const debugEnabled = debug === true;
   const requestDebugLog = typeof debugLog === "function" ? debugLog : null;
   const requestStartMs = performance.now();
+  const sharedRequestStartMs = Number.isFinite(Number(requestStartedMs))
+    ? Number(requestStartedMs)
+    : requestStartMs;
+  const routeTimeoutMs = Math.max(
+    100,
+    Number(process.env.STATIONBOARD_ROUTE_TIMEOUT_MS || "6500")
+  );
+  const totalBudgetMs = Number.isFinite(Number(requestBudgetMs))
+    ? Math.max(100, Number(requestBudgetMs))
+    : Math.min(routeTimeoutMs, 5000);
+  const lowBudgetThresholdMs = Math.max(
+    250,
+    Math.min(800, Math.round(totalBudgetMs * 0.08))
+  );
+  const budgetLeftMs = () => totalBudgetMs - (performance.now() - sharedRequestStartMs);
+  const isBudgetLow = () => budgetLeftMs() <= lowBudgetThresholdMs;
   const timings = {
     requestId: String(requestId || ""),
-    stopScopeMs: 0,
+    stopScopeSqlMs: 0,
     mainSqlMs: 0,
+    fallbackSqlMs: 0,
     terminusSqlMs: 0,
     rtLoadMs: 0,
-    rtMergeMs: 0,
+    rtApplyMs: 0,
     totalMs: 0,
+  };
+  const steps = {
+    stopScopeSql: "pending",
+    mainSql: "pending",
+    fallbackSql: "skipped",
+    terminusSql: "pending",
+    rtLoad: "pending",
+    rtApply: "pending",
   };
   // Pull more SQL rows than the final response limit because we apply a
   // realtime/past-window filter afterwards.
@@ -449,9 +498,15 @@ export async function buildStationboard(locationId, options = {}) {
         requestId: timings.requestId,
         locationId,
       });
-      timings.stopScopeMs = Number((performance.now() - stopScopeStartedMs).toFixed(1));
+      timings.stopScopeSqlMs = Number((performance.now() - stopScopeStartedMs).toFixed(1));
+      steps.stopScopeSql = "ok";
       timings.totalMs = Number((performance.now() - requestStartMs).toFixed(1));
+      steps.mainSql = "skipped";
+      steps.terminusSql = "skipped";
+      steps.rtLoad = "skipped";
+      steps.rtApply = "skipped";
       debugMeta.timings = timings;
+      debugMeta.steps = steps;
       return {
         station: { id: locationId || "", name: locationId || "" },
         departures: [],
@@ -493,7 +548,8 @@ export async function buildStationboard(locationId, options = {}) {
 
     childStops = groupRes.rows || [];
   }
-  timings.stopScopeMs = Number((performance.now() - stopScopeStartedMs).toFixed(1));
+  timings.stopScopeSqlMs = Number((performance.now() - stopScopeStartedMs).toFixed(1));
+  steps.stopScopeSql = "ok";
 
   const platformByStopId = new Map(
     childStops.map((row) => [row.stop_id, row.platform_code || ""])
@@ -560,16 +616,21 @@ export async function buildStationboard(locationId, options = {}) {
         [stopIds, fromSeconds, toSeconds, queryLimit, serviceDateInt, serviceDow],
         mainQueryTimeoutMs
       );
+      steps.mainSql = "ok";
     } catch (err) {
       usedFallback = true;
+      steps.mainSql = "timeout_or_error";
+      steps.fallbackSql = "ok";
       console.warn(`[buildStationboard] ${queryLabel} main query failed, using fallback`, {
         message: String(err?.message || err),
       });
+      const fallbackStartedMs = performance.now();
       rowsRes = await runTimedQuery(
         STATIONBOARD_FALLBACK_SQL,
         [stopIds, fromSeconds, toSeconds, queryLimit],
         fallbackQueryTimeoutMs
       );
+      timings.fallbackSqlMs += Number((performance.now() - fallbackStartedMs).toFixed(1));
     }
     const queryMs = Number((performance.now() - queryStartedMs).toFixed(1));
     timings.mainSqlMs += queryMs;
@@ -685,8 +746,13 @@ export async function buildStationboard(locationId, options = {}) {
 
   if (!rows.length) {
     timings.mainSqlMs = Number(timings.mainSqlMs.toFixed(1));
+    timings.fallbackSqlMs = Number(timings.fallbackSqlMs.toFixed(1));
     timings.totalMs = Number((performance.now() - requestStartMs).toFixed(1));
+    steps.terminusSql = "skipped";
+    steps.rtLoad = "skipped";
+    steps.rtApply = "skipped";
     debugMeta.timings = timings;
+    debugMeta.steps = steps;
     safeDebugLog(requestDebugLog, "build.stage_counts", {
       stage: "scheduled_rows",
       count: 0,
@@ -731,9 +797,13 @@ export async function buildStationboard(locationId, options = {}) {
       console.warn("[buildStationboard] terminus lookup timed out, using trip headsign fallback", {
         message: String(err?.message || err),
       });
+      steps.terminusSql = "timeout_or_error";
     } finally {
       timings.terminusSqlMs = Number((performance.now() - terminusStartedMs).toFixed(1));
+      if (steps.terminusSql === "pending") steps.terminusSql = "ok";
     }
+  } else {
+    steps.terminusSql = "skipped";
   }
 
   const baseRows = [];
@@ -872,38 +942,65 @@ export async function buildStationboard(locationId, options = {}) {
   const rtWindowEndEpochSec = Math.floor(
     (now.getTime() + windowMinutes * 60 * 1000) / 1000
   );
-  const rtLoadResult = await loadScopedRtFromCache({
-    enabled: rtEnabledForRequest,
-    nowMs: now.getTime(),
-    windowStartEpochSec: rtWindowStartEpochSec,
-    windowEndEpochSec: rtWindowEndEpochSec,
-    scopeTripIds: tripIds,
-    scopeStopIds: queryStopIds,
-    maxProcessMs: rtLoadTimeoutMs,
-  }).catch((err) => {
-    console.warn("[GTFS-RT] scoped cache load failed, continuing without RT:", err);
-    return {
-      tripUpdates: { entities: [], entity: [] },
-      meta: {
-        applied: false,
-        reason: "decode_failed",
-        available: false,
-        fetchedAt: null,
-        ageSeconds: null,
-        freshnessMaxAgeSeconds: 45,
-        cacheStatus: "ERROR",
-        hasPayload: false,
-        lastStatus: null,
-        lastError: String(err?.message || err),
-        etag: null,
-        entityCount: 0,
-        scannedEntities: 0,
-        scopedEntities: 0,
-        scopedStopUpdates: 0,
-        processingMs: 0,
-      },
-    };
-  });
+  const skipRtForBudget = isBudgetLow();
+  const rtLoadResult = skipRtForBudget
+    ? {
+        tripUpdates: { entities: [], entity: [] },
+        meta: {
+          applied: false,
+          reason: "budget_skipped",
+          available: false,
+          fetchedAt: null,
+          ageSeconds: null,
+          freshnessMaxAgeSeconds: 45,
+          cacheStatus: "SKIPPED",
+          hasPayload: false,
+          lastStatus: null,
+          lastError: null,
+          etag: null,
+          entityCount: 0,
+          scannedEntities: 0,
+          scopedEntities: 0,
+          scopedStopUpdates: 0,
+          processingMs: 0,
+        },
+      }
+    : await withTimeout(
+        loadScopedRtFromCache({
+          enabled: rtEnabledForRequest,
+          nowMs: now.getTime(),
+          windowStartEpochSec: rtWindowStartEpochSec,
+          windowEndEpochSec: rtWindowEndEpochSec,
+          scopeTripIds: tripIds,
+          scopeStopIds: queryStopIds,
+          maxProcessMs: rtLoadTimeoutMs,
+        }),
+        rtLoadTimeoutMs + 150,
+        "rt_load_timeout"
+      ).catch((err) => {
+        console.warn("[GTFS-RT] scoped cache load failed, continuing without RT:", err);
+        return {
+          tripUpdates: { entities: [], entity: [] },
+          meta: {
+            applied: false,
+            reason: "decode_failed",
+            available: false,
+            fetchedAt: null,
+            ageSeconds: null,
+            freshnessMaxAgeSeconds: 45,
+            cacheStatus: "ERROR",
+            hasPayload: false,
+            lastStatus: null,
+            lastError: String(err?.message || err),
+            etag: null,
+            entityCount: 0,
+            scannedEntities: 0,
+            scopedEntities: 0,
+            scopedStopUpdates: 0,
+            processingMs: 0,
+          },
+        };
+      });
   const scopedTripUpdates =
     rtLoadResult?.tripUpdates && typeof rtLoadResult.tripUpdates === "object"
       ? rtLoadResult.tripUpdates
@@ -916,6 +1013,7 @@ export async function buildStationboard(locationId, options = {}) {
         available: false,
       };
   timings.rtLoadMs = Number((performance.now() - rtLoadStartedMs).toFixed(1));
+  steps.rtLoad = skipRtForBudget ? "skipped_budget" : "ok";
   debugMeta.rtTripUpdates = {
     ...rtMeta,
     rtEnabledForRequest,
@@ -926,9 +1024,11 @@ export async function buildStationboard(locationId, options = {}) {
   };
 
   const rtMergeStartedMs = performance.now();
-  const mergedScheduledRows = applyTripUpdates(baseRows, scopedTripUpdates, {
-    platformByStopId,
-  });
+  const mergedScheduledRows = skipRtForBudget
+    ? baseRows
+    : applyTripUpdates(baseRows, scopedTripUpdates, {
+        platformByStopId,
+      });
   traceCancellation("after_apply_trip_updates", mergedScheduledRows);
   debugMeta.stageCounts.push({
     stage: "after_trip_updates_applied",
@@ -936,7 +1036,7 @@ export async function buildStationboard(locationId, options = {}) {
     cancelled: countCancelled(mergedScheduledRows),
   });
   safeDebugLog(requestDebugLog, "build.stage_counts", debugMeta.stageCounts[debugMeta.stageCounts.length - 1]);
-  const addedRows = rtMeta.applied
+  const addedRows = !skipRtForBudget && rtMeta.applied
     ? applyAddedTrips({
         tripUpdates: scopedTripUpdates,
         stationStopIds: queryStopIds,
@@ -958,7 +1058,8 @@ export async function buildStationboard(locationId, options = {}) {
     mergedByKey.set(key, pickPreferredMergedDeparture(previous, row));
   }
   const mergedRows = Array.from(mergedByKey.values());
-  timings.rtMergeMs = Number((performance.now() - rtMergeStartedMs).toFixed(1));
+  timings.rtApplyMs = Number((performance.now() - rtMergeStartedMs).toFixed(1));
+  steps.rtApply = skipRtForBudget ? "skipped_budget" : "ok";
   traceCancellation("after_added_trip_merge", mergedRows);
   debugMeta.stageCounts.push({
     stage: "after_dedup",
@@ -1035,8 +1136,29 @@ export async function buildStationboard(locationId, options = {}) {
   }
 
   timings.mainSqlMs = Number(timings.mainSqlMs.toFixed(1));
+  timings.fallbackSqlMs = Number(timings.fallbackSqlMs.toFixed(1));
   timings.totalMs = Number((performance.now() - requestStartMs).toFixed(1));
   debugMeta.timings = timings;
+  debugMeta.steps = steps;
+  console.info("[buildStationboard] timing", {
+    requestId: timings.requestId,
+    stopId: locationId,
+    windowMinutes,
+    debug: debugEnabled,
+    totalMs: timings.totalMs,
+    stopScopeSqlMs: timings.stopScopeSqlMs,
+    mainSqlMs: timings.mainSqlMs,
+    fallbackSqlMs: timings.fallbackSqlMs,
+    terminusSqlMs: timings.terminusSqlMs,
+    rtLoadMs: timings.rtLoadMs,
+    rtApplyMs: timings.rtApplyMs,
+    steps,
+    budget: {
+      totalBudgetMs,
+      remainingBudgetMs: Math.max(0, Math.round(budgetLeftMs())),
+      lowBudgetThresholdMs,
+    },
+  });
   safeDebugLog(requestDebugLog, "build.timings", timings);
 
   return {

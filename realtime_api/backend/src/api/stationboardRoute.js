@@ -1,7 +1,7 @@
 import { performance } from "node:perf_hooks";
 import os from "node:os";
 
-const DEFAULT_STATIONBOARD_ROUTE_TIMEOUT_MS = 6500;
+const DEFAULT_STATIONBOARD_ROUTE_TIMEOUT_MS = 5000;
 const DEFAULT_STATIONBOARD_STALE_CACHE_MS = 90000;
 const DEFAULT_RT_FRESHNESS_THRESHOLD_MS = Math.max(
   5_000,
@@ -23,12 +23,14 @@ const ROUTE_BUILD = String(
   .slice(0, 32);
 const stationboardResponseCache = new Map();
 const stationboardInFlight = new Map();
+let stationboardRequestCounter = 0;
 
 function stationboardRouteTimeoutMs() {
-  return Math.max(
+  const configured = Math.max(
     100,
     Number(process.env.STATIONBOARD_ROUTE_TIMEOUT_MS || String(DEFAULT_STATIONBOARD_ROUTE_TIMEOUT_MS))
   );
+  return Math.min(configured, 5000);
 }
 
 function stationboardStaleCacheMs() {
@@ -258,6 +260,66 @@ function emitStationboardDecisionLog(logger, payload = {}) {
   logger?.log?.("[API] /api/stationboard decision", payload);
 }
 
+function isTimeoutLikeError(err) {
+  const code = text(err?.code).toLowerCase();
+  const message = text(err?.message).toLowerCase();
+  return (
+    code.includes("timeout") ||
+    code === "57014" ||
+    message.includes("timeout") ||
+    message.includes("statement timeout") ||
+    message.includes("query timeout")
+  );
+}
+
+function buildStaticFallbackPayload({
+  stopId,
+  stationName,
+  requestId,
+  reason,
+  includeAlertsRequested,
+  includeAlertsApplied,
+  routeTiming = null,
+  dbPool = null,
+  debug = false,
+}) {
+  const payload = ensureStationboardMetaPayload({
+    station: {
+      id: text(stopId) || "",
+      name: text(stationName) || text(stopId) || "",
+    },
+    departures: [],
+    noService: {
+      reason: "backend_timeout_fallback",
+    },
+    rt: {
+      available: false,
+      applied: false,
+      reason: "budget_skipped",
+      cacheStatus: "SKIPPED",
+      feedKey: DEFAULT_RT_FEED_KEY,
+    },
+    alerts: {
+      available: false,
+      applied: false,
+      reason: "budget_skipped",
+      includeRequested: includeAlertsRequested === true,
+      includeApplied: includeAlertsApplied === true,
+    },
+  });
+  if (debug) {
+    payload.debug = {
+      requestId,
+      degraded: true,
+      degradedMode: true,
+      skippedSteps: [reason],
+      routeTiming,
+      dbPool,
+    };
+  }
+  return payload;
+}
+
 async function defaultGetRtCacheMeta(feedKey) {
   const mod = await import("../db/rtCache.js");
   return mod.getRtCacheMeta(feedKey);
@@ -421,6 +483,7 @@ export function createStationboardRouteHandler({
   getRtCacheMetaLike = defaultGetRtCacheMeta,
   resolveStopLike,
   dbQueryLike,
+  dbPoolLike = null,
   logger = console,
 } = {}) {
   if (typeof getStationboardLike !== "function") {
@@ -459,6 +522,10 @@ export function createStationboardRouteHandler({
       const includeAlertsParsed = parseBooleanish(
         req.query.include_alerts ?? req.query.includeAlerts
       );
+      const alertsFeatureEnabled =
+        String(process.env.STATIONBOARD_ENABLE_ALERTS || "").trim() !== "0";
+      const includeAlertsRequested = includeAlertsParsed !== false;
+      const includeAlertsApplied = alertsFeatureEnabled && includeAlertsRequested;
       const ifBoardParsed = parseBooleanish(
         req.query.if_board ?? req.query.has_board
       );
@@ -487,6 +554,32 @@ export function createStationboardRouteHandler({
         includeAlerts: includeAlertsParsed,
       });
       setResponseHeader(res, "x-md-cache-key", responseCacheKey);
+      stationboardRequestCounter += 1;
+      const shouldLogPoolStats =
+        debug || stationboardRequestCounter % Math.max(1, Number(process.env.STATIONBOARD_DB_POOL_LOG_EVERY_N || "25")) === 0;
+      let dbPoolStats = null;
+      let dbAcquireMs = null;
+      if (shouldLogPoolStats && dbPoolLike) {
+        dbPoolStats = {
+          total: Number(dbPoolLike.totalCount) || 0,
+          idle: Number(dbPoolLike.idleCount) || 0,
+          waiting: Number(dbPoolLike.waitingCount) || 0,
+        };
+        if (typeof dbPoolLike.connect === "function") {
+          const acquireStartedMs = performance.now();
+          try {
+            const client = await dbPoolLike.connect();
+            dbAcquireMs = roundMs(performance.now() - acquireStartedMs);
+            client.release();
+          } catch (err) {
+            dbAcquireMs = null;
+            logger?.warn?.("[API] /api/stationboard db acquire probe failed", {
+              requestId,
+              error: String(err?.message || err),
+            });
+          }
+        }
+      }
 
       logger?.log?.("[API] /api/stationboard params", {
         requestId,
@@ -502,6 +595,8 @@ export function createStationboardRouteHandler({
         ifBoard: ifBoardParsed,
         sinceRt: sinceRtParsed.raw || null,
         sinceRtMs,
+        dbPool: dbPoolStats,
+        dbAcquireMs,
       });
 
       if (!effectiveStopId) {
@@ -648,13 +743,89 @@ export function createStationboardRouteHandler({
       } catch (err) {
         if (err?.code !== "stationboard_timeout") throw err;
         const cached = readCachedStationboard(responseCacheKey);
-        if (!cached) throw err;
-        const normalizedCached = ensureStationboardMetaPayload(cached);
-        setResponseHeader(res, "x-md-stale", "1");
-        setResponseHeader(res, "x-md-stale-reason", "stationboard_timeout");
-        applyRtDiagnosticHeaders(res, normalizedCached, {
-          cacheKey: responseCacheKey,
+        if (cached) {
+          const normalizedCached = ensureStationboardMetaPayload(cached);
+          setResponseHeader(res, "x-md-stale", "1");
+          setResponseHeader(res, "x-md-stale-reason", "stationboard_timeout");
+          applyRtDiagnosticHeaders(res, normalizedCached, {
+            cacheKey: responseCacheKey,
+          });
+          setResponseHeader(
+            res,
+            "x-md-backend-total-ms",
+            String(roundMs(performance.now() - routeStartedMs))
+          );
+          emitStationboardDecisionLog(logger, {
+            requestId,
+            stopId: effectiveStopId,
+            stationId: stationIdRaw || null,
+            ifBoard: ifBoardParsed,
+            sinceRtMs,
+            rtFetchedAtMs: Number.isFinite(rtFetchedAtMs) ? rtFetchedAtMs : null,
+            responded204: false,
+            rtApplied: normalizedCached?.rt?.applied === true,
+          rtReason: normalizedCached?.rt?.reason || null,
+          totalMs: roundMs(performance.now() - routeStartedMs),
         });
+        logger?.info?.("[API] /api/stationboard timing", {
+          requestId,
+          stopId: effectiveStopId,
+          windowMinutes,
+          debug,
+          totalMs: roundMs(performance.now() - routeStartedMs),
+          mainSqlMs:
+            Number(normalizedCached?.debug?.latencySafe?.phaseTimings?.buildStationboard?.mainSqlMs) || null,
+          fallbackSqlMs:
+            Number(normalizedCached?.debug?.latencySafe?.phaseTimings?.buildStationboard?.fallbackSqlMs) || null,
+          stopScopeSqlMs:
+            Number(normalizedCached?.debug?.latencySafe?.phaseTimings?.buildStationboard?.stopScopeSqlMs) || null,
+          sparseRetryMs:
+            Number(normalizedCached?.debug?.latencySafe?.phaseTimings?.orchestrator?.sparseRetryMs) || null,
+          rtLoadMs:
+            Number(normalizedCached?.debug?.latencySafe?.phaseTimings?.buildStationboard?.rtLoadMs) || null,
+          rtApplyMs:
+            Number(normalizedCached?.debug?.latencySafe?.phaseTimings?.buildStationboard?.rtApplyMs) || null,
+          alertsWaitMs:
+            Number(normalizedCached?.debug?.latencySafe?.phaseTimings?.orchestrator?.alertsWaitMs) || null,
+          alertsMergeMs:
+            Number(normalizedCached?.debug?.latencySafe?.phaseTimings?.orchestrator?.alertsMergeMs) || null,
+          buildSteps: normalizedCached?.debug?.latencySafe?.buildSteps || null,
+          degraded: normalizedCached?.debug?.latencySafe?.degradedMode === true,
+          skippedSteps: normalizedCached?.debug?.latencySafe?.skippedSteps || [],
+        });
+          if (debug) {
+            normalizedCached.debug = {
+              ...(normalizedCached.debug && typeof normalizedCached.debug === "object"
+                ? normalizedCached.debug
+                : {}),
+              cache: {
+                key: responseCacheKey,
+                vary: "Origin, Accept-Encoding",
+                cacheControl: STATIONBOARD_CLIENT_CACHE_CONTROL,
+                cdnCacheControl: DEFAULT_200_CDN_CACHE_CONTROL,
+              },
+            };
+          }
+          return res.json(normalizedCached);
+        }
+
+        const fallbackPayload = buildStaticFallbackPayload({
+          stopId: effectiveStopId,
+          stationName,
+          requestId,
+          reason: "build_timeout_static_fallback",
+          includeAlertsRequested,
+          includeAlertsApplied,
+          routeTiming: {
+            totalMs: roundMs(performance.now() - routeStartedMs),
+            routeTimeoutMs: stationboardRouteTimeoutMs(),
+          },
+          dbPool: dbPoolStats,
+          debug,
+        });
+        setResponseHeader(res, "x-md-stale", "1");
+        setResponseHeader(res, "x-md-stale-reason", "stationboard_timeout_no_cache_static");
+        applyRtDiagnosticHeaders(res, fallbackPayload, { cacheKey: responseCacheKey });
         setResponseHeader(
           res,
           "x-md-backend-total-ms",
@@ -668,24 +839,11 @@ export function createStationboardRouteHandler({
           sinceRtMs,
           rtFetchedAtMs: Number.isFinite(rtFetchedAtMs) ? rtFetchedAtMs : null,
           responded204: false,
-          rtApplied: normalizedCached?.rt?.applied === true,
-          rtReason: normalizedCached?.rt?.reason || null,
+          rtApplied: false,
+          rtReason: "build_timeout_static_fallback",
           totalMs: roundMs(performance.now() - routeStartedMs),
         });
-        if (debug) {
-          normalizedCached.debug = {
-            ...(normalizedCached.debug && typeof normalizedCached.debug === "object"
-              ? normalizedCached.debug
-              : {}),
-            cache: {
-              key: responseCacheKey,
-              vary: "Origin, Accept-Encoding",
-              cacheControl: STATIONBOARD_CLIENT_CACHE_CONTROL,
-              cdnCacheControl: DEFAULT_200_CDN_CACHE_CONTROL,
-            },
-          };
-        }
-        return res.json(normalizedCached);
+        return res.status(200).json(fallbackPayload);
       }
       const normalizedResult = ensureStationboardMetaPayload(result);
       if (debug) {
@@ -720,6 +878,32 @@ export function createStationboardRouteHandler({
         rtApplied: normalizedResult?.rt?.applied === true,
         rtReason: normalizedResult?.rt?.reason || null,
         totalMs: roundMs(performance.now() - routeStartedMs),
+      });
+      logger?.info?.("[API] /api/stationboard timing", {
+        requestId,
+        stopId: effectiveStopId,
+        windowMinutes,
+        debug,
+        totalMs: roundMs(performance.now() - routeStartedMs),
+        mainSqlMs:
+          Number(normalizedResult?.debug?.latencySafe?.phaseTimings?.buildStationboard?.mainSqlMs) || null,
+        fallbackSqlMs:
+          Number(normalizedResult?.debug?.latencySafe?.phaseTimings?.buildStationboard?.fallbackSqlMs) || null,
+        stopScopeSqlMs:
+          Number(normalizedResult?.debug?.latencySafe?.phaseTimings?.buildStationboard?.stopScopeSqlMs) || null,
+        sparseRetryMs:
+          Number(normalizedResult?.debug?.latencySafe?.phaseTimings?.orchestrator?.sparseRetryMs) || null,
+        rtLoadMs:
+          Number(normalizedResult?.debug?.latencySafe?.phaseTimings?.buildStationboard?.rtLoadMs) || null,
+        rtApplyMs:
+          Number(normalizedResult?.debug?.latencySafe?.phaseTimings?.buildStationboard?.rtApplyMs) || null,
+        alertsWaitMs:
+          Number(normalizedResult?.debug?.latencySafe?.phaseTimings?.orchestrator?.alertsWaitMs) || null,
+        alertsMergeMs:
+          Number(normalizedResult?.debug?.latencySafe?.phaseTimings?.orchestrator?.alertsMergeMs) || null,
+        buildSteps: normalizedResult?.debug?.latencySafe?.buildSteps || null,
+        degraded: normalizedResult?.debug?.latencySafe?.degradedMode === true,
+        skippedSteps: normalizedResult?.debug?.latencySafe?.skippedSteps || [],
       });
       return res.json(normalizedResult);
     } catch (err) {
@@ -762,11 +946,60 @@ export function createStationboardRouteHandler({
           tried: Array.isArray(err?.tried) ? err.tried : [],
         });
       }
-      if (err?.code === "stationboard_timeout") {
-        return res.status(504).json({
-          error: "stationboard_timeout",
-          detail: "backend_stationboard_timeout",
+      if (isTimeoutLikeError(err)) {
+        const responseCacheKey = cacheKeyForRequest({
+          stopId: text(req?.query?.stop_id) || text(req?.query?.stationId) || text(req?.query?.station_id),
+          stationId: text(req?.query?.stationId) || text(req?.query?.station_id),
+          stationName: text(req?.query?.stationName),
+          lang: text(req?.query?.lang),
+          limit: Number(req?.query?.limit || "300"),
+          windowMinutes: Number(req?.query?.window_minutes || "0"),
+          includeAlerts: parseBooleanish(req?.query?.include_alerts ?? req?.query?.includeAlerts),
         });
+        const cached = readCachedStationboard(responseCacheKey);
+        if (cached) {
+          const normalizedCached = ensureStationboardMetaPayload(cached);
+          setResponseHeader(res, "x-md-stale", "1");
+          setResponseHeader(res, "x-md-stale-reason", "stationboard_timeout_or_db_timeout");
+          applyRtDiagnosticHeaders(res, normalizedCached, { cacheKey: responseCacheKey });
+          return res.status(200).json(normalizedCached);
+        }
+
+        const stopId =
+          text(req?.query?.stop_id) ||
+          text(req?.query?.stationId) ||
+          text(req?.query?.station_id);
+        const stationName = text(req?.query?.stationName);
+        const includeAlertsParsed = parseBooleanish(
+          req?.query?.include_alerts ?? req?.query?.includeAlerts
+        );
+        const alertsFeatureEnabled =
+          String(process.env.STATIONBOARD_ENABLE_ALERTS || "").trim() !== "0";
+        const fallbackPayload = buildStaticFallbackPayload({
+          stopId,
+          stationName,
+          requestId,
+          reason: "db_or_route_timeout_static_fallback",
+          includeAlertsRequested: includeAlertsParsed !== false,
+          includeAlertsApplied: alertsFeatureEnabled && includeAlertsParsed !== false,
+          routeTiming: {
+            totalMs: backendTotalMs,
+            routeTimeoutMs: stationboardRouteTimeoutMs(),
+          },
+          dbPool:
+            dbPoolLike && typeof dbPoolLike === "object"
+              ? {
+                  total: Number(dbPoolLike.totalCount) || 0,
+                  idle: Number(dbPoolLike.idleCount) || 0,
+                  waiting: Number(dbPoolLike.waitingCount) || 0,
+                }
+              : null,
+          debug,
+        });
+        setResponseHeader(res, "x-md-stale", "1");
+        setResponseHeader(res, "x-md-stale-reason", "stationboard_timeout_or_db_timeout_no_cache");
+        applyRtDiagnosticHeaders(res, fallbackPayload, { cacheKey: responseCacheKey });
+        return res.status(200).json(fallbackPayload);
       }
       if (process.env.NODE_ENV !== "production") {
         return res.status(500).json({

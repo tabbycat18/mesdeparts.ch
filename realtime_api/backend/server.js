@@ -734,6 +734,7 @@ const stationboardRouteHandler = createStationboardRouteHandler({
   getStationboardLike: getStationboard,
   resolveStopLike: resolveStop,
   dbQueryLike: (sql, params = []) => pool.query(sql, params),
+  dbPoolLike: pool,
   logger: console,
 });
 app.get("/api/stationboard", stationboardRouteHandler);

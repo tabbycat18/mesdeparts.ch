@@ -123,7 +123,7 @@ This guard is always active; it does not require emergency deploy overrides.
 | `STATIONBOARD_MAIN_QUERY_TIMEOUT_MS` | `3500` | `src/logic/buildStationboard.js` |
 | `STATIONBOARD_FALLBACK_QUERY_TIMEOUT_MS` | `1200` | `src/logic/buildStationboard.js` |
 | `STATIONBOARD_STOP_SCOPE_QUERY_TIMEOUT_MS` | `800` | `src/logic/buildStationboard.js` |
-| `STATIONBOARD_ROUTE_TIMEOUT_MS` | `6500` | `src/api/stationboardRoute.js` |
+| `STATIONBOARD_ROUTE_TIMEOUT_MS` | `5000` (hard-capped at 5000) | `src/api/stationboardRoute.js` |
 | `STATIONBOARD_ENABLE_ALERTS` | `1` | `src/api/stationboard.js` |
 
 For normal production deploys, keep `fly.toml` free of stationboard emergency overrides
@@ -217,6 +217,9 @@ stationboard JSON while edge caches can still absorb load:
 - `CDN-Cache-Control`:
   - 200 responses: `public, max-age=12, stale-while-revalidate=24`
   - 204 unchanged (`since_rt`) responses: `public, max-age=2, stale-while-revalidate=4` (only when client explicitly sends `if_board=1`, i.e. it already has a board for that context)
+- Timeout degrade behavior:
+  - if stationboard build times out, route serves stale cached board when present
+  - if no cached board exists, route returns static-only fallback (`200`) with debug degraded metadata when `debug=1`
 - `Vary: Origin, Accept-Encoding`
 - Identical in-flight stationboard requests are coalesced per key in-process (`stop/lang/limit/window/include_alerts`) so only one backend build runs at a time per key; coalesced responses include `x-md-inflight: HIT`.
 
