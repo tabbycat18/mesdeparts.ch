@@ -144,6 +144,8 @@ Operational notes:
 - Main scheduled departure query used by `src/logic/buildStationboard.js`.
 - Filters by stop scope, departure time window, service calendar activity, and dedupes by trip/stop/sequence.
 - Returns rows consumed by merge pipeline (`applyTripUpdates`, `applyAddedTrips`, alerts synthesis/attach downstream).
+- Stop-id platform/parent/root RT matching behavior is implemented in JS merge/scope layers
+  (`src/merge/applyTripUpdates.js`, `src/rt/loadScopedRtFromCache.js`), not in SQL.
 
 ## Runbook snippets
 

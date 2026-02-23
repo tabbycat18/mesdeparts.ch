@@ -4,6 +4,10 @@ Docs index: [`../README_INDEX.md`](../README_INDEX.md)
 
 This is the active Cloudflare Worker deployment path for `api.mesdeparts.ch/api/*`.
 
+For stationboard diagnostics, the Worker forwards backend `debug=1` payloads
+unchanged (including `debug.rt.tripUpdates` fields such as `rtEnabledForRequest`
+and `rtMetaReason`).
+
 ## Files
 - `realtime_api/edge/worker.js`: Worker logic.
 - `realtime_api/edge/wrangler.toml`: Active Wrangler config used for deploys.

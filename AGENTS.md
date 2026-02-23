@@ -57,9 +57,11 @@ If context is still missing after this order, then inspect code.
 | Stationboard route params/headers/204 | `realtime_api/backend/src/api/stationboardRoute.js` |
 | Stationboard response/meta/alerts wiring | `realtime_api/backend/src/api/stationboard.js` |
 | Core board SQL + RT merge pipeline | `realtime_api/backend/src/logic/buildStationboard.js` |
+| Stationboard debug RT diagnostics (`rtEnabledForRequest`, `rtMetaReason`, scoped counters) | `realtime_api/backend/src/logic/buildStationboard.js`, `realtime_api/backend/src/api/stationboard.js` |
 | Loader module explanation (feed cache/decode) | `realtime_api/backend/loaders/loadRealtime.js`, docs in `realtime_api/backend/README_src.md` |
 | RT/alerts scoped loader explanation | `realtime_api/backend/src/rt/loadScopedRtFromCache.js`, `realtime_api/backend/src/rt/loadAlertsFromCache.js` |
 | TripUpdates merge behavior | `realtime_api/backend/src/merge/applyTripUpdates.js` |
+| Swiss platform-vs-parent RT stop-id matching (exact -> `:0` -> numeric root, regex-guarded) | `realtime_api/backend/src/merge/applyTripUpdates.js`, `realtime_api/backend/src/rt/loadScopedRtFromCache.js` |
 | Alerts attachment/synthesis | `realtime_api/backend/src/merge/attachAlerts.js`, `realtime_api/backend/src/merge/synthesizeFromAlerts.js` |
 | Stop search route behavior | `realtime_api/backend/src/api/stopSearchRoute.js` |
 | Stop search normalization/ranking/sql strategy | `realtime_api/backend/src/search/stopsSearch.js`, `realtime_api/backend/src/util/searchNormalize.js` |
@@ -80,6 +82,7 @@ If context is still missing after this order, then inspect code.
 - `cd realtime_api/backend && npm run search:repro-regression`
 - `cd realtime_api/backend && npm run search:verify`
 - `cd realtime_api/backend && npm run search:bench`
+- `cd realtime_api/backend && node scripts/debugStationboard.js Parent8587387`
 - `cd realtime_api/frontend && npm test`
 - `npx wrangler deploy --config realtime_api/edge/wrangler.toml`
 

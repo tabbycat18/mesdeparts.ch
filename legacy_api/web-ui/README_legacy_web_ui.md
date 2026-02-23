@@ -2,6 +2,11 @@
 
 Static, dependency-free front-end for mesdeparts.ch. Everything in this folder is served as-is (no build step), with ES modules and versioned filenames to keep long-lived caches safe to bust.
 
+Legacy note:
+- The active backend RT merge/debug updates (Swiss platform stop-id matching guard,
+  `debug.rt.tripUpdates` diagnostics) live under `realtime_api/backend`.
+- This `legacy_api/web-ui` folder remains archive/legacy flow and does not own that logic.
+
 ## Features
 - Stop search with suggestions and favorites (stored locally; no account).
 - Two bus views: by line (balanced by destination) or chronological; trains are always chronological.

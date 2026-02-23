@@ -52,6 +52,8 @@ Static, dependency-free front-end for mesdeparts.ch. Everything in this folder i
 ## API target
 - This UI is now wired for `realtime_api/backend` API routes only.
 - It is not using the old `/locations` + `/stationboard` contract anymore.
+- RT merge/source-of-truth stays backend-side; frontend does not implement platform-vs-parent stop-id matching logic.
+- For diagnostics only, backend `debug=1` exposes `debug.rt.tripUpdates` (including `rtEnabledForRequest`, `rtMetaReason`, scoped counters).
 
 ## Behavior/UX notes
 - Filters/view changes are client-side only.

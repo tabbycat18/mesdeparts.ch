@@ -33,6 +33,10 @@ Loader + logic quick links:
 - Scoped RT loader: `backend/src/rt/loadScopedRtFromCache.js`
 - Alerts loader: `backend/src/rt/loadAlertsFromCache.js`
 - Deep explanation of these files: [`backend/README_src.md`](./backend/README_src.md) (sections: `src/loaders`, `src/logic`, `src/rt`)
+- TripUpdates debug diagnostics exposure (`rtEnabledForRequest`, `rtMetaReason`, scoped counters):
+  `backend/src/logic/buildStationboard.js` + `backend/src/api/stationboard.js`
+- Swiss platform-vs-parent stop-id matching guard/order:
+  `backend/src/merge/applyTripUpdates.js` + `backend/src/rt/loadScopedRtFromCache.js`
 
 Search-improvement references:
 - Risk-tiered strategy and invariants: `backend/README_backend.md` ("Search improvement map")

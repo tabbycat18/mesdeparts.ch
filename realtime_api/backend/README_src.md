@@ -58,6 +58,8 @@ Primary responsibilities:
 - Attach alerts from cache (`src/rt/loadAlertsFromCache.js`) and merge alert effects (`attachAlerts`, `synthesizeFromAlerts`).
 - Apply optional OTD supplement logic (`supplementFromOtdStationboard`) behind request-path upstream guard.
 - Emit debug payloads/timings when debug mode is enabled.
+  - `debug.rt.tripUpdates` includes request RT toggle and reasons:
+    `rtEnabledForRequest`, `rtMetaReason`, normalized `reason`, and scoped counters.
 
 Important design guard:
 - Request-path upstream RT/alerts fetches are blocked by `guardStationboardRequestPathUpstream(...)`.
@@ -224,6 +226,8 @@ Primary responsibilities:
   - max scoped entities
   - max scoped stop updates
 - Return `tripUpdates` plus rich `meta` (`applied`, `reason`, `cacheAgeMs`, `instance`, counters).
+- `meta.reason` is the raw scoped-loader reason (for example `applied`, `stale_cache`, `guard_tripped`)
+  and is surfaced as `debug.rt.tripUpdates.rtMetaReason` by stationboard debug output.
 
 Common reasons in `meta.reason`:
 - `applied`

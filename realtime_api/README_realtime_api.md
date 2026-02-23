@@ -91,6 +91,30 @@ They sit in front of existing implementation so future refactors can happen safe
    - merges with `applyTripUpdates(...)` from `realtime_api/backend/src/merge/applyTripUpdates.js`
 5. Response is returned to frontend.
 
+### RT merge matching note (Swiss platform IDs)
+
+For scheduled platform stops such as `8587387:0:A`, stop-level RT matching tries:
+1. exact stop id
+2. one-level parent (`8587387:0`)
+3. numeric root (`8587387`)
+
+Parent/root expansion is regex-guarded to Swiss platform shape:
+`^[0-9]{7}:0:[A-Za-z0-9]{1,2}$`
+
+This same guard/order is used in both:
+- `realtime_api/backend/src/merge/applyTripUpdates.js`
+- `realtime_api/backend/src/rt/loadScopedRtFromCache.js`
+
+### Stationboard debug RT diagnostics (`debug=1`)
+
+`debug.rt.tripUpdates` now exposes:
+- `rtEnabledForRequest`
+- `rtMetaReason` (raw `meta.reason` from scoped RT loader)
+- `reason` (normalized public reason)
+- `scopedEntities`
+- `scopedTripCount`
+- `scopedStopCount`
+
 ## `cancelled` Field (M1)
 
 Each departure row now includes:

@@ -179,6 +179,21 @@ These fields provide detail and must not be used as the sole cancellation source
 
 - When `debug=1` is passed, `debug` is included for tracing only.
 - Consumers must not rely on `debug` fields for business logic.
+- RT diagnostics under `debug.rt.tripUpdates` include:
+  - `rtEnabledForRequest`
+  - `rtMetaReason` (raw scoped-loader reason, for example `applied`, `stale_cache`)
+  - `reason` (normalized reason, for example `fresh`, `stale`)
+  - `scopedEntities`, `scopedTripCount`, `scopedStopCount`
+
+### RT stop-id matching invariant (Swiss platform IDs)
+
+When matching scheduled rows with RT stop_time_updates:
+1. exact stop id
+2. one-level parent (`:0`)
+3. numeric root
+
+Parent/root variants are only derived for Swiss platform-shaped IDs:
+`^[0-9]{7}:0:[A-Za-z0-9]{1,2}$`
 
 ## Stop Resolution Debug/Verification
 
