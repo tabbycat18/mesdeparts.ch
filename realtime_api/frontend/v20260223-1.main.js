@@ -74,6 +74,8 @@ const REFRESH_JITTER_MAX_MS = 600;
 const REFRESH_BACKOFF_STEPS_MS = [2_000, 5_000, 10_000, 15_000];
 const FOREGROUND_REFRESH_DEBOUNCE_MS = 1_500;
 const REFRESH_DRIFT_CATCHUP_MS = Math.max(2_000, Math.floor(REFRESH_DEPARTURES * 0.75));
+const UNATTENDED_FETCH_STALE_MS = Math.max(45_000, REFRESH_DEPARTURES * 3);
+const UNATTENDED_RESCUE_COOLDOWN_MS = 60_000;
 const DEBUG_RT_CLIENT =
   (() => {
     try {
@@ -219,6 +221,7 @@ let rtDebugOverlayEl = null;
 let consecutive204Count = 0;
 let lastFullRefreshAt = 0;
 let lastForegroundRefreshAt = 0;
+let lastUnattendedRescueAt = 0;
 const FULL_REFRESH_INTERVAL_MS = 10 * 60 * 1000; // Force full refresh every 10 minutes
 const MAX_CONSECUTIVE_204S = 5; // Force full refresh after 5 consecutive 204s
 
@@ -315,6 +318,7 @@ function clearBoardForStationChange() {
   appState.lastStationboardCacheStatus = null;
   appState.lastStationboardHttpStatus = null;
   lastForegroundRefreshAt = 0;
+  lastUnattendedRescueAt = 0;
   setBoardNoticeHint("");
   updateRtDebugOverlay();
 
@@ -426,6 +430,42 @@ function maybeCatchUpRefresh({ source = "unknown" } = {}) {
   return true;
 }
 
+function getLastStationboardFetchAgeMs(nowMs = Date.now()) {
+  const raw = String(appState.lastStationboardFetchAt || "").trim();
+  if (!raw) return Number.POSITIVE_INFINITY;
+  const parsedMs = Date.parse(raw);
+  if (!Number.isFinite(parsedMs) || parsedMs <= 0) return Number.POSITIVE_INFINITY;
+  return Math.max(0, nowMs - parsedMs);
+}
+
+function maybeRescueUnattendedStall({ source = "unknown" } = {}) {
+  if (!refreshLoopActive || refreshInFlight) return false;
+  if (typeof document !== "undefined" && document.hidden) return false;
+
+  const nowMs = Date.now();
+  if (nowMs - lastUnattendedRescueAt < UNATTENDED_RESCUE_COOLDOWN_MS) return false;
+
+  const fetchAgeMs = getLastStationboardFetchAgeMs(nowMs);
+  if (fetchAgeMs < UNATTENDED_FETCH_STALE_MS) return false;
+
+  lastUnattendedRescueAt = nowMs;
+  clearScheduledRefresh();
+  if (DEBUG_RT_CLIENT) {
+    // eslint-disable-next-line no-console
+    console.log("[MesDeparts][rt-refresh] Unattended stall rescue", {
+      source,
+      fetchAgeMs: Math.round(fetchAgeMs),
+      staleThresholdMs: UNATTENDED_FETCH_STALE_MS,
+    });
+  }
+  refreshDepartures({
+    showLoadingHint: false,
+    fromScheduler: true,
+    forceFetch: true,
+  });
+  return true;
+}
+
 function triggerForegroundRefresh({ source = "foreground" } = {}) {
   const nowMs = Date.now();
   const driftMs = getRefreshDriftMs(nowMs);
@@ -450,6 +490,7 @@ function triggerForegroundRefresh({ source = "foreground" } = {}) {
 
 function refreshCountdownTick() {
   if (maybeCatchUpRefresh({ source: "countdown" })) return;
+  if (maybeRescueUnattendedStall({ source: "countdown" })) return;
   if (!lastStationboardData) return;
   try {
     const rows = buildDeparturesGrouped(lastStationboardData, appState.viewMode);
