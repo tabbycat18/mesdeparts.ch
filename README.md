@@ -23,6 +23,24 @@ Common example:
 - old: `rt/backend/.env`
 - new: `realtime_api/backend/.env`
 
+## Important Update (RT Merge + Debug, 2026-02-23)
+
+Active backend stationboard merge now documents and enforces:
+- stop-id variant matching for Swiss platform IDs in strict order:
+  1. exact stop id
+  2. one-level parent (`:0`)
+  3. numeric root
+- regex guard for parent/root expansion: `^[0-9]{7}:0:[A-Za-z0-9]{1,2}$`
+
+Stationboard `debug=1` now includes explicit tripupdate diagnostics under
+`debug.rt.tripUpdates`:
+- `rtEnabledForRequest`
+- `rtMetaReason`
+- `reason`
+- `scopedEntities`
+- `scopedTripCount`
+- `scopedStopCount`
+
 Quick start (current paths):
 - backend tests: `cd realtime_api/backend && npm test`
 - RT frontend tests: `cd realtime_api/frontend && npm test`
