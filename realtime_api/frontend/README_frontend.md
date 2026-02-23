@@ -32,7 +32,7 @@ Static, dependency-free front-end for mesdeparts.ch. Everything in this folder i
 - API base defaults to same-origin in deployment; on `localhost` it auto-targets `http://localhost:3001`. Override with `window.__MD_API_BASE__ = "https://your-backend-host"` when needed.
 - `refreshDepartures` calls `/api/stationboard` (limit tuned to UI), rebuilds grouped rows (3 h horizon, train/bus split, line/platform filters, favorites-only mode, train service filters) and renders. Countdown column updates every 5 s from cached data.
 - Refresh scheduling is timer-based (`REFRESH_DEPARTURES`) with Page Visibility/focus hooks: when the page returns to foreground, the app triggers an immediate refresh and performs drift catch-up if the scheduled timer slipped while backgrounded/throttled.
-- Refresh requests are coalesced client-side: if a refresh is already in flight, new foreground/focus/manual refresh intents are queued and collapsed into a single follow-up fetch instead of launching parallel requests.
+- Refresh requests are coalesced client-side: if a refresh is already in flight, new foreground/focus/manual refresh intents are queued and collapsed into a single follow-up fetch instead of launching parallel requests. See **Loading-hint state machine** below for the ownership rules.
 - Incremental `since_rt` polling is context-guarded: the client sends `since_rt` only when a board is already applied for the same stop/language context, and includes `if_board=1` to allow backend `204` short-circuit only in that safe state.
 - Kiosk/unattended safeguard: when the page is visible but no stationboard response has been received for an overdue window, the countdown loop triggers a cooldown-limited forced refresh to recover without manual reload.
 - Stationboard fetches use `cache: "no-store"` on the browser side to avoid Safari/iPad HTTP cache staleness while preserving edge-cache behavior on `api.mesdeparts.ch`.
@@ -60,6 +60,28 @@ Static, dependency-free front-end for mesdeparts.ch. Everything in this folder i
 - It is not using the old `/locations` + `/stationboard` contract anymore.
 - RT merge/source-of-truth stays backend-side; frontend does not implement platform-vs-parent stop-id matching logic.
 - For diagnostics only, backend `debug=1` exposes `debug.rt.tripUpdates` (including `rtEnabledForRequest`, `rtMetaReason`, scoped counters).
+
+## Loading-hint state machine
+
+`refreshDepartures` (`main.v*.js`) shows a loading hint ("Actualisation… / Refreshing…") only for
+**foreground** calls (page-load, user-triggered, or focus-restore).  Background/scheduler calls
+always set `showLoadingHint = false` and never toggle the hint.
+
+Ownership rules enforced by the `finally` block:
+
+| Situation | `showLoadingHint` | `pendingRefreshRequest` | `isStaleRequest()` | Result |
+| --- | --- | --- | --- | --- |
+| Normal foreground completion | `true` | `null` | `false` | Hint OFF, board published |
+| Queued follow-up (new request arrived while this one was in-flight) | `true` | set | `false` | Hint OFF, follow-up dispatched |
+| Stale / superseded (station changed mid-fetch) | `true` | `null` | `true` | Hint OFF, scheduler rescheduled |
+| Background scheduler call | `false` | any | any | Hint unchanged (never set), board published if applicable |
+
+The critical invariant: `setBoardLoadingHint(false)` is always called **before** any early `return`
+path inside `finally` when `showLoadingHint` is `true`.  This prevents the hint from getting stuck
+when the foreground request exits via the queued or stale branch.
+
+Regression tests: `test/refreshHint.test.js` (8 tests including a `simulateRefreshFinallyBroken`
+fixture that documents the pre-fix bug).
 
 ## Behavior/UX notes
 - Filters/view changes are client-side only.

@@ -65,6 +65,16 @@ Primary responsibilities:
   - `debug.rt.tripUpdates` includes request RT toggle and reasons:
     `rtEnabledForRequest`, `rtMetaReason`, normalized `reason`, and scoped counters.
 
+Request-budget guard:
+- `totalBudgetMs = min(STATIONBOARD_ROUTE_TIMEOUT_MS, 5000)` (default 5 000 ms).
+- Before each optional phase a remaining-budget check fires (`isBudgetLow()` = remaining < 400 ms).
+- If budget is low the phase is **skipped**, `degradedMode = true`, and the reason is appended to
+  `degradedReasons`.  The function still returns a usable 200 with whatever departures were built.
+- Guard points in order: sparse retry → scope fallback → alerts (early return) → supplement.
+- `response.debug.latencySafe` (when `debug=true`) exposes `degradedMode`, `degradedReasons`,
+  `totalBudgetMs`, `remainingBudgetMs`, and `lowBudgetThresholdMs`.
+- Regression tests: `test/stationboard.budget.test.js`.
+
 Important design guard:
 - Request-path upstream RT/alerts fetches are blocked by `guardStationboardRequestPathUpstream(...)`.
 - Poller/cache path is the intended realtime source.
@@ -292,7 +302,7 @@ Primary responsibilities:
 
 ### `src/api`
 
-- `src/api/stationboard.js` (1392 lines)
+- `src/api/stationboard.js` (1616 lines)
   - Exports: `getStationboard(...)`
 - `src/api/stationboardRoute.js` (737 lines)
   - Exports: `deriveResolvedIdentity(...)`, `createStationboardRouteHandler(...)`
