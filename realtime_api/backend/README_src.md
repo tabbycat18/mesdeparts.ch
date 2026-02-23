@@ -59,6 +59,7 @@ Primary responsibilities:
 - Prepare canonical response payload (`station`, `resolved`, `departures`, `banners`, `rt`, `alerts`).
 - Normalize departures through `src/models/stationboard.js` (`normalizeDeparture`).
 - Attach alerts from cache (`src/rt/loadAlertsFromCache.js`) and merge alert effects (`attachAlerts`, `synthesizeFromAlerts`).
+- Throttle request-path Service Alerts cache reads with an in-process TTL (`STATIONBOARD_ALERTS_REQUEST_CACHE_TTL_MS`, default 60s) to avoid repeated alert-cache fetch/decode on frequent board refreshes.
 - Apply optional OTD supplement logic (`supplementFromOtdStationboard`) behind request-path upstream guard.
 - Emit debug payloads/timings when debug mode is enabled.
   - `debug.rt.tripUpdates` includes request RT toggle and reasons:

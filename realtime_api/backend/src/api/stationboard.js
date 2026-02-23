@@ -64,8 +64,72 @@ const DEFAULT_STATIONBOARD_WINDOW_MINUTES = Math.max(
     720
   )
 );
+const STATIONBOARD_ALERTS_REQUEST_CACHE_TTL_MS = Math.max(
+  1_000,
+  Number(process.env.STATIONBOARD_ALERTS_REQUEST_CACHE_TTL_MS || "60000")
+);
 
 const otdSupplementCache = new Map();
+let alertsRequestCacheValue = null;
+let alertsRequestCacheExpiresAtMs = 0;
+let alertsRequestCacheInFlight = null;
+
+function cloneAlertsMeta(meta) {
+  return meta && typeof meta === "object" ? { ...meta } : {};
+}
+
+function cloneAlertsData(alerts) {
+  const entities = Array.isArray(alerts?.entities) ? alerts.entities : [];
+  return { entities };
+}
+
+async function loadAlertsFromCacheThrottled({ nowMs } = {}) {
+  const currentNowMs = Number.isFinite(Number(nowMs)) ? Number(nowMs) : Date.now();
+
+  if (alertsRequestCacheValue && currentNowMs < alertsRequestCacheExpiresAtMs) {
+    return {
+      alerts: cloneAlertsData(alertsRequestCacheValue.alerts),
+      meta: {
+        ...cloneAlertsMeta(alertsRequestCacheValue.meta),
+        requestCacheStatus: "HIT",
+        requestCacheFetchedAt:
+          String(alertsRequestCacheValue.fetchedAtIso || "").trim() || null,
+        requestCacheTtlMs: STATIONBOARD_ALERTS_REQUEST_CACHE_TTL_MS,
+      },
+    };
+  }
+
+  if (!alertsRequestCacheInFlight) {
+    alertsRequestCacheInFlight = (async () => {
+      const loaded = (await loadAlertsFromCache({ enabled: true, nowMs: currentNowMs })) || {
+        alerts: { entities: [] },
+        meta: { reason: "missing_cache" },
+      };
+      alertsRequestCacheValue = {
+        alerts: cloneAlertsData(loaded.alerts),
+        meta: cloneAlertsMeta(loaded.meta),
+        fetchedAtIso: new Date(currentNowMs).toISOString(),
+      };
+      alertsRequestCacheExpiresAtMs =
+        currentNowMs + STATIONBOARD_ALERTS_REQUEST_CACHE_TTL_MS;
+      return loaded;
+    })()
+      .finally(() => {
+        alertsRequestCacheInFlight = null;
+      });
+  }
+
+  const loaded = await alertsRequestCacheInFlight;
+  return {
+    alerts: cloneAlertsData(loaded?.alerts),
+    meta: {
+      ...cloneAlertsMeta(loaded?.meta),
+      requestCacheStatus: "MISS",
+      requestCacheFetchedAt: new Date(currentNowMs).toISOString(),
+      requestCacheTtlMs: STATIONBOARD_ALERTS_REQUEST_CACHE_TTL_MS,
+    },
+  };
+}
 
 function localizeServiceAlerts(alerts, langPrefs) {
   const entities = Array.isArray(alerts?.entities) ? alerts.entities : [];
@@ -807,6 +871,7 @@ export async function getStationboard({
     warnings: [],
     version: null,
     rtTripUpdates: null,
+    alertsCache: null,
   };
   const langPrefs = resolveLangPrefs({
     queryLang: lang,
@@ -950,8 +1015,7 @@ export async function getStationboard({
     childStops: Array.isArray(resolved?.children) ? resolved.children : [],
   };
   const alertsPromise = includeAlertsApplied
-    ? loadAlertsFromCache({
-        enabled: true,
+    ? loadAlertsFromCacheThrottled({
         nowMs: Date.now(),
       })
     : null;
@@ -1194,6 +1258,23 @@ export async function getStationboard({
       meta: { reason: "missing_cache" },
     };
     const alertsRaw = alertsLoadResult?.alerts || { entities: [] };
+    debugState.alertsCache = {
+      servedFromCache:
+        String(alertsLoadResult?.meta?.requestCacheStatus || "").trim().toUpperCase() === "HIT",
+      cacheStatus:
+        String(alertsLoadResult?.meta?.requestCacheStatus || "").trim().toUpperCase() ||
+        "MISS",
+      fetchedAt:
+        String(
+          alertsLoadResult?.meta?.requestCacheFetchedAt || alertsLoadResult?.meta?.fetchedAt || ""
+        ).trim() || null,
+      ttlSeconds: Math.round(
+        Math.max(
+          1_000,
+          Number(alertsLoadResult?.meta?.requestCacheTtlMs || STATIONBOARD_ALERTS_REQUEST_CACHE_TTL_MS)
+        ) / 1000
+      ),
+    };
     alertsResponseMeta = buildAlertsResponseMeta({
       includeAlertsRequested,
       includeAlertsApplied,
@@ -1340,6 +1421,7 @@ export async function getStationboard({
         rt: {
           tripUpdates: toRtTripUpdatesDebug(debugState.rtTripUpdates, departureAudit),
         },
+        alertsCache: debugState.alertsCache,
         departureAudit,
       };
     }
@@ -1389,6 +1471,7 @@ export async function getStationboard({
         rt: {
           tripUpdates: toRtTripUpdatesDebug(debugState.rtTripUpdates, departureAudit),
         },
+        alertsCache: debugState.alertsCache,
         departureAudit,
       };
     }
