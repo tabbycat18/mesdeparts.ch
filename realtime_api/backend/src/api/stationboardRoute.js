@@ -459,6 +459,9 @@ export function createStationboardRouteHandler({
       const includeAlertsParsed = parseBooleanish(
         req.query.include_alerts ?? req.query.includeAlerts
       );
+      const ifBoardParsed = parseBooleanish(
+        req.query.if_board ?? req.query.has_board
+      );
       const sinceRtParsed = parseSinceRtMs(req.query.since_rt);
       if (!sinceRtParsed.ok) {
         setResponseHeader(
@@ -496,6 +499,7 @@ export function createStationboardRouteHandler({
         debug,
         debugRt,
         includeAlerts: includeAlertsParsed,
+        ifBoard: ifBoardParsed,
         sinceRt: sinceRtParsed.raw || null,
         sinceRtMs,
       });
@@ -577,6 +581,7 @@ export function createStationboardRouteHandler({
         Number.isFinite(rtFetchedAtMs) && rtFetchedAtMs > 0;
 
       if (
+        ifBoardParsed === true &&
         Number.isFinite(sinceRtMs) &&
         hasRtSnapshot &&
         Number.isFinite(rtFetchedAtMs) &&
@@ -601,6 +606,7 @@ export function createStationboardRouteHandler({
           requestId,
           stopId: effectiveStopId,
           stationId: stationIdRaw || null,
+          ifBoard: ifBoardParsed,
           sinceRtMs,
           rtFetchedAtMs: Number.isFinite(rtFetchedAtMs) ? rtFetchedAtMs : null,
           responded204: true,
@@ -658,6 +664,7 @@ export function createStationboardRouteHandler({
           requestId,
           stopId: effectiveStopId,
           stationId: stationIdRaw || null,
+          ifBoard: ifBoardParsed,
           sinceRtMs,
           rtFetchedAtMs: Number.isFinite(rtFetchedAtMs) ? rtFetchedAtMs : null,
           responded204: false,
@@ -706,6 +713,7 @@ export function createStationboardRouteHandler({
         requestId,
         stopId: effectiveStopId,
         stationId: stationIdRaw || null,
+        ifBoard: ifBoardParsed,
         sinceRtMs,
         rtFetchedAtMs: Number.isFinite(rtFetchedAtMs) ? rtFetchedAtMs : null,
         responded204: false,
@@ -726,6 +734,7 @@ export function createStationboardRouteHandler({
         requestId,
         stopId: text(req?.query?.stop_id) || text(req?.query?.stationId) || null,
         stationId: text(req?.query?.stationId) || text(req?.query?.station_id) || null,
+        ifBoard: parseBooleanish(req?.query?.if_board ?? req?.query?.has_board),
         sinceRtMs: parseSinceRtMs(req?.query?.since_rt).ms,
         rtFetchedAtMs: null,
         responded204: false,

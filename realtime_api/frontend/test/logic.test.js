@@ -13,6 +13,7 @@ import {
   fetchJourneyDetails,
   parseApiDate,
   RT_HARD_CAP_MS,
+  buildBoardContextKey,
   shouldApplyIncomingBoard,
   shouldHoldRtDowngrade,
 } from "../v20260223-1.logic.js";
@@ -399,11 +400,18 @@ assert.equal(
     language: appState.language,
     lastRtFetchedAt: appState.lastRtFetchedAt,
     lastStationboardHttpStatus: appState.lastStationboardHttpStatus,
+    boardContextKey: appState.boardContextKey,
   };
   appState.stationId = "Parent8501120";
   appState.STATION = "Lausanne";
   appState.language = "fr";
   appState.lastRtFetchedAt = "2026-02-21T15:00:00.000Z";
+  appState.boardContextKey = buildBoardContextKey({
+    mode: "single",
+    language: "fr",
+    stopA: "Parent8501120",
+    stopB: "",
+  });
 
   try {
     let requestUrl = "";
@@ -427,6 +435,7 @@ assert.equal(
     assert.equal(notModified?.__notModified, true);
     assert.equal(notModified?.__status, 204);
     assert.equal(requestUrl.includes("since_rt=2026-02-21T15%3A00%3A00.000Z"), true);
+    assert.equal(requestUrl.includes("if_board=1"), true);
 
     globalThis.fetch = async () => ({
       ok: true,
@@ -471,6 +480,74 @@ assert.equal(
     appState.language = previous.language;
     appState.lastRtFetchedAt = previous.lastRtFetchedAt;
     appState.lastStationboardHttpStatus = previous.lastStationboardHttpStatus;
+    appState.boardContextKey = previous.boardContextKey;
+  }
+}
+
+// fetchStationboardRaw should skip since_rt when there is no applied board context for this station.
+{
+  const originalFetch = globalThis.fetch;
+  const previous = {
+    stationId: appState.stationId,
+    station: appState.STATION,
+    language: appState.language,
+    lastRtFetchedAt: appState.lastRtFetchedAt,
+    boardContextKey: appState.boardContextKey,
+  };
+  appState.stationId = "Parent8501120";
+  appState.STATION = "Lausanne";
+  appState.language = "fr";
+  appState.lastRtFetchedAt = "2026-02-21T15:00:00.000Z";
+  appState.boardContextKey = null;
+
+  try {
+    let requestUrl = "";
+    globalThis.fetch = async (url) => {
+      requestUrl = String(url || "");
+      return {
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        headers: {
+          get() {
+            return null;
+          },
+        },
+        json: async () => ({
+          station: { id: "Parent8501120", name: "Lausanne" },
+          departures: [],
+          banners: [],
+          rt: {
+            available: false,
+            applied: false,
+            reason: "missing_cache",
+            fetchedAt: null,
+            cacheFetchedAt: null,
+            cacheAgeMs: null,
+            freshnessThresholdMs: 45000,
+          },
+          alerts: {
+            available: false,
+            applied: false,
+            reason: "disabled",
+            fetchedAt: null,
+            ageSeconds: null,
+          },
+        }),
+      };
+    };
+
+    const payload = await fetchStationboardRaw({ allowRetry: false });
+    assert.equal(payload?.__status, 200);
+    assert.equal(requestUrl.includes("since_rt="), false);
+    assert.equal(requestUrl.includes("if_board=1"), false);
+  } finally {
+    globalThis.fetch = originalFetch;
+    appState.stationId = previous.stationId;
+    appState.STATION = previous.station;
+    appState.language = previous.language;
+    appState.lastRtFetchedAt = previous.lastRtFetchedAt;
+    appState.boardContextKey = previous.boardContextKey;
   }
 }
 

@@ -38,8 +38,9 @@ Primary responsibilities:
   - board controls: `limit`, `window_minutes`, `lang`
   - feature flags: `include_alerts` / `includeAlerts`, `debug`, `debug_rt`
   - incremental RT polling token: `since_rt` (ISO timestamp or epoch ms)
+  - client board-presence hint: `if_board`/`has_board` (booleanish)
 - Detect conflicting stop identity (`stop_id` vs `stationId`) using canonical resolution checks.
-- Read RT cache metadata early (`la_tripupdates`) and short-circuit with `204` when `since_rt` indicates no change.
+- Read RT cache metadata early (`la_tripupdates`) and short-circuit with `204` only when `since_rt` indicates no change and the client sends `if_board=1`/`has_board=1`.
 - Apply cache and diagnostics headers (`Cache-Control`, `CDN-Cache-Control`, `Pragma`, `Vary`, `x-md-*`):
   browser-facing stationboard responses are explicit `no-store`; edge-cache intent stays in `CDN-Cache-Control`.
 - Coalesce identical in-flight stationboard builds per request key to prevent duplicate concurrent DB work under bursty client refresh patterns.

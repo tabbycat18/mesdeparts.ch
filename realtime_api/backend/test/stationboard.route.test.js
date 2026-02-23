@@ -363,6 +363,7 @@ test("stationboard route returns 204 when since_rt is unchanged", async () => {
     query: {
       stop_id: "Parent8501120",
       since_rt: fetchedAt,
+      if_board: "1",
     },
   });
   assert.equal(res.statusCode, 204);
@@ -372,6 +373,69 @@ test("stationboard route returns 204 when since_rt is unchanged", async () => {
   assert.equal(res.headers["x-md-rt-fetched-at"], fetchedAt);
   assert.equal(res.headers["x-md-rt-status"], "200");
   assert.equal(calls.length, 0);
+});
+
+test("stationboard route returns 200 when since_rt is unchanged but if_board is missing", async () => {
+  const calls = [];
+  const fetchedAt = "2026-02-21T16:00:00.000Z";
+  const handler = createRouteHandler({
+    getStationboardLike: async (input) => {
+      calls.push(input);
+      return {
+        station: { id: input.stopId || "Parent8501120", name: "Lausanne" },
+        rt: {
+          available: true,
+          applied: true,
+          reason: "fresh",
+          feedKey: "la_tripupdates",
+          fetchedAt,
+          cacheFetchedAt: fetchedAt,
+          cacheAgeMs: 1000,
+          freshnessThresholdMs: 45000,
+          ageSeconds: 1,
+          status: 200,
+          lastStatus: 200,
+          instance: {
+            id: "test-instance",
+            allocId: null,
+            host: "localhost",
+            pid: 1,
+            build: "test",
+          },
+        },
+        alerts: {
+          available: false,
+          applied: false,
+          reason: "disabled",
+          fetchedAt: null,
+          ageSeconds: null,
+        },
+        departures: [],
+      };
+    },
+    getRtCacheMetaLike: async () =>
+      makeRtCacheMetaStub({
+        fetchedAt,
+        lastStatus: 200,
+        payloadBytes: 2048,
+        hasPayload: true,
+      }),
+    resolveStopLike: makeResolveStopStub({
+      "stop:Parent8501120": { resolvedStopId: "Parent8501120", resolvedRootId: "Parent8501120" },
+    }),
+    dbQueryLike: async () => ({ rows: [] }),
+    logger: { log() {}, error() {} },
+  });
+
+  const res = await invokeRoute(handler, {
+    query: {
+      stop_id: "Parent8501120",
+      since_rt: fetchedAt,
+    },
+  });
+  assert.equal(res.statusCode, 200);
+  assert.equal(Array.isArray(res.body?.departures), true);
+  assert.equal(calls.length, 1);
 });
 
 test("stationboard route returns 200 when since_rt is older than current cache", async () => {

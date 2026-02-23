@@ -936,7 +936,20 @@ export async function fetchStationboardRaw(options = {}) {
   const requestLangRaw = String(appState.language || "").trim().toLowerCase();
   const requestLang = SUPPORTED_QUERY_LANGS.has(requestLangRaw) ? requestLangRaw : "fr";
   const sinceRtRaw = String(appState.lastRtFetchedAt || "").trim();
-  const includeSinceRt = !bustCache && !!sinceRtRaw;
+  const mode =
+    typeof document !== "undefined" &&
+    (document.documentElement?.classList?.contains("dual-embed") ||
+      document.body?.classList?.contains("dual-embed"))
+      ? "dual"
+      : "single";
+  const requestContextKey = buildBoardContextKey({
+    mode,
+    language: requestLang,
+    stopA: stationKey,
+    stopB: "",
+  });
+  const hasBoardForContext = String(appState.boardContextKey || "").trim() === requestContextKey;
+  const includeSinceRt = !bustCache && !!sinceRtRaw && hasBoardForContext;
   const inflightKey = `${getApiBase()}|${stationKey}|${requestLang}|${bustCache ? "bust" : "default"}|${includeSinceRt ? sinceRtRaw : "-"}`;
 
   if (!fetchStationboardRaw._inflight) {
@@ -952,7 +965,10 @@ export async function fetchStationboardRaw(options = {}) {
     limit: String(STATIONBOARD_LIMIT),
     lang: requestLang,
   });
-  if (includeSinceRt) params.set("since_rt", sinceRtRaw);
+  if (includeSinceRt) {
+    params.set("since_rt", sinceRtRaw);
+    params.set("if_board", "1");
+  }
   if (bustCache) params.set("_ts", String(Date.now()));
   const url = apiUrl(`/api/stationboard?${params.toString()}`);
   const req = (async () => {
