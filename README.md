@@ -516,6 +516,7 @@ From `realtime_api/edge/worker.js`:
   - `debug=1` bypasses cache
   - caches only `200` JSON responses (`content-type` contains `application/json`)
   - stationboard cache TTL is 15 seconds via `CDN-Cache-Control: public, max-age=15`
+  - stationboard responses also carry browser `no-store` cache headers (`Cache-Control: private, no-store, max-age=0, must-revalidate` + `Pragma: no-cache`) so clients do not reuse stale local HTTP cache entries
   - debug logging can be enabled with `WORKER_CACHE_DEBUG=1` (logs hit/miss/bypass and normalized cache key URL)
 
 Unknown (not found in repo): whether production stationboard traffic is currently routed through this Worker.

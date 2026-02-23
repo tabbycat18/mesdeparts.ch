@@ -42,6 +42,7 @@ If context is still missing after this order, then inspect code.
   - `realtime_api/backend/scripts/pollLaTripUpdates.js`
   - `realtime_api/backend/scripts/pollLaServiceAlerts.js`
 - Frontend entrypoint: `realtime_api/frontend/index.html`
+- Frontend stationboard refresh/fetch loop: `realtime_api/frontend/v20260222-1.main.js`, `realtime_api/frontend/v20260222-1.logic.js`
 - Edge worker entrypoint: `realtime_api/edge/worker.js`
 
 ## 5) Compatibility/deprecated files (verified)
@@ -55,6 +56,7 @@ If context is still missing after this order, then inspect code.
 | --- | --- |
 | GTFS refresh/cutover SQL ownership and run order | `realtime_api/backend/README_SQL.md` |
 | Stationboard route params/headers/204 | `realtime_api/backend/src/api/stationboardRoute.js` |
+| Stationboard client cache policy (browser no-store + CDN cache hints) | `realtime_api/backend/src/api/stationboardRoute.js`, `realtime_api/edge/worker.js` |
 | Stationboard response/meta/alerts wiring | `realtime_api/backend/src/api/stationboard.js` |
 | Core board SQL + RT merge pipeline | `realtime_api/backend/src/logic/buildStationboard.js` |
 | Stationboard debug RT diagnostics (`rtEnabledForRequest`, `rtMetaReason`, scoped counters) | `realtime_api/backend/src/logic/buildStationboard.js`, `realtime_api/backend/src/api/stationboard.js` |
@@ -69,6 +71,7 @@ If context is still missing after this order, then inspect code.
 | Stationboard DB optimization SQL | `realtime_api/backend/sql/optimize_stationboard.sql`, `realtime_api/backend/sql/optimize_stationboard_latency.sql` |
 | Poll cadence/backoff | `realtime_api/backend/scripts/pollLaTripUpdates.js`, `realtime_api/backend/scripts/pollLaServiceAlerts.js` |
 | Frontend polling/render behavior | `realtime_api/frontend/logic.v*.js`, `realtime_api/frontend/ui.v*.js`, `realtime_api/frontend/state.v*.js` |
+| Frontend foreground refresh/resume drift catch-up + RT fetch diagnostics (`lastFetchAt`, `edgeCache`, `serverFetchedAt`) | `realtime_api/frontend/v20260222-1.main.js`, `realtime_api/frontend/v20260222-1.logic.js`, `realtime_api/frontend/v20260222-1.state.js` |
 | Frontend boot / SW update / bfcache reload | `realtime_api/frontend/v20260222-1.main.js` (SW_UPDATED message listener + pageshow persisted listener at end of boot) |
 | SW update notification to clients | `realtime_api/frontend/service-worker.js` (activate handler: wasUpdate → postMessage SW_UPDATED) |
 | Edge routing/cache/proxy rules | `realtime_api/edge/worker.js`, `realtime_api/edge/wrangler.toml` |
@@ -130,6 +133,9 @@ If context is still missing after this order, then inspect code.
   - `mesdeparts.ch` → Cloudflare Pages (serves frontend static files; Worker does NOT intercept this domain)
   - `api.mesdeparts.ch` → Cloudflare Worker (`realtime_api/edge/worker.js`) → Fly.io backend
 - **Worker config**: `realtime_api/edge/wrangler.toml` — route: `api.mesdeparts.ch/*` only
+- **Stationboard caching semantics**:
+  - Edge cache: short TTL (`CDN-Cache-Control`, 15 s) in Worker for `/api/stationboard`
+  - Browser cache: explicit no-store headers on stationboard JSON (`Cache-Control: private, no-store, max-age=0, must-revalidate`)
 - **Deploy Worker**: `npx wrangler deploy --config realtime_api/edge/wrangler.toml`
 - **Pages**: managed via Cloudflare dashboard (not in repo); serves `realtime_api/frontend/` static files
 

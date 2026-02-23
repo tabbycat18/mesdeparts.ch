@@ -72,6 +72,8 @@ const FOLLOWUP_REFRESH_BASE_MS = 3_000;
 const REFRESH_JITTER_MIN_MS = 300;
 const REFRESH_JITTER_MAX_MS = 600;
 const REFRESH_BACKOFF_STEPS_MS = [2_000, 5_000, 10_000, 15_000];
+const FOREGROUND_REFRESH_DEBOUNCE_MS = 1_500;
+const REFRESH_DRIFT_CATCHUP_MS = Math.max(2_000, Math.floor(REFRESH_DEPARTURES * 0.75));
 const DEBUG_RT_CLIENT =
   (() => {
     try {
@@ -216,6 +218,7 @@ let nextRefreshAtMs = 0;
 let rtDebugOverlayEl = null;
 let consecutive204Count = 0;
 let lastFullRefreshAt = 0;
+let lastForegroundRefreshAt = 0;
 const FULL_REFRESH_INTERVAL_MS = 10 * 60 * 1000; // Force full refresh every 10 minutes
 const MAX_CONSECUTIVE_204S = 5; // Force full refresh after 5 consecutive 204s
 
@@ -247,8 +250,13 @@ function updateRtDebugOverlay() {
   if (!el) return;
   const remainingMs = Math.max(0, nextRefreshAtMs - Date.now());
   const nextSec = nextRefreshAtMs > 0 ? Math.ceil(remainingMs / 1000) : "-";
+  const edgeCache = appState.lastStationboardCacheStatus || "-";
+  const lastFetchAt = appState.lastStationboardFetchAt || "-";
+  const serverFetchedAt = appState.lastRtFetchedAt || "-";
   el.textContent = [
-    `lastRtFetchedAt=${appState.lastRtFetchedAt || "-"}`,
+    `lastFetchAt=${lastFetchAt}`,
+    `edgeCache=${edgeCache}`,
+    `serverFetchedAt=${serverFetchedAt}`,
     `lastStatus=${appState.lastStationboardHttpStatus ?? "-"}`,
     `nextPollSec=${nextSec}`,
   ].join(" | ");
@@ -303,7 +311,10 @@ function clearBoardForStationChange() {
   appState.boardContextKey = null;
   resetRtBoardState();
   appState.lastRtFetchedAt = null;
+  appState.lastStationboardFetchAt = null;
+  appState.lastStationboardCacheStatus = null;
   appState.lastStationboardHttpStatus = null;
+  lastForegroundRefreshAt = 0;
   setBoardNoticeHint("");
   updateRtDebugOverlay();
 
@@ -352,13 +363,22 @@ function scheduleNextRefresh({ useBackoff = false } = {}) {
   ];
   const baseMs = useBackoff ? backoffMs : REFRESH_DEPARTURES;
   const delayMs = jitteredDelayMs(baseMs);
-  nextRefreshAtMs = Date.now() + delayMs;
+  const dueAtMs = Date.now() + delayMs;
+  nextRefreshAtMs = dueAtMs;
   updateRtDebugOverlay();
 
   refreshTimer = setTimeout(() => {
+    const driftMs = Math.max(0, Date.now() - dueAtMs);
     refreshTimer = null;
     nextRefreshAtMs = 0;
     updateRtDebugOverlay();
+    if (DEBUG_RT_CLIENT && driftMs >= REFRESH_DRIFT_CATCHUP_MS) {
+      // eslint-disable-next-line no-console
+      console.log("[MesDeparts][rt-refresh] Timer drift detected", {
+        driftMs: Math.round(driftMs),
+        expectedDelayMs: Math.round(delayMs),
+      });
+    }
     if (refreshInFlight) {
       scheduleNextRefresh({ useBackoff });
       return;
@@ -383,7 +403,53 @@ function startRefreshLoop() {
   scheduleNextRefresh({ useBackoff: false });
 }
 
+function getRefreshDriftMs(nowMs = Date.now()) {
+  if (!Number.isFinite(nextRefreshAtMs) || nextRefreshAtMs <= 0) return 0;
+  return Math.max(0, Number(nowMs) - nextRefreshAtMs);
+}
+
+function maybeCatchUpRefresh({ source = "unknown" } = {}) {
+  if (!refreshLoopActive || refreshInFlight) return false;
+  if (typeof document !== "undefined" && document.hidden) return false;
+  const driftMs = getRefreshDriftMs();
+  if (driftMs < REFRESH_DRIFT_CATCHUP_MS) return false;
+
+  clearScheduledRefresh();
+  if (DEBUG_RT_CLIENT) {
+    // eslint-disable-next-line no-console
+    console.log("[MesDeparts][rt-refresh] Catch-up refresh", {
+      source,
+      driftMs: Math.round(driftMs),
+    });
+  }
+  refreshDepartures({ showLoadingHint: false, fromScheduler: true });
+  return true;
+}
+
+function triggerForegroundRefresh({ source = "foreground" } = {}) {
+  const nowMs = Date.now();
+  const driftMs = getRefreshDriftMs(nowMs);
+  const overdue = driftMs >= REFRESH_DRIFT_CATCHUP_MS;
+  const dueToFocusResume =
+    source === "visibilitychange" ||
+    nowMs - lastForegroundRefreshAt >= FOREGROUND_REFRESH_DEBOUNCE_MS;
+  if (!overdue && !dueToFocusResume) return;
+  lastForegroundRefreshAt = nowMs;
+  if (overdue) {
+    clearScheduledRefresh();
+  }
+  if (DEBUG_RT_CLIENT && overdue) {
+    // eslint-disable-next-line no-console
+    console.log("[MesDeparts][rt-refresh] Foreground drift refresh", {
+      source,
+      driftMs: Math.round(driftMs),
+    });
+  }
+  refreshDepartures({ showLoadingHint: false, fromScheduler: overdue });
+}
+
 function refreshCountdownTick() {
+  if (maybeCatchUpRefresh({ source: "countdown" })) return;
   if (!lastStationboardData) return;
   try {
     const rows = buildDeparturesGrouped(lastStationboardData, appState.viewMode);
@@ -426,9 +492,16 @@ function handleVisibilityChange() {
     stopCountdownLoop();
     return;
   }
-  startRefreshLoop();
-  startCountdownLoop();
-  refreshDepartures({ showLoadingHint: false });
+  if (!refreshLoopActive) startRefreshLoop();
+  if (!countdownTimer) startCountdownLoop();
+  triggerForegroundRefresh({ source: "visibilitychange" });
+}
+
+function handleWindowFocus() {
+  if (typeof document !== "undefined" && document.hidden) return;
+  if (!refreshLoopActive) startRefreshLoop();
+  if (!countdownTimer) startCountdownLoop();
+  triggerForegroundRefresh({ source: "focus" });
 }
 
 function normalizeStationName(name) {
@@ -1143,7 +1216,7 @@ function installDebugHardRefreshShortcut() {
     document.addEventListener("visibilitychange", handleVisibilityChange, { passive: true });
   }
   if (typeof window !== "undefined") {
-    window.addEventListener("focus", handleVisibilityChange, { passive: true });
+    window.addEventListener("focus", handleWindowFocus, { passive: true });
   }
   if (typeof document !== "undefined" && document.hidden) {
     handleVisibilityChange();

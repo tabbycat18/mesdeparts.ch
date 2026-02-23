@@ -41,6 +41,8 @@ This project follows the opentransportdata.swiss model:
 - Use protobuf feed format for production integrations; JSON is mainly for diagnostics/testing.
 - Respect upstream rate limits (Swiss guidance: hard cap 2 req/min per key).
 - Cache/refresh policy should smooth polling and prevent UI-driven overfetch.
+- `/api/stationboard` responses are browser `no-store` while retaining short edge-cache TTL
+  (`CDN-Cache-Control`) so clients stay fresh without increasing upstream load.
 
 ## What Is Source Of Truth
 
@@ -206,6 +208,9 @@ This verifies merge behavior and `cancelled` flag assignment.
 
 - It renders data and applies UI styles/filters.
 - It should not be treated as stationboard business logic source.
+- Refresh loop hardening for throttled browsers is in frontend runtime files:
+  foreground `visibilitychange`/`focus` refresh and timer-drift catch-up in `v20260222-1.main.js`,
+  stationboard fetch `cache: "no-store"` and fetch diagnostics in `v20260222-1.logic.js`.
 
 ## Data Hygiene
 

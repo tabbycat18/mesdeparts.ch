@@ -46,11 +46,11 @@ Search-improvement references:
 
 ## Frontend docs
 
-- [`frontend/README_frontend.md`](./frontend/README_frontend.md) - static UI structure, runtime behavior, versioned assets.
+- [`frontend/README_frontend.md`](./frontend/README_frontend.md) - static UI structure, runtime behavior, versioned assets (including stationboard foreground refresh/catch-up and browser `no-store` fetch policy).
 
 ## Edge docs
 
-- [`edge/README_edge.md`](./edge/README_edge.md) - Cloudflare Worker deployment path and commands.
+- [`edge/README_edge.md`](./edge/README_edge.md) - Cloudflare Worker deployment path and commands (including stationboard edge TTL + client no-store header behavior).
 
 ## Operations docs
 

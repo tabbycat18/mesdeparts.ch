@@ -91,6 +91,8 @@ export const appState = {
 
   // RT poll state
   lastRtFetchedAt: null,
+  lastStationboardFetchAt: null,
+  lastStationboardCacheStatus: null,
   lastStationboardHttpStatus: null,
   boardContextKey: null,
   lastRtSnapshotAtMs: null,

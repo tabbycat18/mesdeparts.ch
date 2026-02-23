@@ -10,6 +10,7 @@ const DEFAULT_RT_FRESHNESS_THRESHOLD_MS = Math.max(
 const DEFAULT_RT_FEED_KEY = "la_tripupdates";
 const DEFAULT_200_CDN_CACHE_CONTROL = "public, max-age=12, stale-while-revalidate=24";
 const DEFAULT_204_CDN_CACHE_CONTROL = "public, max-age=2, stale-while-revalidate=4";
+const STATIONBOARD_CLIENT_CACHE_CONTROL = "private, no-store, max-age=0, must-revalidate";
 const ROUTE_INSTANCE_ID = String(process.env.FLY_ALLOC_ID || os.hostname() || "local").trim();
 const ROUTE_BUILD = String(
   process.env.APP_VERSION ||
@@ -406,7 +407,8 @@ export function createStationboardRouteHandler({
       randomRequestId();
     let debug = false;
     setResponseHeader(res, "x-md-request-id", requestId);
-    setResponseHeader(res, "Cache-Control", "public, max-age=0, must-revalidate");
+    setResponseHeader(res, "Cache-Control", STATIONBOARD_CLIENT_CACHE_CONTROL);
+    setResponseHeader(res, "Pragma", "no-cache");
     setResponseHeader(
       res,
       "CDN-Cache-Control",
@@ -640,8 +642,8 @@ export function createStationboardRouteHandler({
             cache: {
               key: responseCacheKey,
               vary: "Origin, Accept-Encoding",
-              cacheControl: "public, max-age=0, must-revalidate",
-              cdnCacheControl: "public, max-age=12, stale-while-revalidate=24",
+              cacheControl: STATIONBOARD_CLIENT_CACHE_CONTROL,
+              cdnCacheControl: DEFAULT_200_CDN_CACHE_CONTROL,
             },
           };
         }
@@ -656,8 +658,8 @@ export function createStationboardRouteHandler({
           cache: {
             key: responseCacheKey,
             vary: "Origin, Accept-Encoding",
-            cacheControl: "public, max-age=0, must-revalidate",
-            cdnCacheControl: "public, max-age=12, stale-while-revalidate=24",
+            cacheControl: STATIONBOARD_CLIENT_CACHE_CONTROL,
+            cdnCacheControl: DEFAULT_200_CDN_CACHE_CONTROL,
           },
         };
       }

@@ -235,8 +235,9 @@ test("stationboard route does not conflict when params resolve to same canonical
   assert.equal(typeof res.body?.alerts, "object");
   assert.equal(
     res.headers["Cache-Control"] || res.headers["cache-control"],
-    "public, max-age=0, must-revalidate"
+    "private, no-store, max-age=0, must-revalidate"
   );
+  assert.equal(res.headers["Pragma"] || res.headers["pragma"], "no-cache");
   assert.equal(
     res.headers["CDN-Cache-Control"] || res.headers["cdn-cache-control"],
     "public, max-age=12, stale-while-revalidate=24"

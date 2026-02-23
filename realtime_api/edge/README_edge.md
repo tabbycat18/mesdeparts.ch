@@ -8,6 +8,10 @@ For stationboard diagnostics, the Worker forwards backend `debug=1` payloads
 unchanged (including `debug.rt.tripUpdates` fields such as `rtEnabledForRequest`
 and `rtMetaReason`).
 
+`/api/stationboard` behavior:
+- Short edge cache (`CDN-Cache-Control`, 15 s) on normalized cache keys.
+- Explicit client no-store headers (`Cache-Control: private, no-store, max-age=0, must-revalidate`) so Safari/iPad browsers don't reuse stale stationboard JSON from local HTTP cache.
+
 ## Files
 - `realtime_api/edge/worker.js`: Worker logic.
 - `realtime_api/edge/wrangler.toml`: Active Wrangler config used for deploys.

@@ -175,6 +175,18 @@ These fields provide detail and must not be used as the sole cancellation source
 - `delayMin === 0` is emitted only when realtime is confirmed.
 - When realtime is not confirmed, `delayMin` may be `null` even if times appear equal.
 
+### Transport/cache headers (stationboard route)
+
+`src/api/stationboardRoute.js` sets cache headers so browser caches do not keep stale
+stationboard JSON while edge caches can still absorb load:
+
+- `Cache-Control: private, no-store, max-age=0, must-revalidate`
+- `Pragma: no-cache`
+- `CDN-Cache-Control`:
+  - 200 responses: `public, max-age=12, stale-while-revalidate=24`
+  - 204 unchanged (`since_rt`) responses: `public, max-age=2, stale-while-revalidate=4`
+- `Vary: Origin, Accept-Encoding`
+
 ### Debug
 
 - When `debug=1` is passed, `debug` is included for tracing only.

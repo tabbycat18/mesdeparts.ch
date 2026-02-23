@@ -12,6 +12,7 @@ const DEFAULT_GLOBAL_LIMIT_PER_DAY = 0;
 const RATE_LIMIT_WINDOW_SEC = 60;
 const GLOBAL_LIMIT_WINDOW_SEC = 86400;
 const STATIONBOARD_CACHE_TTL_SEC = 15;
+const STATIONBOARD_CLIENT_CACHE_CONTROL = "private, no-store, max-age=0, must-revalidate";
 
 const addCors = (res, extraHeaders = null) => {
   const out = new Response(res.body, res);
@@ -301,7 +302,8 @@ export default {
       }
 
       const proxyRes = new Response(res.body, res);
-      proxyRes.headers.set("Cache-Control", "public, max-age=0");
+      proxyRes.headers.set("Cache-Control", STATIONBOARD_CLIENT_CACHE_CONTROL);
+      proxyRes.headers.set("Pragma", "no-cache");
       proxyRes.headers.set(
         "CDN-Cache-Control",
         `public, max-age=${STATIONBOARD_CACHE_TTL_SEC}`

@@ -4,7 +4,7 @@
 #
 
 app = 'mesdeparts-ch'
-primary_region = 'iad'
+primary_region = 'ams'
 
 [build]
 
@@ -13,7 +13,7 @@ primary_region = 'iad'
   force_https = true
   auto_stop_machines = 'stop'
   auto_start_machines = true
-  min_machines_running = 0
+  min_machines_running = 1
   processes = ['app']
 
 [[vm]]

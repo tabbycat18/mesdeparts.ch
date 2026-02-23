@@ -966,12 +966,16 @@ export async function fetchStationboardRaw(options = {}) {
       try {
         response = await fetch(url, {
           signal: controller.signal,
-          cache: bustCache ? "reload" : "default",
+          // Keep browser HTTP cache out of the stationboard path; edge caching remains active.
+          cache: "no-store",
         });
       } finally {
         clearTimeout(timeout);
       }
 
+      appState.lastStationboardFetchAt = new Date().toISOString();
+      const cacheStatus = String(response?.headers?.get("x-md-cache") || "").trim().toUpperCase();
+      appState.lastStationboardCacheStatus = cacheStatus || null;
       appState.lastStationboardHttpStatus = Number(response?.status || 0) || null;
       if (response?.status === 204) {
         const fetchedAtHeader = String(response.headers?.get("x-md-rt-fetched-at") || "").trim();
