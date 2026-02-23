@@ -22,7 +22,7 @@ This order is designed to avoid code-search for common context.
 ## Backend docs
 
 - [`backend/README_backend.md`](./backend/README_backend.md) - backend operations, deployment notes, stationboard contract, stop-search behavior.
-- [`backend/README_src.md`](./backend/README_src.md) - deep code map of `src/` (api, merge, rt, search, utilities).
+- [`backend/README_src.md`](./backend/README_src.md) - deep code map of `src/` (api, merge, rt, search, utilities), including Model A top-level stationboard `meta` contract.
 - [`backend/README_SQL.md`](./backend/README_SQL.md) - SQL runbook: file roles, refresh order, cutover/search/runtime query mapping.
 - [`backend/scripts/README_scripts.md`](./backend/scripts/README_scripts.md) - script-by-script usage, requirements, and safe execution order.
 

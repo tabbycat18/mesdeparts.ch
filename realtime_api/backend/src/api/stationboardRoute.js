@@ -201,10 +201,15 @@ function ensureAlertsMeta(raw) {
     available: src.available === true,
     applied: src.applied === true,
     reason: text(src.reason) || "disabled",
-    fetchedAt: text(src.fetchedAt) || null,
+    fetchedAt: text(src.cacheFetchedAt) || text(src.fetchedAt) || null,
+    cacheFetchedAt: text(src.cacheFetchedAt) || text(src.fetchedAt) || null,
+    cacheAgeMs: toFiniteNumberOrNull(src.cacheAgeMs),
     ageSeconds: toFiniteNumberOrNull(src.ageSeconds),
     includeRequested: src.includeRequested === true,
     includeApplied: src.includeApplied === true,
+    status: toFiniteNumberOrNull(src.status) ?? toFiniteNumberOrNull(src.lastStatus),
+    lastStatus: toFiniteNumberOrNull(src.lastStatus),
+    lastError: text(src.lastError) || null,
   };
 }
 
@@ -215,6 +220,121 @@ function ensureStationboardMetaPayload(payload) {
     departures: Array.isArray(src.departures) ? src.departures : [],
     rt: ensureRtMeta(src.rt),
     alerts: ensureAlertsMeta(src.alerts),
+  };
+}
+
+function countRtAppliedDepartures(departures = []) {
+  const rows = Array.isArray(departures) ? departures : [];
+  return rows.reduce((acc, dep) => {
+    if (Array.isArray(dep?.flags) && dep.flags.includes("RT_CONFIRMED")) return acc + 1;
+    const scheduled = text(dep?.scheduledDeparture);
+    const realtime = text(dep?.realtimeDeparture);
+    if (!scheduled || !realtime) return acc;
+    const scheduledMs = Date.parse(scheduled);
+    const realtimeMs = Date.parse(realtime);
+    if (!Number.isFinite(scheduledMs) || !Number.isFinite(realtimeMs)) return acc;
+    return realtimeMs !== scheduledMs ? acc + 1 : acc;
+  }, 0);
+}
+
+function normalizeSkippedSteps(metaRaw, payload) {
+  const out = new Set();
+  const fromMeta = Array.isArray(metaRaw?.skippedSteps) ? metaRaw.skippedSteps : [];
+  for (const step of fromMeta) {
+    const val = text(step);
+    if (val) out.add(val);
+  }
+  const fromDebug = Array.isArray(payload?.debug?.latencySafe?.skippedSteps)
+    ? payload.debug.latencySafe.skippedSteps
+    : [];
+  for (const step of fromDebug) {
+    const val = text(step);
+    if (val) out.add(val);
+  }
+  return Array.from(out);
+}
+
+function normalizeResponseMode(raw, fallback = "full") {
+  const value = text(raw).toLowerCase();
+  if (value === "full") return "full";
+  if (value === "degraded_static") return "degraded_static";
+  if (value === "stale_cache_fallback") return "stale_cache_fallback";
+  if (value === "static_timeout_fallback") return "static_timeout_fallback";
+  return fallback;
+}
+
+function deriveRtStatus(payload, skippedSteps = []) {
+  const skipped = Array.isArray(skippedSteps) ? skippedSteps : [];
+  if (skipped.includes("rt_load_skipped_budget") || skipped.includes("rt_apply_skipped_budget")) {
+    return "skipped_budget";
+  }
+  const rt = payload?.rt && typeof payload.rt === "object" ? payload.rt : {};
+  if (rt.applied === true) return "applied";
+  const reason = canonicalRtReason(rt.reason, rt.applied === true);
+  if (reason === "fresh") return "applied";
+  if (reason === "stale") return "stale_cache";
+  if (reason === "disabled") return "disabled";
+  if (reason === "missing") return "missing_cache";
+  return "guarded_error";
+}
+
+function deriveAlertsStatus(payload, skippedSteps = []) {
+  const skipped = Array.isArray(skippedSteps) ? skippedSteps : [];
+  if (skipped.includes("alerts_skipped_budget")) return "skipped_budget";
+  const alerts = payload?.alerts && typeof payload.alerts === "object" ? payload.alerts : {};
+  const reason = text(alerts.reason).toLowerCase();
+  if (alerts.applied === true) return "applied";
+  if (reason.includes("budget")) return "skipped_budget";
+  if (reason === "disabled" || reason === "not_requested") return "disabled";
+  if (!reason || reason.includes("missing")) return "missing_cache";
+  if (reason.includes("error") || reason.includes("failed") || reason.includes("decode")) {
+    return "error_fallback";
+  }
+  return "missing_cache";
+}
+
+function ensureTopLevelMeta(payload, { requestId, responseMode, totalBackendMs } = {}) {
+  const normalized = ensureStationboardMetaPayload(payload);
+  const metaRaw = normalized?.meta && typeof normalized.meta === "object" ? normalized.meta : {};
+  const skippedSteps = normalizeSkippedSteps(metaRaw, normalized);
+  const derivedMode = skippedSteps.length > 0 ? "degraded_static" : "full";
+  const rtFetchedAt =
+    text(metaRaw.rtFetchedAt) || text(normalized?.rt?.cacheFetchedAt) || text(normalized?.rt?.fetchedAt) || null;
+  const alertsFetchedAt =
+    text(metaRaw.alertsFetchedAt) ||
+    text(normalized?.alerts?.cacheFetchedAt) ||
+    text(normalized?.alerts?.fetchedAt) ||
+    null;
+  const rtCacheAgeMs =
+    toFiniteNumberOrNull(metaRaw.rtCacheAgeMs) ?? toFiniteNumberOrNull(normalized?.rt?.cacheAgeMs);
+  const alertsCacheAgeMs =
+    toFiniteNumberOrNull(metaRaw.alertsCacheAgeMs) ??
+    toFiniteNumberOrNull(normalized?.alerts?.cacheAgeMs) ??
+    (toFiniteNumberOrNull(normalized?.alerts?.ageSeconds) != null
+      ? Math.max(0, Math.round(Number(normalized.alerts.ageSeconds) * 1000))
+      : null);
+  const meta = {
+    serverTime: text(metaRaw.serverTime) || new Date().toISOString(),
+    responseMode: normalizeResponseMode(
+      responseMode || metaRaw.responseMode,
+      derivedMode
+    ),
+    requestId: text(requestId) || text(metaRaw.requestId) || randomRequestId(),
+    totalBackendMs:
+      toFiniteNumberOrNull(totalBackendMs) ?? toFiniteNumberOrNull(metaRaw.totalBackendMs),
+    skippedSteps,
+    rtStatus: text(metaRaw.rtStatus) || deriveRtStatus(normalized, skippedSteps),
+    rtAppliedCount:
+      toFiniteNumberOrNull(metaRaw.rtAppliedCount) ?? countRtAppliedDepartures(normalized.departures),
+    rtFetchedAt,
+    rtCacheAgeMs,
+    alertsStatus: text(metaRaw.alertsStatus) || deriveAlertsStatus(normalized, skippedSteps),
+    alertsFetchedAt,
+    alertsCacheAgeMs,
+  };
+  return {
+    ...normalized,
+    meta,
   };
 }
 
@@ -317,6 +437,20 @@ function buildStaticFallbackPayload({
       dbPool,
     };
   }
+  payload.meta = {
+    serverTime: new Date().toISOString(),
+    responseMode: "static_timeout_fallback",
+    requestId: text(requestId) || randomRequestId(),
+    totalBackendMs: toFiniteNumberOrNull(routeTiming?.totalMs),
+    skippedSteps: [reason],
+    rtStatus: "skipped_budget",
+    rtAppliedCount: 0,
+    rtFetchedAt: null,
+    rtCacheAgeMs: null,
+    alertsStatus: "skipped_budget",
+    alertsFetchedAt: null,
+    alertsCacheAgeMs: null,
+  };
   return payload;
 }
 
@@ -744,7 +878,11 @@ export function createStationboardRouteHandler({
         if (err?.code !== "stationboard_timeout") throw err;
         const cached = readCachedStationboard(responseCacheKey);
         if (cached) {
-          const normalizedCached = ensureStationboardMetaPayload(cached);
+          const normalizedCached = ensureTopLevelMeta(cached, {
+            requestId,
+            responseMode: "stale_cache_fallback",
+            totalBackendMs: roundMs(performance.now() - routeStartedMs),
+          });
           setResponseHeader(res, "x-md-stale", "1");
           setResponseHeader(res, "x-md-stale-reason", "stationboard_timeout");
           applyRtDiagnosticHeaders(res, normalizedCached, {
@@ -809,7 +947,7 @@ export function createStationboardRouteHandler({
           return res.json(normalizedCached);
         }
 
-        const fallbackPayload = buildStaticFallbackPayload({
+        const fallbackPayloadRaw = buildStaticFallbackPayload({
           stopId: effectiveStopId,
           stationName,
           requestId,
@@ -822,6 +960,11 @@ export function createStationboardRouteHandler({
           },
           dbPool: dbPoolStats,
           debug,
+        });
+        const fallbackPayload = ensureTopLevelMeta(fallbackPayloadRaw, {
+          requestId,
+          responseMode: "static_timeout_fallback",
+          totalBackendMs: roundMs(performance.now() - routeStartedMs),
         });
         setResponseHeader(res, "x-md-stale", "1");
         setResponseHeader(res, "x-md-stale-reason", "stationboard_timeout_no_cache_static");
@@ -845,7 +988,10 @@ export function createStationboardRouteHandler({
         });
         return res.status(200).json(fallbackPayload);
       }
-      const normalizedResult = ensureStationboardMetaPayload(result);
+      const normalizedResult = ensureTopLevelMeta(result, {
+        requestId,
+        totalBackendMs: roundMs(performance.now() - routeStartedMs),
+      });
       if (debug) {
         normalizedResult.debug = {
           ...(normalizedResult.debug && typeof normalizedResult.debug === "object"
@@ -958,7 +1104,11 @@ export function createStationboardRouteHandler({
         });
         const cached = readCachedStationboard(responseCacheKey);
         if (cached) {
-          const normalizedCached = ensureStationboardMetaPayload(cached);
+          const normalizedCached = ensureTopLevelMeta(cached, {
+            requestId,
+            responseMode: "stale_cache_fallback",
+            totalBackendMs: roundMs(performance.now() - routeStartedMs),
+          });
           setResponseHeader(res, "x-md-stale", "1");
           setResponseHeader(res, "x-md-stale-reason", "stationboard_timeout_or_db_timeout");
           applyRtDiagnosticHeaders(res, normalizedCached, { cacheKey: responseCacheKey });
@@ -975,7 +1125,7 @@ export function createStationboardRouteHandler({
         );
         const alertsFeatureEnabled =
           String(process.env.STATIONBOARD_ENABLE_ALERTS || "").trim() !== "0";
-        const fallbackPayload = buildStaticFallbackPayload({
+        const fallbackPayloadRaw = buildStaticFallbackPayload({
           stopId,
           stationName,
           requestId,
@@ -995,6 +1145,11 @@ export function createStationboardRouteHandler({
                 }
               : null,
           debug,
+        });
+        const fallbackPayload = ensureTopLevelMeta(fallbackPayloadRaw, {
+          requestId,
+          responseMode: "static_timeout_fallback",
+          totalBackendMs: backendTotalMs,
         });
         setResponseHeader(res, "x-md-stale", "1");
         setResponseHeader(res, "x-md-stale-reason", "stationboard_timeout_or_db_timeout_no_cache");

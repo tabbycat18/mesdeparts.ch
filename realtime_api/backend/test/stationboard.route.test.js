@@ -258,6 +258,14 @@ test("stationboard route does not conflict when params resolve to same canonical
   assert.equal(typeof res.body?.rt?.freshnessThresholdMs, "number");
   assert.equal(typeof res.body?.rt?.instance?.id, "string");
   assert.equal(typeof res.body?.alerts?.reason, "string");
+  assert.equal(typeof res.body?.meta, "object");
+  assert.equal(res.body?.meta?.requestId, res.headers["x-md-request-id"]);
+  assert.equal(res.body?.meta?.responseMode, "full");
+  assert.equal(typeof res.body?.meta?.serverTime, "string");
+  assert.equal(typeof res.body?.meta?.totalBackendMs, "number");
+  assert.equal(res.body?.meta?.rtStatus, "missing_cache");
+  assert.equal(res.body?.meta?.alertsStatus, "disabled");
+  assert.ok(Array.isArray(res.body?.meta?.skippedSteps));
 
   assert.equal(calls.length, 1);
 });
@@ -647,6 +655,11 @@ test("stationboard route normalizes rt/alerts metadata when omitted by builder",
   assert.equal(typeof res.body?.rt?.instance?.id, "string");
   assert.equal(res.headers["x-md-rt-applied"], "0");
   assert.equal(typeof res.headers["x-md-rt-reason"], "string");
+  assert.equal(typeof res.body?.meta, "object");
+  assert.equal(res.body?.meta?.requestId, res.headers["x-md-request-id"]);
+  assert.equal(typeof res.body?.meta?.rtAppliedCount, "number");
+  assert.equal(typeof res.body?.meta?.rtStatus, "string");
+  assert.equal(typeof res.body?.meta?.alertsStatus, "string");
 });
 
 test("stationboard route maps stale cache RT reason to canonical 'stale'", async () => {
@@ -751,6 +764,8 @@ test("stationboard route serves cached response when build times out", async () 
     assert.equal(second.body?.departures?.[0]?.line, "R1");
     assert.equal(second.headers["x-md-stale"], "1");
     assert.equal(second.headers["x-md-stale-reason"], "stationboard_timeout");
+    assert.equal(second.body?.meta?.responseMode, "stale_cache_fallback");
+    assert.equal(second.body?.meta?.requestId, second.headers["x-md-request-id"]);
   });
 });
 
@@ -817,6 +832,9 @@ test("stationboard route returns static-only 200 when build times out and no cac
         res.body.debug.skippedSteps.includes("build_timeout_static_fallback")
     );
     assert.equal(res.headers["x-md-stale"], "1");
+    assert.equal(res.body?.meta?.responseMode, "static_timeout_fallback");
+    assert.equal(res.body?.meta?.rtStatus, "skipped_budget");
+    assert.equal(res.body?.meta?.alertsStatus, "skipped_budget");
   });
 });
 

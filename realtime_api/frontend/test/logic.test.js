@@ -400,6 +400,7 @@ assert.equal(
     language: appState.language,
     lastRtFetchedAt: appState.lastRtFetchedAt,
     lastStationboardHttpStatus: appState.lastStationboardHttpStatus,
+    lastStationboardMeta: appState.lastStationboardMeta,
     boardContextKey: appState.boardContextKey,
   };
   appState.stationId = "Parent8501120";
@@ -468,11 +469,29 @@ assert.equal(
           fetchedAt: null,
           ageSeconds: null,
         },
+        meta: {
+          serverTime: "2026-02-21T15:01:02.000Z",
+          responseMode: "full",
+          requestId: "sb-test-meta",
+          totalBackendMs: 42.5,
+          skippedSteps: [],
+          rtStatus: "applied",
+          rtAppliedCount: 0,
+          rtFetchedAt: "2026-02-21T15:01:00.000Z",
+          rtCacheAgeMs: 1000,
+          alertsStatus: "disabled",
+          alertsFetchedAt: null,
+          alertsCacheAgeMs: null,
+        },
       }),
     });
     const full = await fetchStationboardRaw({ allowRetry: false });
     assert.equal(full?.__status, 200);
     assert.equal(appState.lastRtFetchedAt, "2026-02-21T15:01:00.000Z");
+    assert.equal(full?.meta?.responseMode, "full");
+    assert.equal(full?.meta?.rtStatus, "applied");
+    assert.equal(full?.meta?.requestId, "sb-test-meta");
+    assert.equal(appState.lastStationboardMeta?.requestId, "sb-test-meta");
   } finally {
     globalThis.fetch = originalFetch;
     appState.stationId = previous.stationId;
@@ -480,6 +499,7 @@ assert.equal(
     appState.language = previous.language;
     appState.lastRtFetchedAt = previous.lastRtFetchedAt;
     appState.lastStationboardHttpStatus = previous.lastStationboardHttpStatus;
+    appState.lastStationboardMeta = previous.lastStationboardMeta;
     appState.boardContextKey = previous.boardContextKey;
   }
 }
@@ -492,6 +512,7 @@ assert.equal(
     station: appState.STATION,
     language: appState.language,
     lastRtFetchedAt: appState.lastRtFetchedAt,
+    lastStationboardMeta: appState.lastStationboardMeta,
     boardContextKey: appState.boardContextKey,
   };
   appState.stationId = "Parent8501120";
@@ -541,12 +562,16 @@ assert.equal(
     assert.equal(payload?.__status, 200);
     assert.equal(requestUrl.includes("since_rt="), false);
     assert.equal(requestUrl.includes("if_board=1"), false);
+    assert.equal(typeof payload?.meta, "object");
+    assert.equal(payload?.meta?.responseMode, null);
+    assert.ok(Array.isArray(payload?.meta?.skippedSteps));
   } finally {
     globalThis.fetch = originalFetch;
     appState.stationId = previous.stationId;
     appState.STATION = previous.station;
     appState.language = previous.language;
     appState.lastRtFetchedAt = previous.lastRtFetchedAt;
+    appState.lastStationboardMeta = previous.lastStationboardMeta;
     appState.boardContextKey = previous.boardContextKey;
   }
 }

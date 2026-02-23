@@ -67,13 +67,31 @@ Primary responsibilities:
 
 Request-budget guard:
 - `totalBudgetMs = min(STATIONBOARD_ROUTE_TIMEOUT_MS, 5000)` (default 5 000 ms).
-- Before each optional phase a remaining-budget check fires (`isBudgetLow()` = remaining < 400 ms).
+- Before each optional phase a remaining-budget check fires with stage-specific thresholds:
+  `minRemainingForSparseRetryMs`, `minRemainingForScopeFallbackMs`,
+  `minRemainingForRtApplyMs`, `minRemainingForAlertsMs`, `minRemainingForSupplementMs`.
 - If budget is low the phase is **skipped**, `degradedMode = true`, and the reason is appended to
   `degradedReasons`.  The function still returns a usable 200 with whatever departures were built.
 - Guard points in order: sparse retry → scope fallback → alerts (early return) → supplement.
 - `response.debug.latencySafe` (when `debug=true`) exposes `degradedMode`, `degradedReasons`,
   `totalBudgetMs`, `remainingBudgetMs`, and `lowBudgetThresholdMs`.
 - Regression tests: `test/stationboard.budget.test.js`.
+
+Always-on top-level stationboard `meta` (Model A contract):
+- Every successful stationboard JSON response includes a top-level `meta` object:
+  - `serverTime`, `responseMode`, `requestId`, `totalBackendMs`
+  - `skippedSteps`
+  - `rtStatus`, `rtAppliedCount`, `rtFetchedAt`, `rtCacheAgeMs`
+  - `alertsStatus`, `alertsFetchedAt`, `alertsCacheAgeMs`
+- `responseMode` values:
+  - `full`
+  - `degraded_static`
+  - `stale_cache_fallback`
+  - `static_timeout_fallback`
+- `rtStatus` values:
+  - `applied`, `stale_cache`, `skipped_budget`, `disabled`, `missing_cache`, `guarded_error`
+- `alertsStatus` values:
+  - `applied`, `skipped_budget`, `disabled`, `missing_cache`, `error_fallback`
 
 Important design guard:
 - Request-path upstream RT/alerts fetches are blocked by `guardStationboardRequestPathUpstream(...)`.
@@ -302,9 +320,9 @@ Primary responsibilities:
 
 ### `src/api`
 
-- `src/api/stationboard.js` (1616 lines)
+- `src/api/stationboard.js` (1847 lines)
   - Exports: `getStationboard(...)`
-- `src/api/stationboardRoute.js` (737 lines)
+- `src/api/stationboardRoute.js` (1168 lines)
   - Exports: `deriveResolvedIdentity(...)`, `createStationboardRouteHandler(...)`
 - `src/api/stopSearchRoute.js` (121 lines)
   - Exports: `createStopSearchRouteHandler(...)`
@@ -367,7 +385,7 @@ Primary responsibilities:
 
 ### `src/logic`
 
-- `src/logic/buildStationboard.js` (1034 lines)
+- `src/logic/buildStationboard.js` (1170 lines)
   - Exports: `buildStationboard(...)`
 
 ### `src/merge`

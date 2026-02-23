@@ -114,6 +114,21 @@ Debug (`debug=1`) includes `debug.latencySafe` with:
 
 This guard is always active; it does not require emergency deploy overrides.
 
+### Model A API metadata (always-on)
+
+`/api/stationboard` responses include additive top-level `meta` so phone/tablet differences are
+explainable without enabling debug:
+
+- `serverTime`, `requestId`, `totalBackendMs`
+- `responseMode` (`full`, `degraded_static`, `stale_cache_fallback`, `static_timeout_fallback`)
+- `skippedSteps` (budget/fallback reasons)
+- `rtStatus`, `rtAppliedCount`, `rtFetchedAt`, `rtCacheAgeMs`
+- `alertsStatus`, `alertsFetchedAt`, `alertsCacheAgeMs`
+
+Status semantics:
+- `rtStatus`: `applied`, `stale_cache`, `skipped_budget`, `disabled`, `missing_cache`, `guarded_error`
+- `alertsStatus`: `applied`, `skipped_budget`, `disabled`, `missing_cache`, `error_fallback`
+
 ### Optional tuning knobs (defaults)
 
 | Variable | Default (if unset) | Where applied |
@@ -125,6 +140,11 @@ This guard is always active; it does not require emergency deploy overrides.
 | `STATIONBOARD_STOP_SCOPE_QUERY_TIMEOUT_MS` | `800` | `src/logic/buildStationboard.js` |
 | `STATIONBOARD_ROUTE_TIMEOUT_MS` | `5000` (hard-capped at 5000) | `src/api/stationboardRoute.js` |
 | `STATIONBOARD_ENABLE_ALERTS` | `1` | `src/api/stationboard.js` |
+| `STATIONBOARD_MIN_REMAINING_SPARSE_RETRY_MS` | dynamic threshold | `src/api/stationboard.js` |
+| `STATIONBOARD_MIN_REMAINING_SCOPE_FALLBACK_MS` | dynamic threshold | `src/api/stationboard.js` |
+| `STATIONBOARD_MIN_REMAINING_RT_APPLY_MS` | dynamic threshold | `src/api/stationboard.js` + `src/logic/buildStationboard.js` |
+| `STATIONBOARD_MIN_REMAINING_ALERTS_MS` | dynamic threshold | `src/api/stationboard.js` |
+| `STATIONBOARD_MIN_REMAINING_SUPPLEMENT_MS` | dynamic threshold | `src/api/stationboard.js` |
 
 For normal production deploys, keep `fly.toml` free of stationboard emergency overrides
 and only tune these values if a measured incident requires it.

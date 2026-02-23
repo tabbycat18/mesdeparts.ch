@@ -810,6 +810,67 @@ function buildAlertsResponseMeta({
   };
 }
 
+function normalizedSkippedSteps(degradedReasons = [], board = null) {
+  const out = new Set(Array.isArray(degradedReasons) ? degradedReasons : []);
+  const buildSteps =
+    board && board.debugMeta && board.debugMeta.steps && typeof board.debugMeta.steps === "object"
+      ? board.debugMeta.steps
+      : null;
+  if (buildSteps?.rtLoad === "skipped_budget") out.add("rt_load_skipped_budget");
+  if (buildSteps?.rtApply === "skipped_budget") out.add("rt_apply_skipped_budget");
+  return Array.from(out);
+}
+
+function deriveRtStatus(rtMeta = {}, skippedSteps = []) {
+  const skipped = Array.isArray(skippedSteps) ? skippedSteps : [];
+  if (skipped.includes("rt_load_skipped_budget") || skipped.includes("rt_apply_skipped_budget")) {
+    return "skipped_budget";
+  }
+  if (rtMeta?.applied === true) return "applied";
+  const reason = String(rtMeta?.reason || "").trim().toLowerCase();
+  if (reason === "fresh") return "applied";
+  if (reason === "stale" || reason.includes("stale")) return "stale_cache";
+  if (reason === "disabled") return "disabled";
+  if (!reason || reason === "missing" || reason.includes("missing")) return "missing_cache";
+  return "guarded_error";
+}
+
+function deriveAlertsStatus({
+  alertsMeta = {},
+  skippedSteps = [],
+  alertsFeatureEnabled = true,
+  includeAlertsRequested = true,
+  includeAlertsApplied = true,
+  alertsFailedFallback = false,
+} = {}) {
+  const skipped = Array.isArray(skippedSteps) ? skippedSteps : [];
+  if (skipped.includes("alerts_skipped_budget")) return "skipped_budget";
+  if (!alertsFeatureEnabled || !includeAlertsRequested || !includeAlertsApplied) return "disabled";
+  if (alertsMeta?.applied === true) return "applied";
+  if (alertsFailedFallback === true) return "error_fallback";
+  const reason = String(alertsMeta?.reason || "").trim().toLowerCase();
+  if (reason.includes("budget")) return "skipped_budget";
+  if (!reason || reason.includes("missing")) return "missing_cache";
+  if (reason.includes("error") || reason.includes("failed") || reason.includes("decode")) {
+    return "error_fallback";
+  }
+  return "missing_cache";
+}
+
+function countRtAppliedDepartures(departures = []) {
+  const rows = Array.isArray(departures) ? departures : [];
+  return rows.reduce((acc, dep) => {
+    if (Array.isArray(dep?.flags) && dep.flags.includes("RT_CONFIRMED")) return acc + 1;
+    const scheduled = String(dep?.scheduledDeparture || "").trim();
+    const realtime = String(dep?.realtimeDeparture || "").trim();
+    if (!scheduled || !realtime) return acc;
+    const scheduledMs = Date.parse(scheduled);
+    const realtimeMs = Date.parse(realtime);
+    if (!Number.isFinite(scheduledMs) || !Number.isFinite(realtimeMs)) return acc;
+    return realtimeMs !== scheduledMs ? acc + 1 : acc;
+  }, 0);
+}
+
 export async function getStationboard({
   stopId,
   stationId,
@@ -867,10 +928,38 @@ export async function getStationboard({
     250,
     Math.min(800, Math.round(totalBudgetMs * 0.08))
   );
+  const stageMinRemainingMs = (envKey, fallbackMs) => {
+    const raw = Number(process.env[envKey]);
+    if (Number.isFinite(raw)) {
+      return Math.max(100, Math.min(totalBudgetMs, Math.trunc(raw)));
+    }
+    return Math.max(100, Math.min(totalBudgetMs, Math.trunc(fallbackMs)));
+  };
+  const minRemainingForSparseRetryMs = stageMinRemainingMs(
+    "STATIONBOARD_MIN_REMAINING_SPARSE_RETRY_MS",
+    LOW_BUDGET_THRESHOLD_MS
+  );
+  const minRemainingForScopeFallbackMs = stageMinRemainingMs(
+    "STATIONBOARD_MIN_REMAINING_SCOPE_FALLBACK_MS",
+    LOW_BUDGET_THRESHOLD_MS
+  );
+  const minRemainingForRtApplyMs = stageMinRemainingMs(
+    "STATIONBOARD_MIN_REMAINING_RT_APPLY_MS",
+    LOW_BUDGET_THRESHOLD_MS
+  );
+  const minRemainingForAlertsMs = stageMinRemainingMs(
+    "STATIONBOARD_MIN_REMAINING_ALERTS_MS",
+    LOW_BUDGET_THRESHOLD_MS
+  );
+  const minRemainingForSupplementMs = stageMinRemainingMs(
+    "STATIONBOARD_MIN_REMAINING_SUPPLEMENT_MS",
+    LOW_BUDGET_THRESHOLD_MS
+  );
   let degradedMode = false;
   const degradedReasons = [];
   const budgetLeft = () => totalBudgetMs - (performance.now() - requestStartedMs);
-  const isBudgetLow = () => budgetLeft() <= LOW_BUDGET_THRESHOLD_MS;
+  const isBudgetLow = (minRemainingMs = LOW_BUDGET_THRESHOLD_MS) =>
+    budgetLeft() <= Math.max(100, Number(minRemainingMs) || LOW_BUDGET_THRESHOLD_MS);
   const debugLog = createStationboardDebugLogger({
     enabled: debugEnabled,
     requestId,
@@ -1050,6 +1139,11 @@ export async function getStationboard({
         Number(process.env.STATIONBOARD_STOP_SCOPE_QUERY_TIMEOUT_MS || "800")
       ),
       alertsEnabled: alertsFeatureEnabled,
+      minRemainingForSparseRetryMs,
+      minRemainingForScopeFallbackMs,
+      minRemainingForRtApplyMs,
+      minRemainingForAlertsMs,
+      minRemainingForSupplementMs,
     },
     phaseTimings: {
       orchestrator: { ...timing },
@@ -1078,6 +1172,7 @@ export async function getStationboard({
     requestId,
     requestStartedMs,
     requestBudgetMs: totalBudgetMs,
+    requestLowBudgetThresholdMs: minRemainingForRtApplyMs,
     resolvedScope,
     debugLog: (event, payload) => {
       debugLog(event, payload);
@@ -1092,7 +1187,7 @@ export async function getStationboard({
     board.departures.length < sparseRetryMin &&
     sparseRetryWindowMinutes > baseWindowMinutes
   ) {
-    if (isBudgetLow()) {
+    if (isBudgetLow(minRemainingForSparseRetryMs)) {
       // Budget low: skip sparse retry to preserve response time
       degradedMode = true;
       degradedReasons.push("sparse_retry_skipped_budget");
@@ -1113,7 +1208,7 @@ export async function getStationboard({
 
   const initialScheduledRowCount = sumScheduledRows(board);
   if ((board?.departures?.length || 0) === 0) {
-    if (isBudgetLow()) {
+    if (isBudgetLow(minRemainingForScopeFallbackMs)) {
       // Budget low: skip stop-scope fallback to preserve response time
       degradedMode = true;
       degradedReasons.push("scope_fallback_skipped_budget");
@@ -1286,6 +1381,51 @@ export async function getStationboard({
     ...summarizeCancellation(baseResponse.departures),
   });
   traceCancellation("after_base_stationboard", baseResponse.departures);
+  const buildTopLevelMeta = ({ response, alertsFailedFallback = false } = {}) => {
+    const safeResponse = response && typeof response === "object" ? response : {};
+    const skippedSteps = normalizedSkippedSteps(degradedReasons, board);
+    const rtMeta = safeResponse.rt && typeof safeResponse.rt === "object" ? safeResponse.rt : {};
+    const alertsMeta =
+      safeResponse.alerts && typeof safeResponse.alerts === "object" ? safeResponse.alerts : {};
+    const rtStatus = deriveRtStatus(rtMeta, skippedSteps);
+    const alertsStatus = deriveAlertsStatus({
+      alertsMeta,
+      skippedSteps,
+      alertsFeatureEnabled,
+      includeAlertsRequested,
+      includeAlertsApplied,
+      alertsFailedFallback,
+    });
+    const responseMode =
+      skippedSteps.length > 0 || degradedMode ? "degraded_static" : "full";
+    const rtFetchedAt = String(rtMeta.cacheFetchedAt || rtMeta.fetchedAt || "").trim() || null;
+    const rtCacheAgeMs = Number.isFinite(Number(rtMeta.cacheAgeMs))
+      ? Number(rtMeta.cacheAgeMs)
+      : Number.isFinite(Number(rtMeta.ageMs))
+        ? Number(rtMeta.ageMs)
+        : null;
+    const alertsFetchedAt =
+      String(alertsMeta.cacheFetchedAt || alertsMeta.fetchedAt || "").trim() || null;
+    const alertsCacheAgeMs = Number.isFinite(Number(alertsMeta.cacheAgeMs))
+      ? Number(alertsMeta.cacheAgeMs)
+      : Number.isFinite(Number(alertsMeta.ageSeconds))
+        ? Math.max(0, Number(alertsMeta.ageSeconds) * 1000)
+        : null;
+    return {
+      serverTime: new Date().toISOString(),
+      responseMode,
+      requestId,
+      totalBackendMs: roundMs(performance.now() - requestStartedMs),
+      skippedSteps,
+      rtStatus,
+      rtAppliedCount: countRtAppliedDepartures(safeResponse.departures),
+      rtFetchedAt,
+      rtCacheAgeMs,
+      alertsStatus,
+      alertsFetchedAt,
+      alertsCacheAgeMs,
+    };
+  };
 
   if (!includeAlertsApplied) {
     baseResponse.departures = canonicalizeDepartures(baseResponse.departures, {
@@ -1343,11 +1483,12 @@ export async function getStationboard({
       degradedMode,
       skippedSteps: Array.from(new Set(degradedReasons)),
     });
+    baseResponse.meta = buildTopLevelMeta({ response: baseResponse });
     return baseResponse;
   }
 
   // Budget guard: if budget is exhausted before awaiting alerts, return static-only (200).
-  if (isBudgetLow()) {
+  if (isBudgetLow(minRemainingForAlertsMs)) {
     degradedMode = true;
     degradedReasons.push("alerts_skipped_budget");
     debugState.flags.push("latency_guard:alerts_skipped");
@@ -1417,6 +1558,7 @@ export async function getStationboard({
       degradedMode,
       skippedSteps: Array.from(new Set(degradedReasons)),
     });
+    baseResponse.meta = buildTopLevelMeta({ response: baseResponse });
     return baseResponse;
   }
 
@@ -1513,7 +1655,7 @@ export async function getStationboard({
 
     let finalDepartures = attached.departures;
     let supplementCount = 0;
-    if (isBudgetLow()) {
+    if (isBudgetLow(minRemainingForSupplementMs)) {
       degradedMode = true;
       degradedReasons.push("supplement_skipped_budget");
       debugState.flags.push("latency_guard:supplement_skipped");
@@ -1625,6 +1767,7 @@ export async function getStationboard({
       degradedMode,
       skippedSteps: Array.from(new Set(degradedReasons)),
     });
+    response.meta = buildTopLevelMeta({ response });
     return response;
   } catch (err) {
     degradedMode = true;
@@ -1698,6 +1841,7 @@ export async function getStationboard({
       skippedSteps: Array.from(new Set(degradedReasons)),
       error: String(err?.message || err),
     });
+    response.meta = buildTopLevelMeta({ response, alertsFailedFallback: true });
     return response;
   }
 }

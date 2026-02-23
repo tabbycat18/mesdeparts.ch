@@ -862,7 +862,33 @@ function normalizeBackendStationboard(data) {
     };
   });
 
-  return { station, stationboard, banners, rt, alerts };
+  const metaRaw = data?.meta && typeof data.meta === "object" ? data.meta : {};
+  const meta = {
+    serverTime: String(metaRaw?.serverTime || "").trim() || null,
+    responseMode: String(metaRaw?.responseMode || "").trim() || null,
+    requestId: String(metaRaw?.requestId || "").trim() || null,
+    totalBackendMs: Number.isFinite(Number(metaRaw?.totalBackendMs))
+      ? Number(metaRaw.totalBackendMs)
+      : null,
+    skippedSteps: Array.isArray(metaRaw?.skippedSteps)
+      ? metaRaw.skippedSteps.map((step) => String(step || "").trim()).filter(Boolean)
+      : [],
+    rtStatus: String(metaRaw?.rtStatus || "").trim() || null,
+    rtAppliedCount: Number.isFinite(Number(metaRaw?.rtAppliedCount))
+      ? Number(metaRaw.rtAppliedCount)
+      : null,
+    rtFetchedAt: String(metaRaw?.rtFetchedAt || "").trim() || null,
+    rtCacheAgeMs: Number.isFinite(Number(metaRaw?.rtCacheAgeMs))
+      ? Number(metaRaw.rtCacheAgeMs)
+      : null,
+    alertsStatus: String(metaRaw?.alertsStatus || "").trim() || null,
+    alertsFetchedAt: String(metaRaw?.alertsFetchedAt || "").trim() || null,
+    alertsCacheAgeMs: Number.isFinite(Number(metaRaw?.alertsCacheAgeMs))
+      ? Number(metaRaw.alertsCacheAgeMs)
+      : null,
+  };
+
+  return { station, stationboard, banners, rt, alerts, meta };
 }
 
 // Normalize a “simple” line id used for CSS and grouping
@@ -1054,6 +1080,8 @@ export async function fetchStationboardRaw(options = {}) {
       const backendData = await response.json();
       const data = normalizeBackendStationboard(backendData);
       data.__status = Number(response?.status || 200);
+      appState.lastStationboardMeta =
+        data?.meta && typeof data.meta === "object" ? { ...data.meta } : null;
       const fetchedAt =
         String(data?.rt?.fetchedAt || data?.rt?.cacheFetchedAt || "").trim() || null;
       if (fetchedAt) {

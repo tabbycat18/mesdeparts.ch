@@ -93,6 +93,29 @@ They sit in front of existing implementation so future refactors can happen safe
    - merges with `applyTripUpdates(...)` from `realtime_api/backend/src/merge/applyTripUpdates.js`
 5. Response is returned to frontend.
 
+### Model A stationboard response contract (single endpoint, static-first)
+
+`/api/stationboard` now follows a deterministic static-first contract:
+
+- static board path is mandatory
+- optional phases (sparse retry, scope fallback, RT/alerts enrichment, supplement) are budget-gated
+- RT/alerts are non-fatal: skipped/failed enrichment still returns a usable `200` board response
+
+Every successful stationboard JSON response includes additive top-level `meta`:
+
+- `meta.serverTime`
+- `meta.responseMode` (`full`, `degraded_static`, `stale_cache_fallback`, `static_timeout_fallback`)
+- `meta.requestId`
+- `meta.totalBackendMs`
+- `meta.skippedSteps`
+- `meta.rtStatus` (`applied`, `stale_cache`, `skipped_budget`, `disabled`, `missing_cache`, `guarded_error`)
+- `meta.rtAppliedCount`
+- `meta.rtFetchedAt`
+- `meta.rtCacheAgeMs`
+- `meta.alertsStatus` (`applied`, `skipped_budget`, `disabled`, `missing_cache`, `error_fallback`)
+- `meta.alertsFetchedAt`
+- `meta.alertsCacheAgeMs`
+
 ### RT merge matching note (Swiss platform IDs)
 
 For scheduled platform stops such as `8587387:0:A`, stop-level RT matching tries:
@@ -209,8 +232,8 @@ This verifies merge behavior and `cancelled` flag assignment.
 - It renders data and applies UI styles/filters.
 - It should not be treated as stationboard business logic source.
 - Refresh loop hardening for throttled browsers is in frontend runtime files:
-  foreground `visibilitychange`/`focus` refresh and timer-drift catch-up in `v20260223-1.main.js`,
-  stationboard fetch `cache: "no-store"` and fetch diagnostics in `v20260223-1.logic.js`.
+  foreground `visibilitychange`/`focus` refresh and timer-drift catch-up in `v20260223-2.main.js`,
+  stationboard fetch `cache: "no-store"` and fetch diagnostics in `v20260223-2.logic.js`.
 
 ## Data Hygiene
 

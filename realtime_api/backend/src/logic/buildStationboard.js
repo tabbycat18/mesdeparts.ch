@@ -272,6 +272,7 @@ export async function buildStationboard(locationId, options = {}) {
     requestId = "",
     requestStartedMs = null,
     requestBudgetMs = null,
+    requestLowBudgetThresholdMs = null,
     resolvedScope = null,
     scopeQueryMode = "mixed",
     rtDebugMode = "",
@@ -290,10 +291,10 @@ export async function buildStationboard(locationId, options = {}) {
   const totalBudgetMs = Number.isFinite(Number(requestBudgetMs))
     ? Math.max(100, Number(requestBudgetMs))
     : Math.min(routeTimeoutMs, 5000);
-  const lowBudgetThresholdMs = Math.max(
-    250,
-    Math.min(800, Math.round(totalBudgetMs * 0.08))
-  );
+  const configuredLowBudgetThresholdMs = Number(requestLowBudgetThresholdMs);
+  const lowBudgetThresholdMs = Number.isFinite(configuredLowBudgetThresholdMs)
+    ? Math.max(100, Math.min(totalBudgetMs, Math.trunc(configuredLowBudgetThresholdMs)))
+    : Math.max(250, Math.min(800, Math.round(totalBudgetMs * 0.08)));
   const budgetLeftMs = () => totalBudgetMs - (performance.now() - sharedRequestStartMs);
   const isBudgetLow = () => budgetLeftMs() <= lowBudgetThresholdMs;
   const timings = {
