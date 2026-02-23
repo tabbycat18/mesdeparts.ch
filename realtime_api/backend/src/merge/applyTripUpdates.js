@@ -82,6 +82,12 @@ function stopIdVariants(stopId) {
     }
   }
 
+  // Also add numeric root (e.g. "8587387" from "8587387:0:A" or "8503000:0:2").
+  // RT feeds often use the parent numeric stop ID while static GTFS uses child stops.
+  if (parts.length >= 2 && /^\d+$/.test(parts[0])) {
+    variants.add(parts[0]);
+  }
+
   return Array.from(variants);
 }
 

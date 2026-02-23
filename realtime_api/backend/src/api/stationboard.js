@@ -606,6 +606,10 @@ function toRtTripUpdatesDebug(rtMeta, departureAuditRows) {
         ? Number(base.fetchMs)
         : null,
     entityCount: Number.isFinite(base.entityCount) ? Number(base.entityCount) : null,
+    scopedEntities: Number.isFinite(base.scopedEntities) ? Number(base.scopedEntities) : null,
+    scopedTripCount: Number.isFinite(base.scopedTripCount) ? Number(base.scopedTripCount) : null,
+    scopedStopCount: Number.isFinite(base.scopedStopCount) ? Number(base.scopedStopCount) : null,
+    rtMode: typeof base.debugRtMode === "string" ? base.debugRtMode : null,
     hadError: base.hadError === true || !["fresh", "stale", "missing", "disabled", "guarded"].includes(normalizedReason),
     error: base.error ? String(base.error) : base.lastError ? String(base.lastError) : null,
     applied: base.applied === true,
