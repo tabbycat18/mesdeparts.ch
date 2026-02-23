@@ -1064,6 +1064,11 @@ async function refreshDepartures({
   } finally {
     const staleRequest = isStaleRequest();
     refreshInFlight = false;
+    // Always clear the visible hint before any early return so no terminal
+    // path (queued follow-up, superseded/stale request) can leave it stuck.
+    if (showLoadingHint) {
+      setBoardLoadingHint(false);
+    }
     if (pendingRefreshRequest) {
       const queued = pendingRefreshRequest;
       pendingRefreshRequest = null;
@@ -1080,9 +1085,6 @@ async function refreshDepartures({
     }
     if (tbody) {
       tbody.removeAttribute("aria-busy");
-    }
-    if (showLoadingHint) {
-      setBoardLoadingHint(false);
     }
     publishEmbedState();
     updateRtDebugOverlay();
