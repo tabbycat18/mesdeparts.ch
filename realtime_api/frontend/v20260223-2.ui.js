@@ -11,21 +11,22 @@ import {
   TRAIN_FILTER_REGIONAL,
   TRAIN_FILTER_LONG_DISTANCE,
   REMARK_NARROW_BREAKPOINT_PX,
-} from "./v20260223-1.state.js";
+} from "./v20260223-2.state.js";
 import {
   fetchStationSuggestions,
   fetchStationsNearby,
   fetchJourneyDetails,
+  isAbortError as isAbortErrorFromLogic,
   parseApiDate,
-} from "./v20260223-1.logic.js";
+} from "./v20260223-2.logic.js";
 import {
   loadFavorites,
   addFavorite,
   removeFavorite,
   isFavorite,
   clearFavorites,
-} from "./v20260223-1.favourites.js";
-import { t } from "./v20260223-1.i18n.js";
+} from "./v20260223-2.favourites.js";
+import { t } from "./v20260223-2.i18n.js";
 
 const QUICK_CONTROLS_STORAGE_KEY = "mesdeparts.quickControlsCollapsed";
 let quickControlsCollapsed = false;
@@ -2910,16 +2911,19 @@ async function openJourneyDetails(dep) {
   const metaEl = overlay.querySelector(".journey-meta");
   const alertsEl = overlay.querySelector(".journey-alerts");
   const stopsEl = overlay.querySelector(".journey-stops");
+  let journeyModalState = journeyModalStateReducer(null, { type: "request_started" });
 
   // Loading state
   titleEl.textContent = t("journeyTitle");
   metaEl.textContent = t("journeyLoading");
+  overlay.dataset.loading = journeyModalState.loading ? "1" : "0";
   if (alertsEl) alertsEl.innerHTML = "";
   stopsEl.innerHTML = "";
 
   try {
     const detail = await fetchJourneyDetails(dep, { signal: abortController.signal });
     if (reqId !== activeJourneyRequestId) return;
+    journeyModalState = journeyModalStateReducer(journeyModalState, { type: "request_succeeded" });
     const section = detail?.section || detail;
     const connection = detail?.connection || null;
     const badge = document.createElement("span");
@@ -3041,13 +3045,34 @@ async function openJourneyDetails(dep) {
     stopsEl.innerHTML = "";
     stopsEl.appendChild(renderJourneyStops(dep, detail));
   } catch (err) {
-    if (isAbortError(err) || reqId !== activeJourneyRequestId) return;
+    if (shouldIgnoreJourneyError(err, { requestId: reqId, activeRequestId: activeJourneyRequestId })) {
+      return;
+    }
+    journeyModalState = journeyModalStateReducer(journeyModalState, {
+      type: "request_failed",
+      message: err?.message,
+    });
     console.error("[MesDeparts][journey] error", err);
     metaEl.textContent = t("journeyStopsError");
     stopsEl.innerHTML = "";
+    const retryWrap = document.createElement("div");
+    retryWrap.className = "journey-stop stopRow stopRow--empty";
+    const retryBtn = document.createElement("button");
+    retryBtn.type = "button";
+    retryBtn.className = "hc2__suggestionRetry";
+    retryBtn.textContent = t("searchRetry");
+    retryBtn.addEventListener("click", (event) => {
+      event.preventDefault();
+      openJourneyDetails(dep);
+    });
+    retryWrap.appendChild(retryBtn);
+    stopsEl.appendChild(retryWrap);
   } finally {
     if (reqId === activeJourneyRequestId && activeJourneyAbort === abortController) {
       activeJourneyAbort = null;
+    }
+    if (reqId === activeJourneyRequestId) {
+      overlay.dataset.loading = journeyModalState.loading ? "1" : "0";
     }
   }
 }
@@ -3154,11 +3179,34 @@ function getRowKey(dep) {
 
 let activeJourneyAbort = null;
 let activeJourneyRequestId = 0;
-function isAbortError(err) {
-  if (!err) return false;
-  if (err.name === "AbortError") return true;
-  const msg = String(err?.message || "").toLowerCase();
-  return msg.includes("abort");
+function isTimeoutAbortError(err) {
+  return err instanceof DOMException && err.name === "AbortError" && err.message === "Timeout";
+}
+
+export function shouldIgnoreJourneyError(err, { requestId, activeRequestId } = {}) {
+  if (Number(requestId) !== Number(activeRequestId)) return true;
+  return isAbortErrorFromLogic(err) && !isTimeoutAbortError(err);
+}
+
+export function journeyModalStateReducer(state, event) {
+  const prev =
+    state && typeof state === "object"
+      ? state
+      : { loading: false, error: null };
+  const type = String(event?.type || "").trim().toLowerCase();
+  switch (type) {
+    case "request_started":
+      return { loading: true, error: null };
+    case "request_succeeded":
+      return { loading: false, error: null };
+    case "request_failed":
+      return {
+        loading: false,
+        error: String(event?.message || "request_failed"),
+      };
+    default:
+      return prev;
+  }
 }
 
 let departuresRowHandlersReady = false;

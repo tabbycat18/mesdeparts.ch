@@ -16,16 +16,16 @@
       name="description"
       content="Double tableau de départs Mes Départs avec horloge sbbUhr, installable en PWA."
     />
-    <link rel="preload" href="v20260223-1.style.css" as="style" />
-    <link rel="modulepreload" href="v20260223-1.logic.js" as="script" />
-    <link rel="modulepreload" href="v20260223-1.ui.js" />
-    <link rel="modulepreload" href="v20260223-1.state.js" />
-    <link rel="modulepreload" href="v20260223-1.i18n.js" />
-    <link rel="modulepreload" href="v20260223-1.infoBTN.js" />
-    <link rel="modulepreload" href="v20260223-1.favourites.js" />
+    <link rel="preload" href="v20260223-2.style.css" as="style" />
+    <link rel="modulepreload" href="v20260223-2.logic.js" as="script" />
+    <link rel="modulepreload" href="v20260223-2.ui.js" />
+    <link rel="modulepreload" href="v20260223-2.state.js" />
+    <link rel="modulepreload" href="v20260223-2.i18n.js" />
+    <link rel="modulepreload" href="v20260223-2.infoBTN.js" />
+    <link rel="modulepreload" href="v20260223-2.favourites.js" />
     <script>window.__MD_API_BASE__ = window.__MD_API_BASE__ || "";</script>
-    <link rel="modulepreload" href="v20260223-1.main.js" />
-    <link rel="stylesheet" href="v20260223-1.style.css" />
+    <link rel="modulepreload" href="v20260223-2.main.js" />
+    <link rel="stylesheet" href="v20260223-2.style.css" />
     <link rel="stylesheet" href="ui/headerControls2.css?v=2026-02-21-3" />
   </head>
   <body class="dual-body">
@@ -34,7 +34,7 @@
         <div class="dual-app-bar">
           <div class="dual-bar-left">
             <div class="dual-title">Dual</div>
-            <div class="dual-version">v1.8.10</div>
+            <div class="dual-version">v1.8.11</div>
           </div>
           <div class="dual-bar-right">
             <div class="language-switcher language-switcher--inline dual-lang-switcher">
@@ -77,12 +77,12 @@
     </button>
 
     <div class="dual-badges-float">
-      <div class="dual-version-float" aria-label="Version">v1.8.10</div>
+      <div class="dual-version-float" aria-label="Version">v1.8.11</div>
       <button id="info-badge-float" class="dual-info-float" type="button" aria-label="Info" title="Info">INFO</button>
     </div>
 
     <script type="module">
-      import { LANGUAGE_OPTIONS, initI18n, setLanguage, t } from "./v20260223-1.i18n.js";
+      import { LANGUAGE_OPTIONS, initI18n, setLanguage, t } from "./v20260223-2.i18n.js";
       import {
         appState,
         VIEW_MODE_LINE,
@@ -90,8 +90,8 @@
         TRAIN_FILTER_ALL,
         TRAIN_FILTER_REGIONAL,
         TRAIN_FILTER_LONG_DISTANCE,
-      } from "./v20260223-1.state.js";
-      import { setupInfoButton } from "./v20260223-1.infoBTN.js";
+      } from "./v20260223-2.state.js";
+      import { setupInfoButton } from "./v20260223-2.infoBTN.js";
       import { DualPicker } from "./ui/dualPicker.js";
 
       const DEFAULT_LANG = initI18n();

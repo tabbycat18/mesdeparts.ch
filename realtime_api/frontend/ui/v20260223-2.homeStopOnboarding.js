@@ -1,5 +1,5 @@
-import { t } from "../v20260223-1.i18n.js";
-import { fetchStationSuggestions, fetchStationsNearby, isAbortError } from "../v20260223-1.logic.js";
+import { t } from "../v20260223-2.i18n.js";
+import { fetchStationSuggestions, fetchStationsNearby, isAbortError } from "../v20260223-2.logic.js";
 
 const FOCUSABLE_SELECTOR =
   'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';

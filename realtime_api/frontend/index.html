@@ -7,7 +7,7 @@
     <link rel="icon" type="image/svg+xml" href="bus-icon-1.svg" />
     <link rel="apple-touch-icon" href="bus-icon-1.png" />
     <link rel="manifest" href="manifest.webmanifest" />
-    <link rel="modulepreload" href="v20260223-1.main.js" />
+    <link rel="modulepreload" href="v20260223-2.main.js" />
     <link rel="prefetch" href="clock/index.html" as="document" />
     <link rel="prefetch" href="clock/js/sbbUhr-1.3.js" as="script" />
     <meta name="theme-color" content="#01157f" />
@@ -19,16 +19,16 @@
       name="description"
       content="Tableau de départs avec horloge sbbUhr (Apache 2.0), sans affiliation officielle CFF/SBB."
     />
-    <link rel="preload" href="v20260223-1.style.css" as="style" />
-    <link rel="modulepreload" href="v20260223-1.logic.js" as="script" />
-    <link rel="modulepreload" href="v20260223-1.ui.js" />
-    <link rel="modulepreload" href="v20260223-1.state.js" />
-    <link rel="modulepreload" href="v20260223-1.i18n.js" />
-    <link rel="modulepreload" href="v20260223-1.infoBTN.js" />
-    <link rel="modulepreload" href="v20260223-1.favourites.js" />
-    <link rel="modulepreload" href="v20260223-1.homeStop.js" />
-    <link rel="modulepreload" href="v20260223-1.threeDotsTip.js" />
-    <link rel="modulepreload" href="ui/v20260223-1.homeStopOnboarding.js" />
+    <link rel="preload" href="v20260223-2.style.css" as="style" />
+    <link rel="modulepreload" href="v20260223-2.logic.js" as="script" />
+    <link rel="modulepreload" href="v20260223-2.ui.js" />
+    <link rel="modulepreload" href="v20260223-2.state.js" />
+    <link rel="modulepreload" href="v20260223-2.i18n.js" />
+    <link rel="modulepreload" href="v20260223-2.infoBTN.js" />
+    <link rel="modulepreload" href="v20260223-2.favourites.js" />
+    <link rel="modulepreload" href="v20260223-2.homeStop.js" />
+    <link rel="modulepreload" href="v20260223-2.threeDotsTip.js" />
+    <link rel="modulepreload" href="ui/v20260223-2.homeStopOnboarding.js" />
     <link rel="modulepreload" href="ui/headerControls2.js?v=2026-02-21-3" />
     <script>
       (function markEmbed() {
@@ -88,14 +88,14 @@
         window.__MD_API_BASE__ = "https://api.mesdeparts.ch";
       })();
     </script>
-    <link rel="stylesheet" href="v20260223-1.style.css" />
+    <link rel="stylesheet" href="v20260223-2.style.css" />
     <link rel="stylesheet" href="ui/headerControls2.css?v=2026-02-21-3" />
   </head>
   <body>
     <div class="mobile-fullscreen-wrapper">
       <div class="board">
         <div class="header-badges">
-          <div class="version-tag" aria-label="Version">v1.8.10</div>
+          <div class="version-tag" aria-label="Version">v1.8.11</div>
           <button id="info-badge" class="info-tag" type="button" aria-label="Info" title="Info">INFO</button>
         </div>
         <header id="header-controls2-mount" class="board-header"></header>
@@ -122,7 +122,7 @@
                 </tr>
               </thead>
               <tbody id="departures-body">
-                <!-- lignes injectées par v20260223-1.main.js -->
+                <!-- lignes injectées par v20260223-2.main.js -->
               </tbody>
             </table>
           </div>
@@ -137,11 +137,11 @@
       </div>
     </div>
 
-    <!-- IMPORTANT: use v20260223-1.main.js as an ES module -->
+    <!-- IMPORTANT: use v20260223-2.main.js as an ES module -->
     <script type="module">
       import "./ui/headerControls2.js?v=2026-02-21-3";
     </script>
-    <script type="module" src="v20260223-1.main.js"></script>
+    <script type="module" src="v20260223-2.main.js"></script>
     <script>
       if ("serviceWorker" in navigator) {
         const host = (window.location.hostname || "").toLowerCase();

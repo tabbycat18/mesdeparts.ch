@@ -22,8 +22,8 @@ import {
   TRAIN_FILTER_REGIONAL,
   TRAIN_FILTER_LONG_DISTANCE,
   STATION_ID_STORAGE_KEY,
-} from "./v20260223-1.state.js";
-import { t } from "./v20260223-1.i18n.js";
+} from "./v20260223-2.state.js";
+import { t } from "./v20260223-2.i18n.js";
 
 // API base can be overridden by setting window.__MD_API_BASE__ before scripts load.
 // Frontend now targets realtime_api/backend endpoints only.
@@ -441,6 +441,7 @@ function deriveRealtimeRemark({
 
 const FETCH_TIMEOUT_MS = 12_000;
 const STATIONBOARD_FETCH_TIMEOUT_MS = FETCH_TIMEOUT_MS;
+const JOURNEY_DETAILS_FETCH_TIMEOUT_MS = 12_000;
 
 async function fetchJson(url, { signal, timeoutMs = FETCH_TIMEOUT_MS, cache = "default" } = {}) {
   const controller = new AbortController();
@@ -490,6 +491,29 @@ function isTimeoutError(err) {
 
 export function isTransientFetchError(err) {
   return isAbortError(err) || isTimeoutError(err);
+}
+
+function isJourneyDebugEnabled() {
+  try {
+    if (typeof window === "undefined") return false;
+    if (window.DEBUG_UI === true) return true;
+    const params = new URLSearchParams(window.location.search || "");
+    if (params.get("debugJourney") === "1") return true;
+    const host = String(window.location.hostname || "").toLowerCase();
+    return (
+      host === "localhost" ||
+      host === "127.0.0.1" ||
+      host.endsWith(".local") ||
+      host.endsWith(".localhost")
+    );
+  } catch {
+    return false;
+  }
+}
+
+function logJourneyRequestDebug(payload) {
+  if (!isJourneyDebugEnabled()) return;
+  console.debug("[MesDeparts][journey][request]", payload);
 }
 
 // --------------------------------------------------------
@@ -1843,8 +1867,16 @@ export async function fetchDeparturesGrouped(viewMode = VIEW_MODE_LINE) {
 async function fetchJourneyDetailsById(journeyId, { signal } = {}) {
   if (!journeyId) return null;
   const url = apiUrl(`/api/journey?id=${encodeURIComponent(journeyId)}&passlist=1`);
+  logJourneyRequestDebug({
+    endpoint: "/api/journey",
+    url,
+    journeyId: String(journeyId),
+  });
   try {
-    const data = await fetchJson(url, { signal });
+    const data = await fetchJson(url, {
+      signal,
+      timeoutMs: JOURNEY_DETAILS_FETCH_TIMEOUT_MS,
+    });
     const journey = data?.journey || data;
     const passList = journey?.passList || data?.passList;
     const section = buildSectionFromPassList(passList, journey);
@@ -1893,6 +1925,17 @@ export async function fetchJourneyDetails(dep, { signal } = {}) {
   // Use CH timezone helpers to avoid UTC day-shift around midnight
   const date = toCHDateYYYYMMDD(dt.getTime());
   const time = toCHTimeHHMM(dt.getTime());
+  const identifiers = {
+    tripId: dep?.journeyId || dep?.tripId || dep?.trip_id || null,
+    serviceDate: dep?.serviceDate || null,
+    stopId: dep?.stopId || dep?.stop_id || fromStationId || null,
+    stopSequence:
+      dep?.stopSequence == null
+        ? dep?.stop_sequence == null
+          ? null
+          : dep.stop_sequence
+        : dep.stopSequence,
+  };
 
   async function fetchConnections(fromParam) {
     const url =
@@ -1902,7 +1945,19 @@ export async function fetchJourneyDetails(dep, { signal } = {}) {
       `&date=${encodeURIComponent(date)}` +
       `&time=${encodeURIComponent(time)}` +
       `&limit=6`;
-    return fetchJson(url, { signal });
+    logJourneyRequestDebug({
+      endpoint: "/api/connections",
+      url,
+      from: fromParam,
+      to,
+      date,
+      time,
+      ...identifiers,
+    });
+    return fetchJson(url, {
+      signal,
+      timeoutMs: JOURNEY_DETAILS_FETCH_TIMEOUT_MS,
+    });
   }
 
   let data = await fetchConnections(from);

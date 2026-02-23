@@ -15,7 +15,7 @@ import {
   TRAIN_FILTER_LONG_DISTANCE,
   DEFAULT_STATION_ID,
   STATION_ID_STORAGE_KEY,
-} from "./v20260223-1.state.js";
+} from "./v20260223-2.state.js";
 
 import {
   detectNetworkFromStation,
@@ -28,7 +28,7 @@ import {
   buildBoardContextKey,
   parseBoardContextKey,
   shouldApplyIncomingBoard,
-} from "./v20260223-1.logic.js";
+} from "./v20260223-2.logic.js";
 
 import {
   setupClock,
@@ -39,18 +39,18 @@ import {
   publishEmbedState,
   updateCountdownRows,
   renderServiceBanners,
-} from "./v20260223-1.ui.js";
+} from "./v20260223-2.ui.js";
 
-import { setupInfoButton } from "./v20260223-1.infoBTN.js";
-import { initI18n, applyStaticTranslations, t } from "./v20260223-1.i18n.js";
-import { loadFavorites } from "./v20260223-1.favourites.js";
+import { setupInfoButton } from "./v20260223-2.infoBTN.js";
+import { initI18n, applyStaticTranslations, t } from "./v20260223-2.i18n.js";
+import { loadFavorites } from "./v20260223-2.favourites.js";
 import {
   getHomeStop,
   setHomeStop,
   clearHomeStop,
   shouldShowHomeStopModal,
-} from "./v20260223-1.homeStop.js";
-import { openHomeStopOnboardingModal } from "./ui/v20260223-1.homeStopOnboarding.js";
+} from "./v20260223-2.homeStop.js";
+import { openHomeStopOnboardingModal } from "./ui/v20260223-2.homeStopOnboarding.js";
 import {
   initHeaderControls2,
   updateHeaderControls2,

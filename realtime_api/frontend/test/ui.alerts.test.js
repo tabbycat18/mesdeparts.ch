@@ -2,10 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  journeyModalStateReducer,
   normalizeDepartureAlerts,
   openDepartureAlertsPopover,
   resolveDepartureAlertsForLineBadge,
-} from "../v20260223-1.ui.js";
+  shouldIgnoreJourneyError,
+} from "../v20260223-2.ui.js";
 
 class FakeClassList {
   constructor() {
@@ -255,4 +257,40 @@ test("openDepartureAlertsPopover creates a visible panel with alert content", ()
     globalThis.window = previousWindow;
     globalThis.document = previousDocument;
   }
+});
+
+test("shouldIgnoreJourneyError ignores superseded/user abort but not timeout abort", () => {
+  const timeoutAbort = new DOMException("Timeout", "AbortError");
+  const userAbort = new DOMException("Aborted", "AbortError");
+
+  assert.equal(
+    shouldIgnoreJourneyError(timeoutAbort, { requestId: 3, activeRequestId: 3 }),
+    false
+  );
+  assert.equal(
+    shouldIgnoreJourneyError(userAbort, { requestId: 3, activeRequestId: 3 }),
+    true
+  );
+  assert.equal(
+    shouldIgnoreJourneyError(new Error("whatever"), { requestId: 2, activeRequestId: 3 }),
+    true
+  );
+});
+
+test("journeyModalStateReducer clears loading on success and failure", () => {
+  const started = journeyModalStateReducer(null, { type: "request_started" });
+  assert.equal(started.loading, true);
+  assert.equal(started.error, null);
+
+  const failed = journeyModalStateReducer(started, {
+    type: "request_failed",
+    message: "boom",
+  });
+  assert.equal(failed.loading, false);
+  assert.equal(failed.error, "boom");
+
+  const restarted = journeyModalStateReducer(failed, { type: "request_started" });
+  const succeeded = journeyModalStateReducer(restarted, { type: "request_succeeded" });
+  assert.equal(succeeded.loading, false);
+  assert.equal(succeeded.error, null);
 });
