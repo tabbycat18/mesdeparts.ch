@@ -5,7 +5,7 @@ import {
   normalizeDepartureAlerts,
   openDepartureAlertsPopover,
   resolveDepartureAlertsForLineBadge,
-} from "../v20260222-1.ui.js";
+} from "../v20260223-1.ui.js";
 
 class FakeClassList {
   constructor() {

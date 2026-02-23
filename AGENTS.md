@@ -42,7 +42,7 @@ If context is still missing after this order, then inspect code.
   - `realtime_api/backend/scripts/pollLaTripUpdates.js`
   - `realtime_api/backend/scripts/pollLaServiceAlerts.js`
 - Frontend entrypoint: `realtime_api/frontend/index.html`
-- Frontend stationboard refresh/fetch loop: `realtime_api/frontend/v20260222-1.main.js`, `realtime_api/frontend/v20260222-1.logic.js`
+- Frontend stationboard refresh/fetch loop: `realtime_api/frontend/v20260223-1.main.js`, `realtime_api/frontend/v20260223-1.logic.js`
 - Edge worker entrypoint: `realtime_api/edge/worker.js`
 
 ## 5) Compatibility/deprecated files (verified)
@@ -71,8 +71,8 @@ If context is still missing after this order, then inspect code.
 | Stationboard DB optimization SQL | `realtime_api/backend/sql/optimize_stationboard.sql`, `realtime_api/backend/sql/optimize_stationboard_latency.sql` |
 | Poll cadence/backoff | `realtime_api/backend/scripts/pollLaTripUpdates.js`, `realtime_api/backend/scripts/pollLaServiceAlerts.js` |
 | Frontend polling/render behavior | `realtime_api/frontend/logic.v*.js`, `realtime_api/frontend/ui.v*.js`, `realtime_api/frontend/state.v*.js` |
-| Frontend foreground refresh/resume drift catch-up + RT fetch diagnostics (`lastFetchAt`, `edgeCache`, `serverFetchedAt`) | `realtime_api/frontend/v20260222-1.main.js`, `realtime_api/frontend/v20260222-1.logic.js`, `realtime_api/frontend/v20260222-1.state.js` |
-| Frontend boot / SW update / bfcache reload | `realtime_api/frontend/v20260222-1.main.js` (SW_UPDATED message listener + pageshow persisted listener at end of boot) |
+| Frontend foreground refresh/resume drift catch-up + RT fetch diagnostics (`lastFetchAt`, `edgeCache`, `serverFetchedAt`) | `realtime_api/frontend/v20260223-1.main.js`, `realtime_api/frontend/v20260223-1.logic.js`, `realtime_api/frontend/v20260223-1.state.js` |
+| Frontend boot / SW update / bfcache reload | `realtime_api/frontend/v20260223-1.main.js` (SW_UPDATED message listener + pageshow persisted listener at end of boot) |
 | SW update notification to clients | `realtime_api/frontend/service-worker.js` (activate handler: wasUpdate → postMessage SW_UPDATED) |
 | Edge routing/cache/proxy rules | `realtime_api/edge/worker.js`, `realtime_api/edge/wrangler.toml` |
 

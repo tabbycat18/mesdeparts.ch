@@ -209,8 +209,8 @@ This verifies merge behavior and `cancelled` flag assignment.
 - It renders data and applies UI styles/filters.
 - It should not be treated as stationboard business logic source.
 - Refresh loop hardening for throttled browsers is in frontend runtime files:
-  foreground `visibilitychange`/`focus` refresh and timer-drift catch-up in `v20260222-1.main.js`,
-  stationboard fetch `cache: "no-store"` and fetch diagnostics in `v20260222-1.logic.js`.
+  foreground `visibilitychange`/`focus` refresh and timer-drift catch-up in `v20260223-1.main.js`,
+  stationboard fetch `cache: "no-store"` and fetch diagnostics in `v20260223-1.logic.js`.
 
 ## Data Hygiene
 
