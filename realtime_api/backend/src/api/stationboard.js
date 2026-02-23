@@ -855,6 +855,18 @@ export async function getStationboard({
       ...extra,
     });
   };
+  // Request budget: prevents optional phases (sparse retry, scope fallback, alerts)
+  // from chaining into a 504. Budget = min(STATIONBOARD_ROUTE_TIMEOUT_MS, 5000).
+  // Each optional phase checks remaining budget; if low, degrades to static-only (200).
+  const totalBudgetMs = Math.min(
+    Math.max(100, Number(process.env.STATIONBOARD_ROUTE_TIMEOUT_MS || "6500")),
+    5000
+  );
+  const LOW_BUDGET_THRESHOLD_MS = 400;
+  let degradedMode = false;
+  const degradedReasons = [];
+  const budgetLeft = () => totalBudgetMs - (performance.now() - requestStartedMs);
+  const isBudgetLow = () => budgetLeft() < LOW_BUDGET_THRESHOLD_MS;
   const debugLog = createStationboardDebugLogger({
     enabled: debugEnabled,
     requestId,
@@ -1039,45 +1051,57 @@ export async function getStationboard({
     board.departures.length < sparseRetryMin &&
     sparseRetryWindowMinutes > baseWindowMinutes
   ) {
-    timing.sparseRetryTriggered = true;
-    const sparseRetryStartedMs = performance.now();
-    const expanded = await buildStationboard(locationId, {
-      ...buildOptionsBase,
-      windowMinutes: sparseRetryWindowMinutes,
-    });
-    timing.sparseRetryMs = roundMs(performance.now() - sparseRetryStartedMs);
-    if ((expanded?.departures?.length || 0) > (board?.departures?.length || 0)) {
-      board = expanded;
+    if (isBudgetLow()) {
+      // Budget low: skip sparse retry to preserve response time
+      degradedMode = true;
+      degradedReasons.push("sparse_retry_skipped_budget");
+    } else {
+      timing.sparseRetryTriggered = true;
+      const sparseRetryStartedMs = performance.now();
+      const expanded = await buildStationboard(locationId, {
+        ...buildOptionsBase,
+        windowMinutes: sparseRetryWindowMinutes,
+      });
+      timing.sparseRetryMs = roundMs(performance.now() - sparseRetryStartedMs);
+      if ((expanded?.departures?.length || 0) > (board?.departures?.length || 0)) {
+        board = expanded;
+      }
     }
   }
 
   const initialScheduledRowCount = sumScheduledRows(board);
   if ((board?.departures?.length || 0) === 0) {
-    const canonicalIsParent = String(resolved?.canonical?.kind || "").trim() === "parent";
-    const childIds = uniqueStopIds((resolved?.children || []).map((child) => child?.id));
-    if (canonicalIsParent && childIds.length > 0) {
-      const childrenScoped = await buildStationboard(locationId, {
-        ...buildOptionsBase,
-        scopeQueryMode: "children_only",
-      });
-      const childRowCount = sumScheduledRows(childrenScoped);
-      if ((childrenScoped?.departures?.length || 0) > 0 || childRowCount > 0) {
-        board = childrenScoped;
-        debugState.flags.push("resolution:fallback_to_children");
-      } else {
-        debugState.flags.push("resolution:children_fallback_empty");
-      }
-    } else if (!canonicalIsParent) {
-      const parentScoped = await buildStationboard(locationId, {
-        ...buildOptionsBase,
-        scopeQueryMode: "parent_only",
-      });
-      const parentRowCount = sumScheduledRows(parentScoped);
-      if ((parentScoped?.departures?.length || 0) > 0 || parentRowCount > 0) {
-        board = parentScoped;
-        debugState.flags.push("resolution:fallback_to_parent");
-      } else {
-        debugState.flags.push("resolution:parent_fallback_empty");
+    if (isBudgetLow()) {
+      // TEMP/EMERGENCY: skip stop-scope fallback — budget exhausted
+      degradedMode = true;
+      degradedReasons.push("scope_fallback_skipped_budget");
+    } else {
+      const canonicalIsParent = String(resolved?.canonical?.kind || "").trim() === "parent";
+      const childIds = uniqueStopIds((resolved?.children || []).map((child) => child?.id));
+      if (canonicalIsParent && childIds.length > 0) {
+        const childrenScoped = await buildStationboard(locationId, {
+          ...buildOptionsBase,
+          scopeQueryMode: "children_only",
+        });
+        const childRowCount = sumScheduledRows(childrenScoped);
+        if ((childrenScoped?.departures?.length || 0) > 0 || childRowCount > 0) {
+          board = childrenScoped;
+          debugState.flags.push("resolution:fallback_to_children");
+        } else {
+          debugState.flags.push("resolution:children_fallback_empty");
+        }
+      } else if (!canonicalIsParent) {
+        const parentScoped = await buildStationboard(locationId, {
+          ...buildOptionsBase,
+          scopeQueryMode: "parent_only",
+        });
+        const parentRowCount = sumScheduledRows(parentScoped);
+        if ((parentScoped?.departures?.length || 0) > 0 || parentRowCount > 0) {
+          board = parentScoped;
+          debugState.flags.push("resolution:fallback_to_parent");
+        } else {
+          debugState.flags.push("resolution:parent_fallback_empty");
+        }
       }
     }
   }
@@ -1241,10 +1265,82 @@ export async function getStationboard({
           tripUpdates: toRtTripUpdatesDebug(debugState.rtTripUpdates, departureAudit),
         },
         departureAudit,
+        latencySafe: {
+          degradedMode,
+          degradedReasons,
+          totalBudgetMs,
+          sparseRetryRan: timing.sparseRetryTriggered,
+          config: {
+            routeTimeoutMs: Math.max(100, Number(process.env.STATIONBOARD_ROUTE_TIMEOUT_MS || "6500")),
+            sparseRetryMinDeps: sparseRetryMin,
+            defaultWindowMinutes: DEFAULT_STATIONBOARD_WINDOW_MINUTES,
+            mainQueryTimeoutMs: Math.max(400, Number(process.env.STATIONBOARD_MAIN_QUERY_TIMEOUT_MS || "3500")),
+            fallbackQueryTimeoutMs: Math.max(250, Number(process.env.STATIONBOARD_FALLBACK_QUERY_TIMEOUT_MS || "1200")),
+            stopScopeQueryTimeoutMs: Math.max(150, Number(process.env.STATIONBOARD_STOP_SCOPE_QUERY_TIMEOUT_MS || "800")),
+            alertsEnabled: alertsFeatureEnabled,
+          },
+        },
       };
     }
     logTiming({
       outcome: "ok_no_alerts",
+      departures: baseResponse.departures.length,
+      buildTimings: board?.debugMeta?.timings || null,
+    });
+    return baseResponse;
+  }
+
+  // TEMP/EMERGENCY: if budget is exhausted before awaiting alerts, return static-only (200).
+  if (isBudgetLow()) {
+    degradedMode = true;
+    degradedReasons.push("alerts_skipped_budget");
+    baseResponse.departures = canonicalizeDepartures(baseResponse.departures, {
+      stopId: locationId,
+      debugLog,
+      debugState,
+      includeDelayDebug: debugEnabled,
+    });
+    if (debugEnabled) {
+      const departureAudit = buildDepartureAudit(baseResponse.departures);
+      baseResponse.debug = {
+        requestId,
+        instanceId: INSTANCE_ID,
+        stopResolution: debugState.stopResolution,
+        timeWindow: debugState.timeWindow,
+        rowSources: debugState.rowSources,
+        stageCounts: debugState.stageCounts,
+        langPrefs,
+        flags: debugState.flags,
+        warnings: debugState.warnings,
+        version: debugState.version,
+        includeAlertsRequested,
+        includeAlertsApplied,
+        includeAlerts: includeAlertsApplied,
+        requestedIncludeAlerts: includeAlertsRequested,
+        alertsFeatureEnabled,
+        rt: {
+          tripUpdates: toRtTripUpdatesDebug(debugState.rtTripUpdates, departureAudit),
+        },
+        departureAudit,
+        latencySafe: {
+          degradedMode,
+          degradedReasons,
+          totalBudgetMs,
+          sparseRetryRan: timing.sparseRetryTriggered,
+          config: {
+            routeTimeoutMs: Math.max(100, Number(process.env.STATIONBOARD_ROUTE_TIMEOUT_MS || "6500")),
+            sparseRetryMinDeps: sparseRetryMin,
+            defaultWindowMinutes: DEFAULT_STATIONBOARD_WINDOW_MINUTES,
+            mainQueryTimeoutMs: Math.max(400, Number(process.env.STATIONBOARD_MAIN_QUERY_TIMEOUT_MS || "3500")),
+            fallbackQueryTimeoutMs: Math.max(250, Number(process.env.STATIONBOARD_FALLBACK_QUERY_TIMEOUT_MS || "1200")),
+            stopScopeQueryTimeoutMs: Math.max(150, Number(process.env.STATIONBOARD_STOP_SCOPE_QUERY_TIMEOUT_MS || "800")),
+            alertsEnabled: alertsFeatureEnabled,
+          },
+        },
+      };
+    }
+    logTiming({
+      outcome: "ok_budget_exhausted_no_alerts",
       departures: baseResponse.departures.length,
       buildTimings: board?.debugMeta?.timings || null,
     });
@@ -1423,6 +1519,21 @@ export async function getStationboard({
         },
         alertsCache: debugState.alertsCache,
         departureAudit,
+        latencySafe: {
+          degradedMode,
+          degradedReasons,
+          totalBudgetMs,
+          sparseRetryRan: timing.sparseRetryTriggered,
+          config: {
+            routeTimeoutMs: Math.max(100, Number(process.env.STATIONBOARD_ROUTE_TIMEOUT_MS || "6500")),
+            sparseRetryMinDeps: sparseRetryMin,
+            defaultWindowMinutes: DEFAULT_STATIONBOARD_WINDOW_MINUTES,
+            mainQueryTimeoutMs: Math.max(400, Number(process.env.STATIONBOARD_MAIN_QUERY_TIMEOUT_MS || "3500")),
+            fallbackQueryTimeoutMs: Math.max(250, Number(process.env.STATIONBOARD_FALLBACK_QUERY_TIMEOUT_MS || "1200")),
+            stopScopeQueryTimeoutMs: Math.max(150, Number(process.env.STATIONBOARD_STOP_SCOPE_QUERY_TIMEOUT_MS || "800")),
+            alertsEnabled: alertsFeatureEnabled,
+          },
+        },
       };
     }
     logTiming({
@@ -1473,6 +1584,21 @@ export async function getStationboard({
         },
         alertsCache: debugState.alertsCache,
         departureAudit,
+        latencySafe: {
+          degradedMode,
+          degradedReasons,
+          totalBudgetMs,
+          sparseRetryRan: timing.sparseRetryTriggered,
+          config: {
+            routeTimeoutMs: Math.max(100, Number(process.env.STATIONBOARD_ROUTE_TIMEOUT_MS || "6500")),
+            sparseRetryMinDeps: sparseRetryMin,
+            defaultWindowMinutes: DEFAULT_STATIONBOARD_WINDOW_MINUTES,
+            mainQueryTimeoutMs: Math.max(400, Number(process.env.STATIONBOARD_MAIN_QUERY_TIMEOUT_MS || "3500")),
+            fallbackQueryTimeoutMs: Math.max(250, Number(process.env.STATIONBOARD_FALLBACK_QUERY_TIMEOUT_MS || "1200")),
+            stopScopeQueryTimeoutMs: Math.max(150, Number(process.env.STATIONBOARD_STOP_SCOPE_QUERY_TIMEOUT_MS || "800")),
+            alertsEnabled: alertsFeatureEnabled,
+          },
+        },
       };
     }
     logTiming({

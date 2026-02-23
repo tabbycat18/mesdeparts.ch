@@ -8,6 +8,20 @@ primary_region = 'ams'
 
 [build]
 
+# TEMP/EMERGENCY: latency-safe stationboard config (applied 2026-02-23).
+# Keeps /api/stationboard at 200 within a few seconds by tightening per-phase
+# timeouts and disabling the sparse-retry second pass.
+# ROLLBACK: remove or comment out this [env] block, then fly deploy.
+[env]
+  STATIONBOARD_SPARSE_RETRY_MIN_DEPS = "0"
+  STATIONBOARD_DEFAULT_WINDOW_MINUTES = "120"
+  STATIONBOARD_MAIN_QUERY_TIMEOUT_MS = "2200"
+  STATIONBOARD_FALLBACK_QUERY_TIMEOUT_MS = "900"
+  STATIONBOARD_STOP_SCOPE_QUERY_TIMEOUT_MS = "500"
+  STATIONBOARD_ROUTE_TIMEOUT_MS = "5000"
+  # Uncomment the line below as a last resort if alerts loading causes latency:
+  # STATIONBOARD_ENABLE_ALERTS = "0"
+
 [http_service]
   internal_port = 8080
   force_https = true
