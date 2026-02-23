@@ -97,78 +97,37 @@ fly secrets set -a mesdeparts-ch DATABASE_URL="postgresql://...same-neon-url..."
 
 This Option A1 layout guarantees all LA GTFS-RT upstream calls come from a single process (the poller), while API machines remain DB-cache readers.
 
-## Emergency Latency-Safe Stationboard Config (TEMP)
+## Stationboard Latency Guard
 
-Applied 2026-02-23. All values are in `fly.toml [env]` and are fully reversible.
+`getStationboard()` includes a built-in latency guard to avoid chaining optional phases
+(`sparse retry`, `scope fallback`, `alerts`, `supplement`) into a timeout.
 
-### What it does
+- Budget: `totalBudgetMs = min(STATIONBOARD_ROUTE_TIMEOUT_MS, 5000)`
+- Guard threshold: dynamic (`8%` of budget, clamped `250..800 ms`)
+- Behavior when low budget: skip optional phases and return static/partial payload with `200`
 
-Prevents `/api/stationboard` from chaining slow optional phases (sparse retry → stop-scope fallback → alerts) into a 504 by:
+Debug (`debug=1`) includes `debug.latencySafe` with:
 
-1. **Tight per-phase DB timeouts** — each query has a shorter deadline.
-2. **Sparse retry disabled** (`STATIONBOARD_SPARSE_RETRY_MIN_DEPS=0`) — skips the second `buildStationboard` call for stations with few departures.
-3. **Narrower default window** (`STATIONBOARD_DEFAULT_WINDOW_MINUTES=120`) — less data fetched when no `window_minutes` param is sent.
-4. **Total request budget** (`totalBudgetMs = min(STATIONBOARD_ROUTE_TIMEOUT_MS, 5000)`) — `getStationboard()` checks remaining budget before each optional phase and returns a static-only 200 instead of timing out.
+- `degradedMode` and `degradedReasons`
+- `remainingBudgetMs` and `lowBudgetThresholdMs`
+- effective config and phase timings
 
-### Active env vars
+This guard is always active; it does not require emergency deploy overrides.
 
-| Variable | Emergency value | Default (if unset) | Where applied |
-| --- | --- | --- | --- |
-| `STATIONBOARD_SPARSE_RETRY_MIN_DEPS` | `0` | `2` | `src/api/stationboard.js` |
-| `STATIONBOARD_DEFAULT_WINDOW_MINUTES` | `120` | `210` | `src/api/stationboard.js` |
-| `STATIONBOARD_MAIN_QUERY_TIMEOUT_MS` | `2200` | `3500` | `src/logic/buildStationboard.js` |
-| `STATIONBOARD_FALLBACK_QUERY_TIMEOUT_MS` | `900` | `1200` | `src/logic/buildStationboard.js` |
-| `STATIONBOARD_STOP_SCOPE_QUERY_TIMEOUT_MS` | `500` | `800` | `src/logic/buildStationboard.js` |
-| `STATIONBOARD_ROUTE_TIMEOUT_MS` | `5000` | `6500` | `src/api/stationboardRoute.js` |
-| `STATIONBOARD_ENABLE_ALERTS` | _(commented out)_ | `1` | `src/api/stationboard.js` |
+### Optional tuning knobs (defaults)
 
-### Degraded-mode debug field
+| Variable | Default (if unset) | Where applied |
+| --- | --- | --- |
+| `STATIONBOARD_SPARSE_RETRY_MIN_DEPS` | `2` | `src/api/stationboard.js` |
+| `STATIONBOARD_DEFAULT_WINDOW_MINUTES` | `210` | `src/api/stationboard.js` |
+| `STATIONBOARD_MAIN_QUERY_TIMEOUT_MS` | `3500` | `src/logic/buildStationboard.js` |
+| `STATIONBOARD_FALLBACK_QUERY_TIMEOUT_MS` | `1200` | `src/logic/buildStationboard.js` |
+| `STATIONBOARD_STOP_SCOPE_QUERY_TIMEOUT_MS` | `800` | `src/logic/buildStationboard.js` |
+| `STATIONBOARD_ROUTE_TIMEOUT_MS` | `6500` | `src/api/stationboardRoute.js` |
+| `STATIONBOARD_ENABLE_ALERTS` | `1` | `src/api/stationboard.js` |
 
-When `debug=1`, the response includes `debug.latencySafe`:
-
-```json
-{
-  "degradedMode": false,
-  "degradedReasons": [],
-  "totalBudgetMs": 5000,
-  "sparseRetryRan": false,
-  "config": { "routeTimeoutMs": 5000, "sparseRetryMinDeps": 0, ... }
-}
-```
-
-If `degradedMode: true`, a phase was skipped to stay within the budget. The response is still 200 with whatever departures were built before the budget ran out.
-
-### Verification
-
-```bash
-curl -i "https://api.mesdeparts.ch/api/stationboard?stop_id=Parent8501120&limit=5"
-curl -i "https://api.mesdeparts.ch/api/stationboard?stop_id=Parent8592082&limit=5"
-curl -i "https://api.mesdeparts.ch/api/stationboard?stop_id=Parent8501000&limit=5"
-# Expect: HTTP 200, response within a few seconds, no 502.
-# With debug:
-curl -s "https://api.mesdeparts.ch/api/stationboard?stop_id=Parent8501120&limit=5&debug=1" | jq '.debug.latencySafe'
-```
-
-### Rollback plan
-
-Remove (or comment out) the `[env]` block in `fly.toml`, then redeploy:
-
-```bash
-# 1. Remove [env] block from fly.toml (or set back previous defaults)
-# 2. Deploy:
-fly deploy
-# 3. Confirm new machines are running:
-fly status
-```
-
-Alternatively, revert individual vars:
-
-```bash
-fly secrets unset STATIONBOARD_SPARSE_RETRY_MIN_DEPS STATIONBOARD_DEFAULT_WINDOW_MINUTES \
-  STATIONBOARD_MAIN_QUERY_TIMEOUT_MS STATIONBOARD_FALLBACK_QUERY_TIMEOUT_MS \
-  STATIONBOARD_STOP_SCOPE_QUERY_TIMEOUT_MS STATIONBOARD_ROUTE_TIMEOUT_MS
-fly apps restart mesdeparts-ch
-```
+For normal production deploys, keep `fly.toml` free of stationboard emergency overrides
+and only tune these values if a measured incident requires it.
 
 ## Stationboard Performance
 

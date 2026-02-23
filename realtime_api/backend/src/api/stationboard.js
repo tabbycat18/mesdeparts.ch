@@ -855,18 +855,21 @@ export async function getStationboard({
       ...extra,
     });
   };
-  // Request budget: prevents optional phases (sparse retry, scope fallback, alerts)
-  // from chaining into a 504. Budget = min(STATIONBOARD_ROUTE_TIMEOUT_MS, 5000).
-  // Each optional phase checks remaining budget; if low, degrades to static-only (200).
-  const totalBudgetMs = Math.min(
-    Math.max(100, Number(process.env.STATIONBOARD_ROUTE_TIMEOUT_MS || "6500")),
-    5000
+  // Request budget: prevents optional phases (sparse retry, scope fallback, alerts,
+  // supplement) from chaining into a timeout response.
+  const routeTimeoutMs = Math.max(
+    100,
+    Number(process.env.STATIONBOARD_ROUTE_TIMEOUT_MS || "6500")
   );
-  const LOW_BUDGET_THRESHOLD_MS = 400;
+  const totalBudgetMs = Math.min(routeTimeoutMs, 5000);
+  const LOW_BUDGET_THRESHOLD_MS = Math.max(
+    250,
+    Math.min(800, Math.round(totalBudgetMs * 0.08))
+  );
   let degradedMode = false;
   const degradedReasons = [];
   const budgetLeft = () => totalBudgetMs - (performance.now() - requestStartedMs);
-  const isBudgetLow = () => budgetLeft() < LOW_BUDGET_THRESHOLD_MS;
+  const isBudgetLow = () => budgetLeft() <= LOW_BUDGET_THRESHOLD_MS;
   const debugLog = createStationboardDebugLogger({
     enabled: debugEnabled,
     requestId,
@@ -1019,6 +1022,37 @@ export async function getStationboard({
     baseWindowMinutes,
     Number(process.env.STATIONBOARD_SPARSE_RETRY_WINDOW_MINUTES || "360")
   );
+  const buildLatencySafeDebug = ({ boardTimings = null } = {}) => ({
+    degradedMode,
+    degradedReasons: Array.from(new Set(degradedReasons)),
+    totalBudgetMs,
+    remainingBudgetMs: Math.max(0, Math.round(budgetLeft())),
+    lowBudgetThresholdMs: LOW_BUDGET_THRESHOLD_MS,
+    sparseRetryRan: timing.sparseRetryTriggered,
+    config: {
+      routeTimeoutMs,
+      sparseRetryMinDeps: sparseRetryMin,
+      effectiveWindowMinutes: baseWindowMinutes,
+      defaultWindowMinutes: DEFAULT_STATIONBOARD_WINDOW_MINUTES,
+      mainQueryTimeoutMs: Math.max(
+        400,
+        Number(process.env.STATIONBOARD_MAIN_QUERY_TIMEOUT_MS || "3500")
+      ),
+      fallbackQueryTimeoutMs: Math.max(
+        250,
+        Number(process.env.STATIONBOARD_FALLBACK_QUERY_TIMEOUT_MS || "1200")
+      ),
+      stopScopeQueryTimeoutMs: Math.max(
+        150,
+        Number(process.env.STATIONBOARD_STOP_SCOPE_QUERY_TIMEOUT_MS || "800")
+      ),
+      alertsEnabled: alertsFeatureEnabled,
+    },
+    phaseTimings: {
+      orchestrator: { ...timing },
+      buildStationboard: boardTimings,
+    },
+  });
   const resolvedScope = {
     stationGroupId: locationId,
     stationName:
@@ -1055,6 +1089,7 @@ export async function getStationboard({
       // Budget low: skip sparse retry to preserve response time
       degradedMode = true;
       degradedReasons.push("sparse_retry_skipped_budget");
+      debugState.flags.push("latency_guard:sparse_retry_skipped");
     } else {
       timing.sparseRetryTriggered = true;
       const sparseRetryStartedMs = performance.now();
@@ -1072,9 +1107,10 @@ export async function getStationboard({
   const initialScheduledRowCount = sumScheduledRows(board);
   if ((board?.departures?.length || 0) === 0) {
     if (isBudgetLow()) {
-      // TEMP/EMERGENCY: skip stop-scope fallback — budget exhausted
+      // Budget low: skip stop-scope fallback to preserve response time
       degradedMode = true;
       degradedReasons.push("scope_fallback_skipped_budget");
+      debugState.flags.push("latency_guard:scope_fallback_skipped");
     } else {
       const canonicalIsParent = String(resolved?.canonical?.kind || "").trim() === "parent";
       const childIds = uniqueStopIds((resolved?.children || []).map((child) => child?.id));
@@ -1265,21 +1301,9 @@ export async function getStationboard({
           tripUpdates: toRtTripUpdatesDebug(debugState.rtTripUpdates, departureAudit),
         },
         departureAudit,
-        latencySafe: {
-          degradedMode,
-          degradedReasons,
-          totalBudgetMs,
-          sparseRetryRan: timing.sparseRetryTriggered,
-          config: {
-            routeTimeoutMs: Math.max(100, Number(process.env.STATIONBOARD_ROUTE_TIMEOUT_MS || "6500")),
-            sparseRetryMinDeps: sparseRetryMin,
-            defaultWindowMinutes: DEFAULT_STATIONBOARD_WINDOW_MINUTES,
-            mainQueryTimeoutMs: Math.max(400, Number(process.env.STATIONBOARD_MAIN_QUERY_TIMEOUT_MS || "3500")),
-            fallbackQueryTimeoutMs: Math.max(250, Number(process.env.STATIONBOARD_FALLBACK_QUERY_TIMEOUT_MS || "1200")),
-            stopScopeQueryTimeoutMs: Math.max(150, Number(process.env.STATIONBOARD_STOP_SCOPE_QUERY_TIMEOUT_MS || "800")),
-            alertsEnabled: alertsFeatureEnabled,
-          },
-        },
+        latencySafe: buildLatencySafeDebug({
+          boardTimings: board?.debugMeta?.timings || null,
+        }),
       };
     }
     logTiming({
@@ -1290,10 +1314,22 @@ export async function getStationboard({
     return baseResponse;
   }
 
-  // TEMP/EMERGENCY: if budget is exhausted before awaiting alerts, return static-only (200).
+  // Budget guard: if budget is exhausted before awaiting alerts, return static-only (200).
   if (isBudgetLow()) {
     degradedMode = true;
     degradedReasons.push("alerts_skipped_budget");
+    debugState.flags.push("latency_guard:alerts_skipped");
+    baseResponse.alerts = buildAlertsResponseMeta({
+      includeAlertsRequested,
+      includeAlertsApplied: false,
+      reason: "budget_skipped",
+      alertsMeta: {
+        available: false,
+        applied: false,
+        reason: "budget_skipped",
+        cacheStatus: "SKIPPED",
+      },
+    });
     baseResponse.departures = canonicalizeDepartures(baseResponse.departures, {
       stopId: locationId,
       debugLog,
@@ -1322,21 +1358,9 @@ export async function getStationboard({
           tripUpdates: toRtTripUpdatesDebug(debugState.rtTripUpdates, departureAudit),
         },
         departureAudit,
-        latencySafe: {
-          degradedMode,
-          degradedReasons,
-          totalBudgetMs,
-          sparseRetryRan: timing.sparseRetryTriggered,
-          config: {
-            routeTimeoutMs: Math.max(100, Number(process.env.STATIONBOARD_ROUTE_TIMEOUT_MS || "6500")),
-            sparseRetryMinDeps: sparseRetryMin,
-            defaultWindowMinutes: DEFAULT_STATIONBOARD_WINDOW_MINUTES,
-            mainQueryTimeoutMs: Math.max(400, Number(process.env.STATIONBOARD_MAIN_QUERY_TIMEOUT_MS || "3500")),
-            fallbackQueryTimeoutMs: Math.max(250, Number(process.env.STATIONBOARD_FALLBACK_QUERY_TIMEOUT_MS || "1200")),
-            stopScopeQueryTimeoutMs: Math.max(150, Number(process.env.STATIONBOARD_STOP_SCOPE_QUERY_TIMEOUT_MS || "800")),
-            alertsEnabled: alertsFeatureEnabled,
-          },
-        },
+        latencySafe: buildLatencySafeDebug({
+          boardTimings: board?.debugMeta?.timings || null,
+        }),
       };
     }
     logTiming({
@@ -1440,7 +1464,11 @@ export async function getStationboard({
 
     let finalDepartures = attached.departures;
     let supplementCount = 0;
-    if (!hasReplacementDeparture(finalDepartures)) {
+    if (isBudgetLow()) {
+      degradedMode = true;
+      degradedReasons.push("supplement_skipped_budget");
+      debugState.flags.push("latency_guard:supplement_skipped");
+    } else if (!hasReplacementDeparture(finalDepartures)) {
       const supplementStartedMs = performance.now();
       const supplement = await getOtdReplacementSupplementCached({
         stopId: locationId,
@@ -1519,21 +1547,9 @@ export async function getStationboard({
         },
         alertsCache: debugState.alertsCache,
         departureAudit,
-        latencySafe: {
-          degradedMode,
-          degradedReasons,
-          totalBudgetMs,
-          sparseRetryRan: timing.sparseRetryTriggered,
-          config: {
-            routeTimeoutMs: Math.max(100, Number(process.env.STATIONBOARD_ROUTE_TIMEOUT_MS || "6500")),
-            sparseRetryMinDeps: sparseRetryMin,
-            defaultWindowMinutes: DEFAULT_STATIONBOARD_WINDOW_MINUTES,
-            mainQueryTimeoutMs: Math.max(400, Number(process.env.STATIONBOARD_MAIN_QUERY_TIMEOUT_MS || "3500")),
-            fallbackQueryTimeoutMs: Math.max(250, Number(process.env.STATIONBOARD_FALLBACK_QUERY_TIMEOUT_MS || "1200")),
-            stopScopeQueryTimeoutMs: Math.max(150, Number(process.env.STATIONBOARD_STOP_SCOPE_QUERY_TIMEOUT_MS || "800")),
-            alertsEnabled: alertsFeatureEnabled,
-          },
-        },
+        latencySafe: buildLatencySafeDebug({
+          boardTimings: board?.debugMeta?.timings || null,
+        }),
       };
     }
     logTiming({
@@ -1584,21 +1600,9 @@ export async function getStationboard({
         },
         alertsCache: debugState.alertsCache,
         departureAudit,
-        latencySafe: {
-          degradedMode,
-          degradedReasons,
-          totalBudgetMs,
-          sparseRetryRan: timing.sparseRetryTriggered,
-          config: {
-            routeTimeoutMs: Math.max(100, Number(process.env.STATIONBOARD_ROUTE_TIMEOUT_MS || "6500")),
-            sparseRetryMinDeps: sparseRetryMin,
-            defaultWindowMinutes: DEFAULT_STATIONBOARD_WINDOW_MINUTES,
-            mainQueryTimeoutMs: Math.max(400, Number(process.env.STATIONBOARD_MAIN_QUERY_TIMEOUT_MS || "3500")),
-            fallbackQueryTimeoutMs: Math.max(250, Number(process.env.STATIONBOARD_FALLBACK_QUERY_TIMEOUT_MS || "1200")),
-            stopScopeQueryTimeoutMs: Math.max(150, Number(process.env.STATIONBOARD_STOP_SCOPE_QUERY_TIMEOUT_MS || "800")),
-            alertsEnabled: alertsFeatureEnabled,
-          },
-        },
+        latencySafe: buildLatencySafeDebug({
+          boardTimings: board?.debugMeta?.timings || null,
+        }),
       };
     }
     logTiming({
