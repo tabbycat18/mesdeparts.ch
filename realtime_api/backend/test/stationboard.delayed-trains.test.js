@@ -3,6 +3,217 @@ import assert from "node:assert/strict";
 
 import { applyTripUpdates } from "../src/merge/applyTripUpdates.js";
 
+// ---------------------------------------------------------------------------
+// Overnight service-date tests (regression for serviceDate fix)
+// ---------------------------------------------------------------------------
+//
+// Swiss overnight buses/trams depart after 24:00 in GTFS (e.g. "25:30:00").
+// Their GTFS service date is the *previous* calendar day (e.g. 20260222 for
+// a bus running at 01:30 CET on Feb 23).  The RT entity's startDate is also
+// 20260222. But `scheduledDeparture` as an ISO string is "2026-02-23T00:30:00Z",
+// so `ymdZurichFromIso()` would return "20260223" — causing a date mismatch.
+//
+// The fix: buildStationboard now sets `row.serviceDate = "20260222"` from the
+// SQL-side `_service_date_int`, and applyTripUpdates prefers that value.
+
+test("applyTripUpdates: overnight trip WITH serviceDate matches RT entity on correct service date", () => {
+  // GTFS departure_time "25:30:00" on service date 20260222 →
+  // actual ISO departure is "2026-02-23T00:30:00.000Z" (01:30 CET).
+  // RT entity startDate = "20260222".  serviceDate = "20260222" should match.
+
+  const scheduledTime = new Date("2026-02-23T00:30:00.000Z"); // 01:30 CET, after midnight
+  const realtimeTime  = new Date("2026-02-23T00:32:00.000Z"); // 2-minute delay
+
+  const baseRows = [
+    {
+      trip_id: "overnight-trip",
+      stop_id: "8587387",
+      stop_sequence: 5,
+      category: "B",
+      number: "12",
+      line: "12",
+      name: "12",
+      destination: "Genève, Cornavin",
+      operator: "TPG",
+      scheduledDeparture: scheduledTime.toISOString(),
+      realtimeDeparture: scheduledTime.toISOString(),
+      serviceDate: "20260222", // ← GTFS service date (Feb 22), NOT the calendar date
+      delayMin: 0,
+      minutesLeft: 0,
+      platform: "",
+      platformChanged: false,
+      source: "scheduled",
+      tags: [],
+    },
+  ];
+
+  const tripUpdates = {
+    entities: [
+      {
+        tripUpdate: {
+          trip: {
+            tripId: "overnight-trip",
+            startDate: "20260222", // RT service date matches
+            scheduleRelationship: "SCHEDULED",
+          },
+          stopTimeUpdate: [
+            {
+              stopId: "8587387",
+              stopSequence: 5,
+              departure: {
+                delay: 120, // 2 minutes
+                time: Math.floor(realtimeTime.getTime() / 1000),
+              },
+            },
+          ],
+        },
+      },
+    ],
+  };
+
+  const merged = applyTripUpdates(baseRows, tripUpdates);
+
+  assert.equal(merged.length, 1);
+  const row = merged[0];
+  assert.equal(row._rtMatched, true, "RT should have matched using serviceDate");
+  assert.equal(row.delayMin, 2, "Should show 2-minute delay");
+  assert.equal(
+    row.realtimeDeparture,
+    realtimeTime.toISOString(),
+    "Realtime departure should reflect the delay"
+  );
+});
+
+test("applyTripUpdates: overnight trip WITHOUT serviceDate fails to match RT entity on previous service date", () => {
+  // Regression guard: without the fix (no serviceDate field), ymdZurichFromIso
+  // of "2026-02-23T00:30:00Z" returns "20260223", but RT startDate is "20260222".
+  // The RT entity should NOT be matched.
+
+  const scheduledTime = new Date("2026-02-23T00:30:00.000Z");
+  const realtimeTime  = new Date("2026-02-23T00:32:00.000Z");
+
+  const baseRows = [
+    {
+      trip_id: "overnight-trip-no-svcdate",
+      stop_id: "8587387",
+      stop_sequence: 5,
+      category: "B",
+      number: "12",
+      line: "12",
+      name: "12",
+      destination: "Genève, Cornavin",
+      operator: "TPG",
+      scheduledDeparture: scheduledTime.toISOString(),
+      realtimeDeparture: scheduledTime.toISOString(),
+      // serviceDate intentionally omitted → falls back to ymdZurichFromIso → "20260223"
+      delayMin: 0,
+      minutesLeft: 0,
+      platform: "",
+      platformChanged: false,
+      source: "scheduled",
+      tags: [],
+    },
+  ];
+
+  const tripUpdates = {
+    entities: [
+      {
+        tripUpdate: {
+          trip: {
+            tripId: "overnight-trip-no-svcdate",
+            startDate: "20260222", // RT service date is Feb 22 — won't match "20260223"
+            scheduleRelationship: "SCHEDULED",
+          },
+          stopTimeUpdate: [
+            {
+              stopId: "8587387",
+              stopSequence: 5,
+              departure: {
+                delay: 120,
+                time: Math.floor(realtimeTime.getTime() / 1000),
+              },
+            },
+          ],
+        },
+      },
+    ],
+  };
+
+  const merged = applyTripUpdates(baseRows, tripUpdates);
+
+  assert.equal(merged.length, 1);
+  const row = merged[0];
+  assert.equal(
+    row._rtMatched,
+    false,
+    "Without serviceDate the date is wrong (20260223 vs 20260222) → no RT match"
+  );
+  assert.equal(row.delayMin, 0, "No delay should be applied without the fix");
+});
+
+test("applyTripUpdates: daytime trip WITHOUT serviceDate still matches correctly (unchanged behaviour)", () => {
+  // Daytime departure: scheduledDeparture is on the same calendar day as the
+  // GTFS service date.  ymdZurichFromIso gives the correct date regardless of
+  // whether serviceDate is supplied, so existing behaviour is preserved.
+
+  const scheduledTime = new Date("2026-02-22T13:30:00.000Z"); // 14:30 CET, daytime
+  const realtimeTime  = new Date("2026-02-22T13:33:00.000Z"); // 3-minute delay
+
+  const baseRows = [
+    {
+      trip_id: "daytime-trip",
+      stop_id: "8587387",
+      stop_sequence: 3,
+      category: "B",
+      number: "7",
+      line: "7",
+      name: "7",
+      destination: "Genève, Bachet-de-Pesay",
+      operator: "TPG",
+      scheduledDeparture: scheduledTime.toISOString(),
+      realtimeDeparture: scheduledTime.toISOString(),
+      // No serviceDate — old code path via ymdZurichFromIso → "20260222"
+      delayMin: 0,
+      minutesLeft: 0,
+      platform: "",
+      platformChanged: false,
+      source: "scheduled",
+      tags: [],
+    },
+  ];
+
+  const tripUpdates = {
+    entities: [
+      {
+        tripUpdate: {
+          trip: {
+            tripId: "daytime-trip",
+            startDate: "20260222",
+            scheduleRelationship: "SCHEDULED",
+          },
+          stopTimeUpdate: [
+            {
+              stopId: "8587387",
+              stopSequence: 3,
+              departure: {
+                delay: 180, // 3 minutes
+                time: Math.floor(realtimeTime.getTime() / 1000),
+              },
+            },
+          ],
+        },
+      },
+    ],
+  };
+
+  const merged = applyTripUpdates(baseRows, tripUpdates);
+
+  assert.equal(merged.length, 1);
+  const row = merged[0];
+  assert.equal(row._rtMatched, true, "Daytime trip should match RT without serviceDate");
+  assert.equal(row.delayMin, 3, "Should show 3-minute delay");
+});
+
 test("applyTripUpdates: scheduled time in past, realtime in future, row remains visible", () => {
   // REGRESSION TEST for PROBLEM A:
   // A train scheduled to depart at 10:00 UTC, but delayed to 10:30 UTC.
