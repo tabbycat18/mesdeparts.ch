@@ -11,7 +11,8 @@
 --    b. Rename stage tables → live (promoted to production)
 --    c. Restore app_stop_aliases with FK-aware logic
 --
--- NOTE: Old tables are NOT dropped here. This keeps the cutover lock window minimal.
+-- NOTE: Stale *_old tables from prior runs are dropped at cutover start for idempotency.
+-- Newly created *_old tables from this swap are not dropped here.
 -- Cleanup happens in a separate transaction (cleanup_old_after_swap.sql) after cutover.
 --
 -- Lock duration: ~10-50ms (just metadata updates, no data movement)
@@ -19,6 +20,18 @@
 -- ===========================================================================================
 
 BEGIN;
+
+-- Idempotency guard: clear stale _old tables from a previous partial/failed run.
+-- This only targets *_old names and never drops active live tables.
+DROP TABLE IF EXISTS public.gtfs_agency_old CASCADE;
+DROP TABLE IF EXISTS public.gtfs_stops_old CASCADE;
+DROP TABLE IF EXISTS public.gtfs_routes_old CASCADE;
+DROP TABLE IF EXISTS public.gtfs_trips_old CASCADE;
+DROP TABLE IF EXISTS public.gtfs_calendar_old CASCADE;
+DROP TABLE IF EXISTS public.gtfs_calendar_dates_old CASCADE;
+DROP TABLE IF EXISTS public.gtfs_stop_times_old CASCADE;
+
+\echo '[swap-cutover] Cleared stale *_old tables (if any)'
 
 -- Sanity check: ensure stage tables are populated
 DO $$

@@ -60,13 +60,14 @@ Behavior notes:
 ### `sql/swap_stage_to_live_cutover.sql`
 
 - Runs inside a transaction (`BEGIN/COMMIT`).
+- Drops stale `*_old` tables at transaction start (`DROP TABLE IF EXISTS`) so reruns do not fail on name conflicts.
 - Validates stage counts are non-zero before swap.
 - Performs atomic metadata renames:
   - live tables -> `_old`
   - stage tables -> live names
 - Restores `app_stop_aliases` via FK-aware logic after swap.
 - Keeps lock window minimal by avoiding heavy data copy in cutover step.
-- Does not drop old tables; cleanup is separate.
+- Does not drop the newly created `_old` backup tables from the current swap; cleanup is separate.
 
 ### `sql/cleanup_old_after_swap.sql`
 

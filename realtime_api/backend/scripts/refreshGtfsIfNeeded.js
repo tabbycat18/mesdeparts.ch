@@ -36,6 +36,15 @@ const REQUIRED_FILES = [
   "calendar.txt",
   "calendar_dates.txt",
 ];
+const CUTOVER_OLD_TABLES = [
+  "gtfs_agency_old",
+  "gtfs_stops_old",
+  "gtfs_routes_old",
+  "gtfs_trips_old",
+  "gtfs_calendar_old",
+  "gtfs_calendar_dates_old",
+  "gtfs_stop_times_old",
+];
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -186,7 +195,12 @@ async function buildCleanGtfsFiles(unzipDir, cleanDir) {
 }
 
 async function runSqlFile(sqlFile, env) {
-  await runCommand("psql", [env.DATABASE_URL, "-v", "ON_ERROR_STOP=1", "-f", sqlFile]);
+  try {
+    await runCommand("psql", [env.DATABASE_URL, "-v", "ON_ERROR_STOP=1", "-f", sqlFile]);
+  } catch (err) {
+    const message = err?.message || String(err);
+    throw new Error(`[refresh][sql] ${path.basename(sqlFile)} failed (psql ON_ERROR_STOP=1): ${message}`);
+  }
 }
 
 function toPgTimestampValue(headerTimestamp) {
@@ -340,6 +354,32 @@ async function isGtfsLiveEmpty(client) {
   }
 }
 
+async function findExistingOldGtfsTables(client) {
+  const result = await client.query(
+    `
+      SELECT t.table_name
+      FROM unnest($1::text[]) AS t(table_name)
+      WHERE to_regclass(format('public.%I', t.table_name)) IS NOT NULL
+      ORDER BY t.table_name
+    `,
+    [CUTOVER_OLD_TABLES]
+  );
+  return result.rows.map((row) => row.table_name);
+}
+
+async function logCutoverPreflight(client) {
+  const oldTables = await findExistingOldGtfsTables(client);
+  if (oldTables.length === 0) {
+    console.log("[refresh][preflight] No leftover *_old GTFS tables detected.");
+    return;
+  }
+
+  console.warn(
+    `[refresh][preflight] Found leftover *_old GTFS tables: ${oldTables.join(", ")}. ` +
+      "Cutover remains safe on rerun: swap_stage_to_live_cutover.sql drops stale *_old tables before live→old renames."
+  );
+}
+
 // ── main ──────────────────────────────────────────────────────────────────────
 
 async function run() {
@@ -481,6 +521,7 @@ async function run() {
       // ── Sanity check: ensure connection is still alive after lock acquire ────
       // (cheap defense against race conditions between lock and import)
       await dbClient.query("SELECT 1");
+      await logCutoverPreflight(dbClient);
 
       // ── Step 5c: Full import ───────────────────────────────────────────────
       console.log("[refresh] importing cleaned GTFS into stage/live tables");
