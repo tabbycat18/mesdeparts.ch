@@ -56,6 +56,7 @@ If context is still missing after this order, then inspect code.
 | --- | --- |
 | GTFS refresh/cutover SQL ownership and run order | `realtime_api/backend/README_SQL.md` |
 | Stationboard route params/headers/204 | `realtime_api/backend/src/api/stationboardRoute.js` |
+| Stationboard in-flight request coalescing / stale fallback cache | `realtime_api/backend/src/api/stationboardRoute.js` |
 | Stationboard client cache policy (browser no-store + CDN cache hints) | `realtime_api/backend/src/api/stationboardRoute.js`, `realtime_api/edge/worker.js` |
 | Stationboard response/meta/alerts wiring | `realtime_api/backend/src/api/stationboard.js` |
 | Core board SQL + RT merge pipeline | `realtime_api/backend/src/logic/buildStationboard.js` |
@@ -71,6 +72,7 @@ If context is still missing after this order, then inspect code.
 | Stationboard DB optimization SQL | `realtime_api/backend/sql/optimize_stationboard.sql`, `realtime_api/backend/sql/optimize_stationboard_latency.sql` |
 | Poll cadence/backoff | `realtime_api/backend/scripts/pollLaTripUpdates.js`, `realtime_api/backend/scripts/pollLaServiceAlerts.js` |
 | Frontend polling/render behavior | `realtime_api/frontend/logic.v*.js`, `realtime_api/frontend/ui.v*.js`, `realtime_api/frontend/state.v*.js` |
+| Frontend refresh request coalescing (avoid parallel fetch bursts) | `realtime_api/frontend/v20260223-1.main.js` |
 | Frontend foreground refresh/resume drift catch-up + unattended-stall rescue + RT fetch diagnostics (`lastFetchAt`, `edgeCache`, `serverFetchedAt`) | `realtime_api/frontend/v20260223-1.main.js`, `realtime_api/frontend/v20260223-1.logic.js`, `realtime_api/frontend/v20260223-1.state.js` |
 | Frontend boot / SW update / bfcache reload | `realtime_api/frontend/v20260223-1.main.js` (SW_UPDATED message listener + pageshow persisted listener at end of boot) |
 | SW update notification to clients | `realtime_api/frontend/service-worker.js` (activate handler: wasUpdate → postMessage SW_UPDATED) |

@@ -186,6 +186,7 @@ stationboard JSON while edge caches can still absorb load:
   - 200 responses: `public, max-age=12, stale-while-revalidate=24`
   - 204 unchanged (`since_rt`) responses: `public, max-age=2, stale-while-revalidate=4`
 - `Vary: Origin, Accept-Encoding`
+- Identical in-flight stationboard requests are coalesced per key in-process (`stop/lang/limit/window/include_alerts`) so only one backend build runs at a time per key; coalesced responses include `x-md-inflight: HIT`.
 
 ### Debug
 

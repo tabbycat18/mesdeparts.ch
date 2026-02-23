@@ -42,6 +42,7 @@ Primary responsibilities:
 - Read RT cache metadata early (`la_tripupdates`) and short-circuit with `204` when `since_rt` indicates no change.
 - Apply cache and diagnostics headers (`Cache-Control`, `CDN-Cache-Control`, `Pragma`, `Vary`, `x-md-*`):
   browser-facing stationboard responses are explicit `no-store`; edge-cache intent stays in `CDN-Cache-Control`.
+- Coalesce identical in-flight stationboard builds per request key to prevent duplicate concurrent DB work under bursty client refresh patterns.
 - Call `getStationboard(...)` with timeout/error handling and stale-response fallback cache.
 - Normalize meta blocks (`rt`, `alerts`) before returning.
 

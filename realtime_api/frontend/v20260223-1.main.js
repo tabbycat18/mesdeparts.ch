@@ -215,6 +215,7 @@ let refreshRequestSeq = 0;
 let refreshBackoffIndex = 0;
 let refreshLoopActive = false;
 let refreshInFlight = false;
+let pendingRefreshRequest = null;
 let lastRtAppliedSnapshot = null;
 let nextRefreshAtMs = 0;
 let rtDebugOverlayEl = null;
@@ -274,6 +275,16 @@ function resetRtBoardState() {
     stale: false,
     staleSinceMs: null,
     reason: null,
+  };
+}
+
+function enqueueRefreshRequest(options = {}) {
+  pendingRefreshRequest = {
+    retried: options.retried === true,
+    showLoadingHint: options.showLoadingHint !== false,
+    fromScheduler: options.fromScheduler === true,
+    forceDowngrade: options.forceDowngrade === true,
+    forceFetch: options.forceFetch === true,
   };
 }
 
@@ -698,6 +709,17 @@ async function refreshDepartures({
   forceDowngrade = false,
   forceFetch = false,
 } = {}) {
+  if (refreshInFlight) {
+    enqueueRefreshRequest({
+      retried,
+      showLoadingHint,
+      fromScheduler,
+      forceDowngrade,
+      forceFetch,
+    });
+    return;
+  }
+
   const requestSeq = ++refreshRequestSeq;
   const requestStation = appState.STATION || "";
   const requestStationId = appState.stationId || "";
@@ -1042,6 +1064,14 @@ async function refreshDepartures({
   } finally {
     const staleRequest = isStaleRequest();
     refreshInFlight = false;
+    if (pendingRefreshRequest) {
+      const queued = pendingRefreshRequest;
+      pendingRefreshRequest = null;
+      setTimeout(() => {
+        refreshDepartures(queued);
+      }, 0);
+      return;
+    }
     if (staleRequest) {
       if (fromScheduler) {
         scheduleNextRefresh({ useBackoff: false });

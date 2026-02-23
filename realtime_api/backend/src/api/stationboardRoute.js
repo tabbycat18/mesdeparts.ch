@@ -22,6 +22,7 @@ const ROUTE_BUILD = String(
   .trim()
   .slice(0, 32);
 const stationboardResponseCache = new Map();
+const stationboardInFlight = new Map();
 
 function stationboardRouteTimeoutMs() {
   return Math.max(
@@ -313,6 +314,33 @@ function storeCachedStationboard(key, payload) {
   }
 }
 
+function getOrCreateInFlightStationboard(key, buildFactory) {
+  const cacheKey = text(key);
+  if (typeof buildFactory !== "function") {
+    return Promise.reject(new Error("invalid_build_factory"));
+  }
+  if (!cacheKey) return Promise.resolve().then(() => buildFactory());
+  const existing = stationboardInFlight.get(cacheKey);
+  if (existing && existing.promise) return existing.promise;
+  const promise = Promise.resolve()
+    .then(() => buildFactory())
+    .finally(() => {
+      const current = stationboardInFlight.get(cacheKey);
+      if (current?.promise === promise) {
+        stationboardInFlight.delete(cacheKey);
+      }
+    });
+  stationboardInFlight.set(cacheKey, {
+    promise,
+    ts: Date.now(),
+  });
+  if (stationboardInFlight.size > 100) {
+    const oldest = stationboardInFlight.keys().next().value;
+    if (oldest && oldest !== cacheKey) stationboardInFlight.delete(oldest);
+  }
+  return promise;
+}
+
 export function deriveResolvedIdentity(resolved) {
   const resolvedStopId =
     text(resolved?.resolvedStopId) || text(resolved?.canonical?.id) || text(resolved?.id) || null;
@@ -590,21 +618,24 @@ export function createStationboardRouteHandler({
       }
 
       let result;
+      const reusedInFlight = stationboardInFlight.has(responseCacheKey);
       try {
         result = await withTimeout(
-          getStationboardLike({
-            stopId: effectiveStopId,
-            stationId: stationIdRaw,
-            stationName,
-            lang,
-            acceptLanguage: req.headers["accept-language"],
-            requestId,
-            limit,
-            windowMinutes,
-            includeAlerts: includeAlertsParsed == null ? undefined : includeAlertsParsed,
-            debug,
-            debugRt: debug ? debugRt : "",
-          }),
+          getOrCreateInFlightStationboard(responseCacheKey, () =>
+            getStationboardLike({
+              stopId: effectiveStopId,
+              stationId: stationIdRaw,
+              stationName,
+              lang,
+              acceptLanguage: req.headers["accept-language"],
+              requestId,
+              limit,
+              windowMinutes,
+              includeAlerts: includeAlertsParsed == null ? undefined : includeAlertsParsed,
+              debug,
+              debugRt: debug ? debugRt : "",
+            })
+          ),
           stationboardRouteTimeoutMs(),
           "stationboard_timeout"
         );
@@ -670,6 +701,7 @@ export function createStationboardRouteHandler({
         "x-md-backend-total-ms",
         String(roundMs(performance.now() - routeStartedMs))
       );
+      if (reusedInFlight) setResponseHeader(res, "x-md-inflight", "HIT");
       emitStationboardDecisionLog(logger, {
         requestId,
         stopId: effectiveStopId,

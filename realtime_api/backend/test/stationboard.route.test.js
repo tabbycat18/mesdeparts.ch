@@ -747,3 +747,33 @@ test("stationboard route returns 504 when build times out and no cache exists", 
     assert.equal(res.body?.error, "stationboard_timeout");
   });
 });
+
+test("stationboard route coalesces identical in-flight builds", async () => {
+  let buildCalls = 0;
+  const handler = createRouteHandler({
+    getStationboardLike: async () => {
+      buildCalls += 1;
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      return {
+        station: { id: "Parent8501120", name: "Lausanne" },
+        departures: [{ line: "R1", destination: "Renens" }],
+        rt: { reason: "missing", applied: false },
+        alerts: { reason: "disabled", applied: false },
+      };
+    },
+    logger: { log() {}, error() {} },
+  });
+
+  const [resA, resB] = await Promise.all([
+    invokeRoute(handler, { query: { stop_id: "Parent8501120", lang: "fr", limit: "60" } }),
+    invokeRoute(handler, { query: { stop_id: "Parent8501120", lang: "fr", limit: "60" } }),
+  ]);
+
+  assert.equal(buildCalls, 1);
+  assert.equal(resA.statusCode, 200);
+  assert.equal(resB.statusCode, 200);
+  assert.ok(
+    (resA.headers["x-md-inflight"] || "") === "HIT" ||
+      (resB.headers["x-md-inflight"] || "") === "HIT"
+  );
+});
