@@ -845,6 +845,7 @@ export async function buildStationboard(locationId, options = {}) {
       operator: row.agency_id || "",
       scheduledDeparture: scheduledDt.toISOString(),
       realtimeDeparture: scheduledDt.toISOString(),
+      serviceDate: String(serviceDateInt),
       delayMin: 0,
       minutesLeft: 0,
       platform,

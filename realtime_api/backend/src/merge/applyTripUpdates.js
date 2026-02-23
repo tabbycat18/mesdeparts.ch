@@ -733,7 +733,9 @@ export function applyTripUpdates(baseRows, tripUpdates, options = {}) {
 
     const scheduledMs = Date.parse(row.scheduledDeparture || "");
     const rowTripStartDate =
-      ymdZurichFromIso(row.scheduledDeparture || row.realtimeDeparture || "");
+      typeof row.serviceDate === "string" && /^\d{8}$/.test(row.serviceDate)
+        ? row.serviceDate
+        : ymdZurichFromIso(row.scheduledDeparture || row.realtimeDeparture || "");
     const delayMatch = getDelayMatchForRow(
       delayByKey,
       row.trip_id,
