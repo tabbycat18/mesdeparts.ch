@@ -1580,8 +1580,8 @@ function renderViewSegment() {
         },
       ]
     : [
-        { key: VIEW_MODE_LINE, label: t("viewOptionLine") },
         { key: VIEW_MODE_TIME, label: t("viewOptionTime") },
+        { key: VIEW_MODE_LINE, label: t("viewOptionLine") },
       ];
 
   const active = trainMode

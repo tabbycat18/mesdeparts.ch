@@ -262,8 +262,8 @@ export class DualPicker {
           { v: TRAIN_FILTER_LONG_DISTANCE, label: () => t("trainFilterLongDistance") },
         ]
       : [
-          { v: VIEW_MODE_LINE, label: () => t("viewOptionLine") },
           { v: VIEW_MODE_TIME, label: () => t("viewOptionTime") },
+          { v: VIEW_MODE_LINE, label: () => t("viewOptionLine") },
         ];
 
     const active = this.state.view || (isTrain ? TRAIN_FILTER_ALL : VIEW_MODE_TIME);
