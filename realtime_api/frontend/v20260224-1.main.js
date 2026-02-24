@@ -15,7 +15,7 @@ import {
   TRAIN_FILTER_LONG_DISTANCE,
   DEFAULT_STATION_ID,
   STATION_ID_STORAGE_KEY,
-} from "./v20260223-2.state.js";
+} from "./v20260224-1.state.js";
 
 import {
   detectNetworkFromStation,
@@ -29,7 +29,7 @@ import {
   isRtUnavailableFromStationboardPayload,
   parseBoardContextKey,
   shouldApplyIncomingBoard,
-} from "./v20260223-2.logic.js";
+} from "./v20260224-1.logic.js";
 
 import {
   setupClock,
@@ -40,18 +40,18 @@ import {
   publishEmbedState,
   updateCountdownRows,
   renderServiceBanners,
-} from "./v20260223-2.ui.js";
+} from "./v20260224-1.ui.js";
 
-import { setupInfoButton } from "./v20260223-2.infoBTN.js";
-import { initI18n, applyStaticTranslations, t } from "./v20260223-2.i18n.js";
-import { loadFavorites } from "./v20260223-2.favourites.js";
+import { setupInfoButton } from "./v20260224-1.infoBTN.js";
+import { initI18n, applyStaticTranslations, t } from "./v20260224-1.i18n.js";
+import { loadFavorites } from "./v20260224-1.favourites.js";
 import {
   getHomeStop,
   setHomeStop,
   clearHomeStop,
   shouldShowHomeStopModal,
-} from "./v20260223-2.homeStop.js";
-import { openHomeStopOnboardingModal } from "./ui/v20260223-2.homeStopOnboarding.js";
+} from "./v20260224-1.homeStop.js";
+import { openHomeStopOnboardingModal } from "./ui/v20260224-1.homeStopOnboarding.js";
 import {
   initHeaderControls2,
   updateHeaderControls2,
@@ -670,8 +670,8 @@ function applyStation(name, id, { syncUrl = false } = {}) {
   appState.stationIsMotte = stationName.toLowerCase().includes("motte");
   appState.currentNetwork = detectNetworkFromStation(stationName);
 
-  // Default view: group by line
-  appState.viewMode = VIEW_MODE_LINE;
+  // Default view: chronological (by minute)
+  appState.viewMode = VIEW_MODE_TIME;
   appState.trainServiceFilter = TRAIN_FILTER_ALL;
 
   // Reset filters on station change

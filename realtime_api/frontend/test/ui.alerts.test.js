@@ -7,7 +7,7 @@ import {
   openDepartureAlertsPopover,
   resolveDepartureAlertsForLineBadge,
   shouldIgnoreJourneyError,
-} from "../v20260223-2.ui.js";
+} from "../v20260224-1.ui.js";
 
 class FakeClassList {
   constructor() {

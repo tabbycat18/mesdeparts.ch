@@ -1,13 +1,13 @@
-import { t } from "../v20260223-2.i18n.js";
-import { fetchStationSuggestions, fetchStationsNearby } from "../v20260223-2.logic.js";
-import { loadFavorites, addFavorite, removeFavorite } from "../v20260223-2.favourites.js";
+import { t } from "../v20260224-1.i18n.js";
+import { fetchStationSuggestions, fetchStationsNearby } from "../v20260224-1.logic.js";
+import { loadFavorites, addFavorite, removeFavorite } from "../v20260224-1.favourites.js";
 import {
   VIEW_MODE_LINE,
   VIEW_MODE_TIME,
   TRAIN_FILTER_ALL,
   TRAIN_FILTER_REGIONAL,
   TRAIN_FILTER_LONG_DISTANCE,
-} from "../v20260223-2.state.js";
+} from "../v20260224-1.state.js";
 
 function createPickerTemplate(side) {
   const suffix = side === "right" ? "right" : "left";
@@ -188,7 +188,7 @@ export class DualPicker {
       [TRAIN_FILTER_ALL, TRAIN_FILTER_REGIONAL, TRAIN_FILTER_LONG_DISTANCE].includes(
         initialState.view
       );
-    this.busView = initialState.busView || VIEW_MODE_LINE;
+    this.busView = initialState.busView || VIEW_MODE_TIME;
     this.trainView = initialState.trainView || TRAIN_FILTER_ALL;
     this.pendingHideDeparture = initialState.hideDeparture || false;
     this.pendingLineFilter = initialState.lineFilter ? new Set(initialState.lineFilter) : new Set();
@@ -266,7 +266,7 @@ export class DualPicker {
           { v: VIEW_MODE_TIME, label: () => t("viewOptionTime") },
         ];
 
-    const active = this.state.view || (isTrain ? TRAIN_FILTER_ALL : VIEW_MODE_LINE);
+    const active = this.state.view || (isTrain ? TRAIN_FILTER_ALL : VIEW_MODE_TIME);
 
     options.forEach((opt) => {
       const b = document.createElement("button");

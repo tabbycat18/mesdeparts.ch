@@ -11,22 +11,22 @@ import {
   TRAIN_FILTER_REGIONAL,
   TRAIN_FILTER_LONG_DISTANCE,
   REMARK_NARROW_BREAKPOINT_PX,
-} from "./v20260223-2.state.js";
+} from "./v20260224-1.state.js";
 import {
   fetchStationSuggestions,
   fetchStationsNearby,
   fetchJourneyDetails,
   isAbortError as isAbortErrorFromLogic,
   parseApiDate,
-} from "./v20260223-2.logic.js";
+} from "./v20260224-1.logic.js";
 import {
   loadFavorites,
   addFavorite,
   removeFavorite,
   isFavorite,
   clearFavorites,
-} from "./v20260223-2.favourites.js";
-import { t } from "./v20260223-2.i18n.js";
+} from "./v20260224-1.favourites.js";
+import { t } from "./v20260224-1.i18n.js";
 
 const QUICK_CONTROLS_STORAGE_KEY = "mesdeparts.quickControlsCollapsed";
 let quickControlsCollapsed = false;
@@ -1199,14 +1199,14 @@ export function setupViewToggle(onChange) {
     const options = isTrainBoard ? trainOptions : busOptions;
     const active = isTrainBoard
       ? appState.trainServiceFilter || TRAIN_FILTER_ALL
-      : appState.viewMode || VIEW_MODE_LINE;
+      : appState.viewMode || VIEW_MODE_TIME;
 
     renderSegment(options, active, isTrainBoard);
     renderSelect(options, active, isTrainBoard);
     renderLegacy(options, active, isTrainBoard);
   }
 
-  if (!appState.viewMode) appState.viewMode = VIEW_MODE_LINE;
+  if (!appState.viewMode) appState.viewMode = VIEW_MODE_TIME;
   if (!appState.trainServiceFilter) appState.trainServiceFilter = TRAIN_FILTER_ALL;
 
   if (sel) {
@@ -1590,7 +1590,7 @@ export function publishEmbedState() {
     isTrain: !!appState.lastBoardIsTrain,
     view: appState.lastBoardIsTrain
       ? appState.trainServiceFilter || TRAIN_FILTER_ALL
-      : appState.viewMode || VIEW_MODE_LINE,
+      : appState.viewMode || VIEW_MODE_TIME,
     hideDeparture: !!appState.hideBusDeparture,
     favoritesOnly: !!appState.favoritesOnly,
     timestamp: Date.now(),

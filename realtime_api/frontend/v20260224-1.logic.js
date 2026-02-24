@@ -22,8 +22,8 @@ import {
   TRAIN_FILTER_REGIONAL,
   TRAIN_FILTER_LONG_DISTANCE,
   STATION_ID_STORAGE_KEY,
-} from "./v20260223-2.state.js";
-import { t } from "./v20260223-2.i18n.js";
+} from "./v20260224-1.state.js";
+import { t } from "./v20260224-1.i18n.js";
 
 // API base can be overridden by setting window.__MD_API_BASE__ before scripts load.
 // Frontend now targets realtime_api/backend endpoints only.
@@ -1317,7 +1317,7 @@ export function shouldApplyIncomingBoard(
   };
 }
 
-export function buildDeparturesGrouped(data, viewMode = VIEW_MODE_LINE) {
+export function buildDeparturesGrouped(data, viewMode = VIEW_MODE_TIME) {
   const now = new Date();
   const night = isNightWindow(now);
   const stationboard = Array.isArray(data?.stationboard) ? data.stationboard : [];
@@ -1902,7 +1902,7 @@ export function buildDeparturesGrouped(data, viewMode = VIEW_MODE_LINE) {
   return flat.sort(lineDestComparator);
 }
 
-export async function fetchDeparturesGrouped(viewMode = VIEW_MODE_LINE) {
+export async function fetchDeparturesGrouped(viewMode = VIEW_MODE_TIME) {
   const data = await fetchStationboardRaw();
   return buildDeparturesGrouped(data, viewMode);
 }
