@@ -518,3 +518,4 @@ Primary responsibilities:
 ## Note
 
 - `src/.DS_Store` is a macOS metadata file and is not part of backend runtime logic.
+
