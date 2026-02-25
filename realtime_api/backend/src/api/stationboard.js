@@ -20,6 +20,7 @@ import {
 import { guardStationboardRequestPathUpstream } from "../util/upstreamRequestGuard.js";
 import { LA_SERVICEALERTS_FEED_KEY, LA_TRIPUPDATES_FEED_KEY } from "../db/rtCache.js";
 import { loadAlertsFromCache } from "../rt/loadAlertsFromCache.js";
+import { loadAlertsFromParsedTables } from "../rt/loadAlertsFromParsedTables.js";
 import { readTripUpdatesFeedFromCache } from "../../loaders/loadRealtime.js";
 import { loadScopedRtFromParsedTables } from "../rt/loadScopedRtFromParsedTables.js";
 import { loadScopedRtFromCache } from "../rt/loadScopedRtFromCache.js";
@@ -159,8 +160,54 @@ export function createRequestScopedTripUpdatesLoaderLike({
   };
 }
 
-async function loadAlertsFromCacheThrottled({ nowMs } = {}) {
+function normalizeScopedAlertsResult(result, alertsSource) {
+  const alerts = result?.alerts && typeof result.alerts === "object" ? result.alerts : { entities: [] };
+  const meta = result?.meta && typeof result.meta === "object" ? result.meta : {};
+  return {
+    alerts,
+    meta: {
+      ...meta,
+      alertsSource: String(alertsSource || meta.alertsSource || "parsed"),
+    },
+  };
+}
+
+export function createRequestScopedAlertsLoaderLike({
+  loadParsedLike = loadAlertsFromParsedTables,
+  loadBlobLike = loadAlertsFromCache,
+  allowBlobFallback = true,
+} = {}) {
+  let inFlight = null;
+  return async function requestScopedAlertsLoaderLike(options = {}) {
+    if (!inFlight) {
+      inFlight = (async () => {
+        const parsedResult = await Promise.resolve(loadParsedLike(options));
+        const parsedMeta = parsedResult?.meta && typeof parsedResult.meta === "object"
+          ? parsedResult.meta
+          : {};
+        const parsedReason = String(parsedMeta.reason || "").trim().toLowerCase();
+        const shouldFallback =
+          allowBlobFallback &&
+          (parsedReason === "missing_cache" || parsedReason === "parsed_unavailable");
+        if (!shouldFallback) {
+          return normalizeScopedAlertsResult(parsedResult, "parsed");
+        }
+
+        const blobResult = await Promise.resolve(loadBlobLike(options));
+        const normalized = normalizeScopedAlertsResult(blobResult, "blob_fallback");
+        normalized.meta.parsedFallbackReason = parsedReason || "missing_cache";
+        return normalized;
+      })().finally(() => {
+        inFlight = null;
+      });
+    }
+    return inFlight;
+  };
+}
+
+async function loadAlertsThrottled({ nowMs, loadAlertsLike, scopeStopIds } = {}) {
   const currentNowMs = Number.isFinite(Number(nowMs)) ? Number(nowMs) : Date.now();
+  const loadLike = typeof loadAlertsLike === "function" ? loadAlertsLike : loadAlertsFromParsedTables;
 
   if (alertsRequestCacheValue && currentNowMs < alertsRequestCacheExpiresAtMs) {
     return {
@@ -180,7 +227,11 @@ async function loadAlertsFromCacheThrottled({ nowMs } = {}) {
   if (!alertsRequestCacheInFlight) {
     startedRefresh = true;
     alertsRequestCacheInFlight = (async () => {
-      const loaded = (await loadAlertsFromCache({ enabled: true, nowMs: currentNowMs })) || {
+      const loaded = (await loadLike({
+        enabled: true,
+        nowMs: currentNowMs,
+        scopeStopIds,
+      })) || {
         alerts: { entities: [] },
         meta: { reason: "missing_cache" },
       };
@@ -801,6 +852,10 @@ function toRtTripUpdatesDebug(rtMeta, departureAuditRows) {
 function toRtAlertsDebug(alertsMetaRaw) {
   const base = alertsMetaRaw && typeof alertsMetaRaw === "object" ? alertsMetaRaw : {};
   return {
+    alertsSource:
+      base.alertsSource === "parsed" || base.alertsSource === "blob_fallback"
+        ? base.alertsSource
+        : "parsed",
     alertsPayloadFetchCountThisRequest: Number.isFinite(
       Number(base.alertsPayloadFetchCountThisRequest)
     )
@@ -932,6 +987,10 @@ function buildAlertsResponseMeta({
       ? Number(source.payloadBytes)
       : null,
     cacheStatus: String(source.cacheStatus || "").trim() || null,
+    alertsSource:
+      source.alertsSource === "parsed" || source.alertsSource === "blob_fallback"
+        ? source.alertsSource
+        : "parsed",
     alertsPayloadFetchCountThisRequest: Number.isFinite(
       Number(source.alertsPayloadFetchCountThisRequest)
     )
@@ -1289,9 +1348,16 @@ export async function getStationboard({
       locationId,
     childStops: Array.isArray(resolved?.children) ? resolved.children : [],
   };
+  const requestScopedAlertsLoaderLike = createRequestScopedAlertsLoaderLike();
+  const alertsScopeStopIds = uniqueStopIds([
+    locationId,
+    ...(resolvedScope.childStops || []).map((child) => child?.id),
+  ]);
   const alertsPromise = includeAlertsApplied
-    ? loadAlertsFromCacheThrottled({
+    ? loadAlertsThrottled({
         nowMs: Date.now(),
+        loadAlertsLike: requestScopedAlertsLoaderLike,
+        scopeStopIds: alertsScopeStopIds,
       })
     : null;
   const buildOptionsBase = {
@@ -1557,6 +1623,10 @@ export async function getStationboard({
       rtFetchedAt,
       rtCacheAgeMs,
       alertsStatus,
+      alertsSource:
+        alertsMeta.alertsSource === "parsed" || alertsMeta.alertsSource === "blob_fallback"
+          ? alertsMeta.alertsSource
+          : "parsed",
       alertsFetchedAt,
       alertsCacheAgeMs,
     };

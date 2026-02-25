@@ -23,7 +23,8 @@ This file documents the current `realtime_api/backend/src/` tree based on direct
 3. Realtime data access
    - `src/rt/loadScopedRtFromParsedTables.js` scopes TripUpdates from parsed RT tables (default).
    - `src/rt/loadScopedRtFromCache.js` scopes TripUpdates from cached payload (fallback).
-   - `src/rt/loadAlertsFromCache.js` loads Service Alerts from cached payload.
+   - `src/rt/loadAlertsFromParsedTables.js` loads Service Alerts from parsed table (default).
+   - `src/rt/loadAlertsFromCache.js` loads Service Alerts from cached payload (fallback).
    - `src/db/rtCache.js` provides RT cache read/write helpers.
 4. Search and resolve
    - `src/search/stopsSearch.js` is the stop-search engine.
@@ -291,6 +292,14 @@ Primary responsibilities:
   - stale grace: `STATIONBOARD_ALERTS_STALE_GRACE_MS` (default 30m)
 - Return `alerts: { entities }` plus `meta` (`available`, `applied`, `reason`, `cacheAgeMs`, `status`).
 
+### `src/rt/loadAlertsFromParsedTables.js` (Service Alerts parsed-table loader)
+
+Primary responsibilities:
+- Read alerts from `public.rt_service_alerts` with bounded row limits.
+- Build alert entities compatible with merge/attach pipeline (`id`, `effect`, text fields, `activePeriods`, `informedEntities`).
+- Apply active-period filtering and optional stop/route/trip scope filtering.
+- Expose `meta.alertsSource = "parsed"` and freshness/staleness semantics aligned with request-path alerts behavior.
+
 ### Thin re-exports (`src/rt/fetch*.js`, `src/rt/tripUpdatesSummary.js`)
 
 Primary responsibilities:
@@ -310,6 +319,7 @@ Primary responsibilities:
 | Dedupe preference between competing departure rows | `src/merge/pickPreferredDeparture.js` |
 | Scoped TripUpdates parsed-table loading (default request path) | `src/rt/loadScopedRtFromParsedTables.js` |
 | Scoped TripUpdates cache loading + guard limits (fallback path) | `src/rt/loadScopedRtFromCache.js` |
+| Parsed Service Alerts loading (default request path) | `src/rt/loadAlertsFromParsedTables.js` |
 | Service-alert cache loading + freshness/grace | `src/rt/loadAlertsFromCache.js` |
 
 ## Folder summary

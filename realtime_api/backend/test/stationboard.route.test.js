@@ -593,6 +593,30 @@ test("stationboard route accepts include_alerts when alerts feature is enabled",
   });
 });
 
+test("stationboard route include_alerts=0 keeps includeAlerts false (request path should not load alerts)", async () => {
+  await withEnv("STATIONBOARD_ENABLE_ALERTS", "1", async () => {
+    const calls = [];
+    const handler = createRouteHandler({
+      getStationboardLike: makeStationboardStub(calls),
+      resolveStopLike: makeResolveStopStub({
+        "stop:ParentAAA": { resolvedStopId: "ParentAAA", resolvedRootId: "ParentAAA" },
+      }),
+      dbQueryLike: async () => ({ rows: [] }),
+      logger: { log() {}, error() {} },
+    });
+
+    const res = await invokeRoute(handler, {
+      query: {
+        stop_id: "ParentAAA",
+        include_alerts: "0",
+      },
+    });
+    assert.equal(res.statusCode, 200);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].includeAlerts, false);
+  });
+});
+
 test("stationboard route returns structured 404 stop_not_found with debug payload", async () => {
   const handler = createRouteHandler({
     getStationboardLike: async () => {

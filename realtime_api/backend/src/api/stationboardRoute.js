@@ -216,6 +216,12 @@ function ensureAlertsMeta(raw) {
     status: toFiniteNumberOrNull(src.status) ?? toFiniteNumberOrNull(src.lastStatus),
     lastStatus: toFiniteNumberOrNull(src.lastStatus),
     lastError: text(src.lastError) || null,
+    alertsSource:
+      text(src.alertsSource) === "blob_fallback"
+        ? "blob_fallback"
+        : text(src.alertsSource) === "parsed"
+          ? "parsed"
+          : "parsed",
   };
 }
 
@@ -338,6 +344,9 @@ function ensureTopLevelMeta(payload, { requestId, responseMode, totalBackendMs }
     rtFetchedAt,
     rtCacheAgeMs,
     alertsStatus: text(metaRaw.alertsStatus) || deriveAlertsStatus(normalized, skippedSteps),
+    alertsSource:
+      text(metaRaw.alertsSource) ||
+      (text(normalized?.alerts?.alertsSource) === "blob_fallback" ? "blob_fallback" : "parsed"),
     alertsFetchedAt,
     alertsCacheAgeMs,
   };
