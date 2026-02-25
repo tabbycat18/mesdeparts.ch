@@ -17,6 +17,12 @@ function normalizePayloadBytes(payloadBytes) {
   throw new Error("rt_cache_invalid_payload_bytes");
 }
 
+function normalizeSha256(value) {
+  const out = String(value || "").trim().toLowerCase();
+  if (!out) return null;
+  return /^[0-9a-f]{64}$/.test(out) ? out : null;
+}
+
 function normalizeFetchedAt(value) {
   const out = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(out.getTime())) {
@@ -67,7 +73,13 @@ function rowToCacheMeta(row) {
     last_status: Number.isFinite(Number(row.last_status)) ? Number(row.last_status) : null,
     payload_bytes: Number.isFinite(payloadBytes) ? payloadBytes : 0,
     has_payload: Number.isFinite(payloadBytes) ? payloadBytes > 0 : false,
+    etag: row.etag || null,
+    last_error: row.last_error || null,
   };
+}
+
+function payloadShaMetaKey(feedKey) {
+  return `rt_cache_payload_sha256:${feedKey}`;
 }
 
 export async function upsertRtCache(
@@ -164,6 +176,150 @@ export async function upsertRtCache(
   return rowToCacheRecord(result.rows[0] || null);
 }
 
+export async function updateRtCacheStatus(
+  feed_key,
+  fetchedAt,
+  etag,
+  last_status,
+  last_error,
+  options = {}
+) {
+  const feedKey = normalizeFeedKey(feed_key);
+  const fetchedAtDate = normalizeFetchedAt(fetchedAt || new Date());
+  const writeLockId = Number(options?.writeLockId);
+  const hasWriteLockId = Number.isFinite(writeLockId);
+  const values = [
+    feedKey,
+    fetchedAtDate,
+    toNullableText(etag),
+    toNullableInt(last_status),
+    toNullableText(last_error),
+  ];
+  const result = await query(
+    hasWriteLockId
+      ? `
+          WITH lock_state AS (
+            SELECT pg_try_advisory_xact_lock($6::bigint) AS acquired
+          ),
+          updated AS (
+            UPDATE public.rt_cache
+            SET
+              fetched_at = $2,
+              etag = COALESCE($3, etag),
+              last_status = $4,
+              last_error = $5
+            FROM lock_state
+            WHERE public.rt_cache.feed_key = $1
+              AND lock_state.acquired
+            RETURNING 1 AS touched
+          )
+          SELECT
+            EXISTS (SELECT 1 FROM updated) AS updated,
+            false AS write_skipped_by_lock
+          FROM lock_state
+          WHERE acquired
+          UNION ALL
+          SELECT
+            false AS updated,
+            true AS write_skipped_by_lock
+          FROM lock_state
+          WHERE NOT acquired
+          LIMIT 1
+        `
+      : `
+          WITH updated AS (
+            UPDATE public.rt_cache
+            SET
+              fetched_at = $2,
+              etag = COALESCE($3, etag),
+              last_status = $4,
+              last_error = $5
+            WHERE feed_key = $1
+            RETURNING 1 AS touched
+          )
+          SELECT
+            EXISTS (SELECT 1 FROM updated) AS updated,
+            false AS write_skipped_by_lock
+        `,
+    hasWriteLockId ? [...values, Math.trunc(writeLockId)] : values
+  );
+  const row = result.rows[0] || {};
+  return {
+    updated: row.updated === true,
+    writeSkippedByLock: row.write_skipped_by_lock === true,
+  };
+}
+
+export async function getRtCachePayloadSha(feed_key) {
+  const feedKey = normalizeFeedKey(feed_key);
+  const result = await query(
+    `
+      SELECT value
+      FROM public.meta_kv
+      WHERE key = $1
+      LIMIT 1
+    `,
+    [payloadShaMetaKey(feedKey)]
+  );
+  return normalizeSha256(result.rows[0]?.value);
+}
+
+export async function setRtCachePayloadSha(feed_key, sha256, options = {}) {
+  const feedKey = normalizeFeedKey(feed_key);
+  const normalizedSha = normalizeSha256(sha256);
+  if (!normalizedSha) return { updated: false, writeSkippedByLock: false };
+
+  const writeLockId = Number(options?.writeLockId);
+  const hasWriteLockId = Number.isFinite(writeLockId);
+  const values = [payloadShaMetaKey(feedKey), normalizedSha];
+  const result = await query(
+    hasWriteLockId
+      ? `
+          WITH lock_state AS (
+            SELECT pg_try_advisory_xact_lock($3::bigint) AS acquired
+          ),
+          upserted AS (
+            INSERT INTO public.meta_kv (key, value, updated_at)
+            SELECT $1, $2, NOW()
+            FROM lock_state
+            WHERE acquired
+            ON CONFLICT (key)
+            DO UPDATE SET
+              value = EXCLUDED.value,
+              updated_at = NOW()
+            RETURNING 1 AS touched
+          )
+          SELECT
+            EXISTS (SELECT 1 FROM upserted) AS updated,
+            false AS write_skipped_by_lock
+          FROM lock_state
+          WHERE acquired
+          UNION ALL
+          SELECT
+            false AS updated,
+            true AS write_skipped_by_lock
+          FROM lock_state
+          WHERE NOT acquired
+          LIMIT 1
+        `
+      : `
+          INSERT INTO public.meta_kv (key, value, updated_at)
+          VALUES ($1, $2, NOW())
+          ON CONFLICT (key)
+          DO UPDATE SET
+            value = EXCLUDED.value,
+            updated_at = NOW()
+          RETURNING true AS updated, false AS write_skipped_by_lock
+        `,
+    hasWriteLockId ? [...values, Math.trunc(writeLockId)] : values
+  );
+  const row = result.rows[0] || {};
+  return {
+    updated: row.updated === true,
+    writeSkippedByLock: row.write_skipped_by_lock === true,
+  };
+}
+
 export async function getRtCache(feed_key) {
   const feedKey = normalizeFeedKey(feed_key);
   const result = await query(
@@ -185,7 +341,9 @@ export async function getRtCacheMeta(feed_key) {
       SELECT
         fetched_at,
         last_status,
-        octet_length(payload) AS payload_bytes
+        octet_length(payload) AS payload_bytes,
+        etag,
+        last_error
       FROM public.rt_cache
       WHERE feed_key = $1
       LIMIT 1

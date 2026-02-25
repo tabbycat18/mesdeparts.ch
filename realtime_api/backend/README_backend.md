@@ -114,6 +114,33 @@ fly secrets set -a mesdeparts-ch DATABASE_URL="postgresql://...same-neon-url..."
 
 This Option A1 layout guarantees all LA GTFS-RT upstream calls come from a single process (the poller), while API machines remain DB-cache readers.
 
+## How to distinguish backend/poller DB traffic
+
+Postgres connections now set `application_name` at the pg client config layer:
+
+- backend/API process (`server.js`) -> `md_backend`
+- poller processes (`scripts/poll*.js`) -> `md_poller`
+
+`PGAPPNAME` (or `PG_APPLICATION_NAME`) still overrides these defaults when explicitly set.
+
+Operational checks:
+
+```sql
+SELECT application_name, state, count(*)
+FROM pg_stat_activity
+WHERE datname = current_database()
+GROUP BY application_name, state
+ORDER BY application_name, state;
+```
+
+```sql
+SELECT application_name, calls, total_exec_time
+FROM pg_stat_statements
+WHERE application_name IN ('md_backend', 'md_poller')
+ORDER BY total_exec_time DESC
+LIMIT 20;
+```
+
 ## GTFS Refresh Lock + Idempotency
 
 `scripts/refreshGtfsIfNeeded.js` now enforces a single DB-heavy refresh at a time via PostgreSQL session advisory lock.
@@ -135,15 +162,45 @@ This prevents repeated `optimize_stop_search.sql` rebuild churn on unchanged hou
 
 To reduce per-request DB pressure and poller write churn:
 
-- Stationboard TripUpdates reads use a short in-process decoded-feed cache (`RT_DECODED_FEED_CACHE_MS`, clamped `5s..15s`) with in-flight read coalescing.
+- Stationboard TripUpdates reads use a short in-process decoded-feed cache (`RT_DECODED_FEED_CACHE_MS`, default `10s`, clamped `5s..30s`) with in-flight read coalescing.
 - `debug=1` diagnostics now include:
   - `debug.rt.tripUpdates.rtReadSource` (`memory` or `db`)
   - `debug.rt.tripUpdates.rtCacheHit`
+  - `debug.rt.tripUpdates.rtPayloadBytes`
   - `debug.rt.tripUpdates.rtDecodeMs`
 - Pollers avoid redundant writes:
   - unchanged `200` payloads are skipped when fetched recently (`RT_CACHE_MIN_WRITE_INTERVAL_MS`, default `30000`)
   - frequent `304` status writes are throttled by the same interval
   - payload/status upserts use advisory xact lock per feed to avoid concurrent writer churn across poller replicas.
+
+### Measurement checklist (network-bleed acceptance)
+
+Use this repeatable 10-minute workflow to validate DB churn reductions.
+
+1. Reset statement counters immediately before sampling:
+
+```bash
+psql "$DATABASE_URL" -X -A -t -c "SELECT pg_stat_statements_reset();"
+```
+
+2. Run a 10-minute normal traffic window.
+
+3. Collect stats (manual SQL or helper script):
+
+```bash
+node scripts/measureRtCacheChurn.mjs
+# optional one-shot reset + sample header
+node scripts/measureRtCacheChurn.mjs --reset
+```
+
+4. Acceptance signals (calls should be materially lower than baseline):
+   - payload reads should drop:
+     - `SELECT payload, fetched_at, etag, last_status, last_error FROM public.rt_cache WHERE feed_key = $1`
+   - heavy payload upserts should drop:
+     - `INSERT INTO public.rt_cache (...) ON CONFLICT (feed_key) DO UPDATE SET payload = EXCLUDED.payload, ...`
+   - expected shift:
+     - relatively more lightweight metadata updates (`UPDATE public.rt_cache SET fetched_at=..., last_status=..., ...`)
+     - stable backend/poller split in `pg_stat_activity` (`md_backend` vs `md_poller`)
 
 ## Stationboard Latency Guard
 

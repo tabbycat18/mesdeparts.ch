@@ -681,6 +681,11 @@ function toRtTripUpdatesDebug(rtMeta, departureAuditRows) {
         ? base.rtReadSource
         : null,
     rtCacheHit: base.rtCacheHit === true,
+    rtPayloadBytes: Number.isFinite(base.rtPayloadBytes)
+      ? Number(base.rtPayloadBytes)
+      : Number.isFinite(base.payloadBytes)
+        ? Number(base.payloadBytes)
+        : null,
     rtDecodeMs: Number.isFinite(base.rtDecodeMs) ? Number(base.rtDecodeMs) : null,
     entityCount: Number.isFinite(base.entityCount) ? Number(base.entityCount) : null,
     scopedEntities: Number.isFinite(base.scopedEntities) ? Number(base.scopedEntities) : null,

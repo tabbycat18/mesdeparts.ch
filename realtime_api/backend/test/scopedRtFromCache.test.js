@@ -14,14 +14,22 @@ function makeCachePayload({
   decodeError = null,
   fetchedAtMs = Date.now(),
   entities = [],
+  payloadBytes = null,
+  rtReadSource = "db",
+  rtCacheHit = false,
+  rtDecodeMs = 3,
 } = {}) {
   return {
     hasPayload,
     decodeError,
     fetchedAtMs,
+    payloadBytes,
     lastStatus: 200,
     lastError: null,
     etag: "etag-1",
+    rtReadSource,
+    rtCacheHit,
+    rtDecodeMs,
     feed: {
       entities,
       entity: entities,
@@ -238,12 +246,16 @@ test("loadScopedRtFromCache applies scoped filtering by trip/stop/window", async
     windowEndEpochSec: nowSec + 900,
     scopeTripIds: ["trip-keep"],
     scopeStopIds: ["8503000:0:1", "8503000:0:2"],
-    readCacheLike: async () => makeCachePayload({ entities }),
+    readCacheLike: async () => makeCachePayload({ entities, payloadBytes: 8192 }),
   });
 
   assert.equal(out.meta.applied, true);
   assert.equal(out.meta.reason, "applied");
   assert.equal(out.meta.feedKey, "la_tripupdates");
+  assert.equal(out.meta.rtReadSource, "db");
+  assert.equal(out.meta.rtCacheHit, false);
+  assert.equal(Number.isFinite(out.meta.rtDecodeMs), true);
+  assert.equal(out.meta.rtPayloadBytes, 8192);
   assert.equal(typeof out.meta.instance, "string");
   assert.equal(Array.isArray(out.tripUpdates.entities), true);
   assert.equal(out.tripUpdates.entities.length, 2);

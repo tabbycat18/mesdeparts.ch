@@ -3,6 +3,7 @@ import { pool } from "../db.js";
 import GtfsRealtimeBindings from "gtfs-realtime-bindings";
 import {
   getRtCache,
+  getRtCacheMeta,
   LA_TRIPUPDATES_FEED_KEY,
 } from "../src/db/rtCache.js";
 import { computeDepartureDelayDisplayFromSeconds } from "../src/util/departureDelay.js";
@@ -14,7 +15,7 @@ const rawTtl = Number(process.env.GTFS_RT_CACHE_MS || "30000");
 const CACHE_TTL_MS = Math.max(Number.isFinite(rawTtl) ? rawTtl : 30000, 1000);
 const rawDecodedFeedTtl = Number(process.env.RT_DECODED_FEED_CACHE_MS || "10000");
 const DECODED_FEED_CACHE_TTL_MS = Math.min(
-  15_000,
+  30_000,
   Math.max(Number.isFinite(rawDecodedFeedTtl) ? rawDecodedFeedTtl : 10_000, 5_000)
 );
 
@@ -479,6 +480,93 @@ async function readTripUpdatesFeedFromDb(feedKey, getRtCacheLike) {
   };
 }
 
+function normalizeRtCacheMeta(metaRow) {
+  const fetchedAtMs = parsedTimestampMs(metaRow?.fetched_at);
+  const payloadBytesRaw = Number(metaRow?.payload_bytes);
+  const payloadBytes = Number.isFinite(payloadBytesRaw) ? payloadBytesRaw : 0;
+  return {
+    fetchedAtMs,
+    payloadBytes,
+    hasPayload: payloadBytes > 0,
+    lastStatus: Number.isFinite(Number(metaRow?.last_status))
+      ? Number(metaRow.last_status)
+      : null,
+    lastError: metaRow?.last_error || null,
+    etag: metaRow?.etag || null,
+  };
+}
+
+async function readTripUpdatesFeedFromCacheStore({
+  feedKey,
+  getRtCacheMetaLike,
+  getRtCacheLike,
+  previousValue,
+}) {
+  const normalizedFeedKey = normalizeFeedKey(feedKey);
+  const metaRow = await getRtCacheMetaLike(normalizedFeedKey);
+  const meta = normalizeRtCacheMeta(metaRow);
+
+  const previousFetchedAtMs = Number(previousValue?.fetchedAtMs);
+  const previousHasKnownFetchedAt =
+    previousValue?.feedKey === normalizedFeedKey && Number.isFinite(previousFetchedAtMs);
+  const metaHasKnownFetchedAt = Number.isFinite(meta.fetchedAtMs);
+  const fetchedAtUnchanged =
+    previousHasKnownFetchedAt && metaHasKnownFetchedAt && previousFetchedAtMs === meta.fetchedAtMs;
+
+  if (fetchedAtUnchanged) {
+    if (meta.hasPayload && previousValue?.hasPayload === true && previousValue?.feed) {
+      return {
+        ...previousValue,
+        feedKey: normalizedFeedKey,
+        fetchedAtMs: meta.fetchedAtMs,
+        payloadBytes: meta.payloadBytes,
+        hasPayload: true,
+        lastStatus: meta.lastStatus,
+        lastError: meta.lastError,
+        etag: meta.etag,
+        decodeError: previousValue.decodeError || null,
+        rtReadSource: "memory",
+        rtCacheHit: true,
+      };
+    }
+    if (!meta.hasPayload) {
+      return {
+        feed: null,
+        feedKey: normalizedFeedKey,
+        fetchedAtMs: meta.fetchedAtMs,
+        payloadBytes: meta.payloadBytes,
+        lastStatus: meta.lastStatus,
+        lastError: meta.lastError,
+        etag: meta.etag,
+        hasPayload: false,
+        decodeError: null,
+        rtReadSource: "memory",
+        rtCacheHit: true,
+        rtDecodeMs: null,
+      };
+    }
+  }
+
+  if (!meta.hasPayload) {
+    return {
+      feed: null,
+      feedKey: normalizedFeedKey,
+      fetchedAtMs: meta.fetchedAtMs,
+      payloadBytes: meta.payloadBytes,
+      lastStatus: meta.lastStatus,
+      lastError: meta.lastError,
+      etag: meta.etag,
+      hasPayload: false,
+      decodeError: null,
+      rtReadSource: "db",
+      rtCacheHit: false,
+      rtDecodeMs: null,
+    };
+  }
+
+  return readTripUpdatesFeedFromDb(normalizedFeedKey, getRtCacheLike);
+}
+
 export async function readTripUpdatesFeedFromCache(options = {}) {
   const normalizedOptions =
     options && typeof options === "object" && !Buffer.isBuffer(options)
@@ -489,6 +577,10 @@ export async function readTripUpdatesFeedFromCache(options = {}) {
     typeof normalizedOptions.getRtCacheLike === "function"
       ? normalizedOptions.getRtCacheLike
       : getRtCache;
+  const getRtCacheMetaLike =
+    typeof normalizedOptions.getRtCacheMetaLike === "function"
+      ? normalizedOptions.getRtCacheMetaLike
+      : getRtCacheMeta;
 
   const cacheEntry = getOrCreateDecodedFeedCacheEntry(feedKey);
   const nowMs = Date.now();
@@ -511,7 +603,12 @@ export async function readTripUpdatesFeedFromCache(options = {}) {
     };
   }
 
-  const refreshPromise = readTripUpdatesFeedFromDb(feedKey, getRtCacheLike)
+  const refreshPromise = readTripUpdatesFeedFromCacheStore({
+    feedKey,
+    getRtCacheMetaLike,
+    getRtCacheLike,
+    previousValue: cacheEntry.value,
+  })
     .then((result) => {
       cacheEntry.value = result;
       cacheEntry.cachedAtMs = Date.now();
@@ -1373,6 +1470,11 @@ export function __resetRealtimeDelayIndexCacheForTests() {
 
 export function __resetDecodedRtFeedMemoryCacheForTests() {
   decodedFeedCache.clear();
+}
+
+export function __expireDecodedRtFeedMemoryCacheForTests(feedKey = LA_TRIPUPDATES_FEED_KEY) {
+  const cacheEntry = getOrCreateDecodedFeedCacheEntry(feedKey);
+  cacheEntry.cachedAtMs = 0;
 }
 
 export function __seedRealtimeDelayIndexCacheForTests(value, ts = Date.now()) {

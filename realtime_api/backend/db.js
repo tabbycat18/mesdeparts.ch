@@ -1,5 +1,6 @@
 // backend/db.js
 import pg from "pg";
+import { resolvePgApplicationName } from "./src/db/applicationName.js";
 
 const { Pool } = pg;
 
@@ -8,6 +9,7 @@ const { Pool } = pg;
 // export DATABASE_URL="postgresql://USER:PASSWORD@HOST:PORT/DB?sslmode=require"
 
 const connectionString = process.env.DATABASE_URL;
+const applicationName = resolvePgApplicationName();
 
 if (!connectionString) {
   console.error("[DB] ERROR: DATABASE_URL is missing. Set it before running the server.");
@@ -16,6 +18,7 @@ if (!connectionString) {
 
 export const pool = new Pool({
   connectionString,
+  application_name: applicationName,
   ssl: {
     require: true,
     rejectUnauthorized: false,
@@ -34,7 +37,8 @@ export const pool = new Pool({
 });
 
 if (process.env.DEBUG_DB_CONNECT === "1") {
+  console.log(`[DB] Pool configured (application_name=${applicationName})`);
   pool.on("connect", () => {
-    console.log("[DB] Connected to Neon PostgreSQL");
+    console.log(`[DB] Connected to Neon PostgreSQL (application_name=${applicationName})`);
   });
 }

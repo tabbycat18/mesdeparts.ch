@@ -158,6 +158,7 @@ function baseMeta(nowMs) {
     cacheStatus: "MISS",
     hasPayload: false,
     payloadBytes: null,
+    rtPayloadBytes: null,
     lastStatus: null,
     lastError: null,
     etag: null,
@@ -260,6 +261,7 @@ export async function loadScopedRtFromCache(options = {}) {
   meta.payloadBytes = Number.isFinite(Number(cache?.payloadBytes))
     ? Number(cache.payloadBytes)
     : null;
+  meta.rtPayloadBytes = meta.payloadBytes;
   meta.lastStatus = Number.isFinite(Number(cache?.lastStatus)) ? Number(cache.lastStatus) : null;
   meta.lastError = text(cache?.lastError) || null;
   meta.etag = text(cache?.etag) || null;

@@ -10,6 +10,9 @@ import {
 import {
   LA_SERVICEALERTS_FEED_KEY,
   getRtCache,
+  getRtCachePayloadSha,
+  setRtCachePayloadSha,
+  updateRtCacheStatus,
   upsertRtCache,
 } from "../src/db/rtCache.js";
 
@@ -106,7 +109,6 @@ function payloadSha256Hex(payloadBytes) {
 
 function shouldSkipUnchangedPayloadWrite(cacheRow, payloadBytes, currentAgeMs) {
   if (!cacheRow?.payloadBytes) return false;
-  if (!Number.isFinite(currentAgeMs) || currentAgeMs >= RT_CACHE_MIN_WRITE_INTERVAL_MS) return false;
   const incomingHash = payloadSha256Hex(payloadBytes);
   const existingHash = payloadSha256Hex(cacheRow.payloadBytes);
   if (!incomingHash || !existingHash) return false;
@@ -122,6 +124,9 @@ export function createLaServiceAlertsPoller({
   token,
   fetchLike = fetch,
   getRtCacheLike = getRtCache,
+  getRtCachePayloadShaLike = getRtCachePayloadSha,
+  setRtCachePayloadShaLike = setRtCachePayloadSha,
+  updateRtCacheStatusLike = updateRtCacheStatus,
   upsertRtCacheLike = upsertRtCache,
   sleepLike = sleep,
   nowLike = () => Date.now(),
@@ -171,9 +176,8 @@ export function createLaServiceAlertsPoller({
 
   async function persistStatusKeepingPayload(cacheRow, { status, errorText, etag, updateFetchedAt }) {
     if (!cacheRow?.payloadBytes) return { updated: false, lockSkipped: false };
-    const writeResult = await upsertRtCacheLike(
+    const writeResult = await updateRtCacheStatusLike(
       feedKey,
-      cacheRow.payloadBytes,
       updateFetchedAt ? new Date(nowLike()) : cacheRow.fetched_at,
       toTextOrNull(etag) || toTextOrNull(cacheRow.etag),
       status == null ? null : Number(status),
@@ -211,6 +215,7 @@ export function createLaServiceAlertsPoller({
 
   async function tick() {
     const cacheRow = await getRtCacheLike(feedKey);
+    const storedPayloadSha = await getRtCachePayloadShaLike(feedKey).catch(() => null);
     const currentAgeMs = calcAgeMs(cacheRow?.fetched_at);
     const currentEtag = toTextOrNull(cacheRow?.etag);
 
@@ -246,9 +251,37 @@ export function createLaServiceAlertsPoller({
 
     if (response.status === 200) {
       const payloadBytes = Buffer.from(await response.arrayBuffer());
-      if (shouldSkipUnchangedPayloadWrite(cacheRow, payloadBytes, currentAgeMs)) {
+      const incomingPayloadSha = payloadSha256Hex(payloadBytes);
+      const existingPayloadSha =
+        toTextOrNull(storedPayloadSha) || payloadSha256Hex(cacheRow?.payloadBytes);
+      const payloadUnchanged =
+        !!incomingPayloadSha &&
+        !!existingPayloadSha &&
+        incomingPayloadSha === existingPayloadSha;
+
+      if (payloadUnchanged || shouldSkipUnchangedPayloadWrite(cacheRow, payloadBytes, currentAgeMs)) {
+        if (Number.isFinite(currentAgeMs) && currentAgeMs >= RT_CACHE_MIN_WRITE_INTERVAL_MS) {
+          const statusUpdate = await updateRtCacheStatusLike(
+            feedKey,
+            new Date(nowLike()),
+            responseEtag,
+            200,
+            null,
+            { writeLockId: FEED_WRITE_LOCK_ID }
+          );
+          if (statusUpdate?.writeSkippedByLock === true) {
+            resetBackoffState();
+            logLine("service_alerts_poller_write_locked_skip", {
+              status: 200,
+              backoffMs: 0,
+              lastFetchedAgeMs: currentAgeMs,
+              etagPresent: !!responseEtag,
+            });
+            return INTERVAL_MS;
+          }
+        }
         resetBackoffState();
-        logLine("service_alerts_poller_fetch_200_unchanged_skip_write", {
+        logLine("service_alerts_poller_skip_write_unchanged", {
           status: 200,
           backoffMs: 0,
           lastFetchedAgeMs: currentAgeMs,
@@ -274,6 +307,11 @@ export function createLaServiceAlertsPoller({
           etagPresent: !!responseEtag,
         });
         return INTERVAL_MS;
+      }
+      if (incomingPayloadSha) {
+        await setRtCachePayloadShaLike(feedKey, incomingPayloadSha, {
+          writeLockId: FEED_WRITE_LOCK_ID,
+        }).catch(() => {});
       }
       resetBackoffState();
       logLine("service_alerts_poller_fetch_200", {

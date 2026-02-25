@@ -64,15 +64,15 @@ STATIONBOARD_BASE_URL=https://api.mesdeparts.ch node scripts/debugStop.js "Lausa
   - Polls LA GTFS-RT TripUpdates feed and writes snapshots/metadata to `rt_cache`.
   - Default interval: `GTFS_RT_POLL_INTERVAL_MS` (default `15000` ms).
   - Has 429/error backoff logic.
-  - Skips redundant writes when payload is unchanged within `RT_CACHE_MIN_WRITE_INTERVAL_MS`.
-  - Uses advisory xact lock on writes to avoid concurrent writer churn across duplicate pollers.
+  - Skips payload upserts when SHA-256 is unchanged (`poller_skip_write_unchanged`); may apply metadata-only status updates.
+  - Uses advisory xact lock on writes to avoid concurrent writer churn across duplicate pollers (`poller_write_locked_skip`).
 
 - `pollLaServiceAlerts.js`
   - Polls LA GTFS Service Alerts feed and writes snapshots/metadata to `rt_cache`.
   - Default interval: `GTFS_SA_POLL_INTERVAL_MS` (default `60000` ms, min `15000`).
   - Has 429/error backoff logic.
-  - Skips redundant writes when payload is unchanged within `RT_CACHE_MIN_WRITE_INTERVAL_MS`.
-  - Uses advisory xact lock on writes to avoid concurrent writer churn across duplicate pollers.
+  - Skips payload upserts when SHA-256 is unchanged (`service_alerts_poller_skip_write_unchanged`); may apply metadata-only status updates.
+  - Uses advisory xact lock on writes to avoid concurrent writer churn across duplicate pollers (`service_alerts_poller_write_locked_skip`).
 
 ### Static GTFS refresh / import
 

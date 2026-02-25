@@ -39,6 +39,8 @@ test("service alerts poller tick calls upstream once and returns >=60s backoff o
       last_status: 200,
       last_error: null,
     }),
+    getRtCachePayloadShaLike: async () => null,
+    updateRtCacheStatusLike: async () => ({ updated: true, writeSkippedByLock: false }),
     upsertRtCacheLike: async () => null,
     logLike: () => {},
   });
@@ -67,6 +69,8 @@ test("service alerts poller run loop sleeps backoff before any next upstream fet
       last_status: 200,
       last_error: null,
     }),
+    getRtCachePayloadShaLike: async () => null,
+    updateRtCacheStatusLike: async () => ({ updated: true, writeSkippedByLock: false }),
     upsertRtCacheLike: async () => null,
     sleepLike: async (ms) => {
       sleptMs = ms;
@@ -94,6 +98,8 @@ test("service alerts poller skips payload upsert on unchanged 200 payload within
       last_status: 200,
       last_error: null,
     }),
+    getRtCachePayloadShaLike: async () => null,
+    updateRtCacheStatusLike: async () => ({ updated: true, writeSkippedByLock: false }),
     upsertRtCacheLike: async (...args) => {
       upsertCalls.push(args);
       return null;
@@ -104,4 +110,69 @@ test("service alerts poller skips payload upsert on unchanged 200 payload within
   const waitMs = await poller.tick();
   assert.equal(waitMs, 60_000);
   assert.equal(upsertCalls.length, 0);
+});
+
+test("service alerts poller unchanged payload skips payload upsert and logs skip_write_unchanged", async () => {
+  const createLaServiceAlertsPoller = await loadPollerFactory();
+  const payload = Buffer.from("same-alerts-payload");
+  const logs = [];
+  let payloadUpserts = 0;
+  let metadataUpdates = 0;
+  const poller = createLaServiceAlertsPoller({
+    token: "test-token",
+    fetchLike: async () => okResponse(payload, "etag-same"),
+    getRtCacheLike: async () => ({
+      payloadBytes: payload,
+      fetched_at: new Date(Date.now() - 120_000),
+      etag: "etag-same",
+      last_status: 200,
+      last_error: null,
+    }),
+    getRtCachePayloadShaLike: async () => null,
+    updateRtCacheStatusLike: async () => {
+      metadataUpdates += 1;
+      return { updated: true, writeSkippedByLock: false };
+    },
+    upsertRtCacheLike: async () => {
+      payloadUpserts += 1;
+      return null;
+    },
+    logLike: (entry) => logs.push(entry),
+  });
+
+  const waitMs = await poller.tick();
+  assert.equal(waitMs, 60_000);
+  assert.equal(payloadUpserts, 0);
+  assert.equal(metadataUpdates, 1);
+  assert.equal(
+    logs.some((entry) => entry?.event === "service_alerts_poller_skip_write_unchanged"),
+    true
+  );
+});
+
+test("service alerts poller treats advisory-lock write skip as clean no-op", async () => {
+  const createLaServiceAlertsPoller = await loadPollerFactory();
+  let upsertCalls = 0;
+  const poller = createLaServiceAlertsPoller({
+    token: "test-token",
+    fetchLike: async () => okResponse(Buffer.from("new-alerts-payload"), "etag-new"),
+    getRtCacheLike: async () => ({
+      payloadBytes: Buffer.from("old-alerts-payload"),
+      fetched_at: new Date(Date.now() - 120_000),
+      etag: "etag-old",
+      last_status: 200,
+      last_error: null,
+    }),
+    getRtCachePayloadShaLike: async () => null,
+    updateRtCacheStatusLike: async () => ({ updated: true, writeSkippedByLock: false }),
+    upsertRtCacheLike: async () => {
+      upsertCalls += 1;
+      return { writeSkippedByLock: true };
+    },
+    logLike: () => {},
+  });
+
+  const waitMs = await poller.tick();
+  assert.equal(waitMs, 60_000);
+  assert.equal(upsertCalls, 1);
 });
