@@ -240,19 +240,20 @@ Outputs:
 New script options:
 - `--reset-statements`: calls `pg_stat_statements_reset()` before the start snapshot.
 - `--duration-minutes <N>`: runs a controlled measurement window (samples are spread across this window when `--n > 0`).
-- `--accept-max-payload-select-calls <N>`: threshold for `SELECT payload ... FROM rt_cache` delta (default `2`).
+- `--accept-max-payload-select-calls <N>`: threshold for true blob reads (`SELECT ... payload ... FROM rt_cache` with direct `payload` projection) delta (default `2`).
 - `--accept-max-payload-upsert-calls <N>`: threshold for payload-upsert delta in `rt_cache` (default `2`).
 - `--accept-max-guarded-error-count <N>`: threshold for `rtStatus=guarded_error` sample count (default `0`).
 
 Report now includes:
 - `pg_stat_statements` snapshots at start and end
 - statement deltas for the window
-- acceptance summary for payload reads/writes being near-zero in 10 minutes and zero `guarded_error` responses.
+- acceptance summary for blob payload reads/writes being near-zero in 10 minutes and zero `guarded_error` responses.
+- informational counters for payload metadata queries (`octet_length(payload)` and size listings), not acceptance-gated.
 - enforced exit status: script exits non-zero when acceptance fails.
 
 Model A+ stage thresholds (10-minute window):
 
-| Stage | Payload SELECT delta | Payload UPSERT delta | `rtStatus=guarded_error` |
+| Stage | Blob payload SELECT delta | Payload UPSERT delta | `rtStatus=guarded_error` |
 | --- | --- | --- | --- |
 | Stage 1 (parsed stationboard reads) | `<= 2` | monitor | `0` |
 | Stage 2 (parsed poller writes) | `<= 2` | `<= 2` | `0` |

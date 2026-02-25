@@ -207,26 +207,67 @@ function normalizeStatementRow(row) {
   };
 }
 
+function normalizeSql(sql) {
+  return asText(sql).toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function isSelectFromRtCache(queryLower) {
+  return queryLower.startsWith("select ") && queryLower.includes(" from public.rt_cache");
+}
+
+function getRtCacheSelectList(queryLower) {
+  if (!isSelectFromRtCache(queryLower)) return "";
+  const selectIdx = queryLower.indexOf("select ");
+  const fromIdx = queryLower.indexOf(" from public.rt_cache");
+  if (selectIdx < 0 || fromIdx <= selectIdx) return "";
+  return queryLower.slice(selectIdx + "select ".length, fromIdx).trim();
+}
+
+function hasDirectPayloadProjection(queryLower) {
+  const selectList = getRtCacheSelectList(queryLower);
+  if (!selectList) return false;
+
+  const payloadToken = /\bpayload\b/g;
+  let match;
+  while ((match = payloadToken.exec(selectList))) {
+    const prevChar = match.index > 0 ? selectList[match.index - 1] : "";
+    if (prevChar !== "(") {
+      return true;
+    }
+  }
+  return false;
+}
+
 function analyzeRtCacheStatements(rows) {
   const out = {
-    payloadSelectCalls: 0,
+    blobPayloadSelectCalls: 0,
+    payloadMetadataSelectCalls: 0,
+    payloadSizeListingCalls: 0,
+    payloadOtherSelectCalls: 0,
     payloadUpsertCalls: 0,
     metadataUpdateCalls: 0,
     totalRtCacheCalls: 0,
   };
 
   for (const row of rows) {
-    const query = asText(row?.query).toLowerCase();
+    const query = normalizeSql(row?.query);
     const calls = Number(row?.calls || 0);
     if (!Number.isFinite(calls) || calls <= 0) continue;
 
     out.totalRtCacheCalls += calls;
-    if (
-      query.includes("select") &&
-      query.includes("payload") &&
-      query.includes("from public.rt_cache")
-    ) {
-      out.payloadSelectCalls += calls;
+    const selectFromRtCache = isSelectFromRtCache(query);
+    const payloadReferenced = selectFromRtCache && query.includes("payload");
+    const directPayloadProjected = payloadReferenced && hasDirectPayloadProjection(query);
+    const payloadMetadataOnly =
+      payloadReferenced && !directPayloadProjected && query.includes("octet_length(payload)");
+    const payloadSizeListing =
+      payloadMetadataOnly && query.includes("order by bytes desc");
+
+    if (directPayloadProjected) out.blobPayloadSelectCalls += calls;
+    if (payloadMetadataOnly) out.payloadMetadataSelectCalls += calls;
+    if (payloadSizeListing) out.payloadSizeListingCalls += calls;
+    if (payloadReferenced && !directPayloadProjected && !payloadMetadataOnly) {
+      out.payloadOtherSelectCalls += calls;
     }
     if (
       query.includes("insert into public.rt_cache") &&
@@ -240,6 +281,8 @@ function analyzeRtCacheStatements(rows) {
     }
   }
 
+  // Backwards-compatible alias retained in JSON payload.
+  out.payloadSelectCalls = out.blobPayloadSelectCalls;
   return out;
 }
 
@@ -425,36 +468,64 @@ function evaluateAcceptance({ startSnapshot, endSnapshot, thresholds, summary })
   const startCounters = startSnapshot?.counters || {};
   const endCounters = endSnapshot?.counters || {};
 
-  const payloadSelectCallsStart = Number(startCounters.payloadSelectCalls || 0);
-  const payloadSelectCallsEnd = Number(endCounters.payloadSelectCalls || 0);
+  const blobPayloadSelectCallsStart = Number(
+    startCounters.blobPayloadSelectCalls ?? startCounters.payloadSelectCalls ?? 0
+  );
+  const blobPayloadSelectCallsEnd = Number(
+    endCounters.blobPayloadSelectCalls ?? endCounters.payloadSelectCalls ?? 0
+  );
+  const payloadMetadataSelectCallsStart = Number(startCounters.payloadMetadataSelectCalls || 0);
+  const payloadMetadataSelectCallsEnd = Number(endCounters.payloadMetadataSelectCalls || 0);
+  const payloadSizeListingCallsStart = Number(startCounters.payloadSizeListingCalls || 0);
+  const payloadSizeListingCallsEnd = Number(endCounters.payloadSizeListingCalls || 0);
+  const payloadOtherSelectCallsStart = Number(startCounters.payloadOtherSelectCalls || 0);
+  const payloadOtherSelectCallsEnd = Number(endCounters.payloadOtherSelectCalls || 0);
   const payloadUpsertCallsStart = Number(startCounters.payloadUpsertCalls || 0);
   const payloadUpsertCallsEnd = Number(endCounters.payloadUpsertCalls || 0);
-  const payloadSelectCallsDelta =
-    payloadSelectCallsEnd - payloadSelectCallsStart;
+  const blobPayloadSelectCallsDelta = blobPayloadSelectCallsEnd - blobPayloadSelectCallsStart;
+  const payloadMetadataSelectCallsDelta =
+    payloadMetadataSelectCallsEnd - payloadMetadataSelectCallsStart;
+  const payloadSizeListingCallsDelta =
+    payloadSizeListingCallsEnd - payloadSizeListingCallsStart;
+  const payloadOtherSelectCallsDelta = payloadOtherSelectCallsEnd - payloadOtherSelectCallsStart;
   const payloadUpsertCallsDelta =
     payloadUpsertCallsEnd - payloadUpsertCallsStart;
   const guardedErrorCount = Number(summary?.guardedErrorCount || 0);
 
-  const payloadSelectPass = payloadSelectCallsDelta <= Number(thresholds.maxPayloadSelectCalls || 0);
+  const blobPayloadSelectPass =
+    blobPayloadSelectCallsDelta <= Number(thresholds.maxPayloadSelectCalls || 0);
   const payloadUpsertPass = payloadUpsertCallsDelta <= Number(thresholds.maxPayloadUpsertCalls || 0);
   const guardedErrorPass = guardedErrorCount <= Number(thresholds.maxGuardedErrorCount || 0);
 
   return {
     thresholds,
     observed: {
-      payloadSelectCallsStart,
-      payloadSelectCallsEnd,
-      payloadSelectCallsDelta,
+      blobPayloadSelectCallsStart,
+      blobPayloadSelectCallsEnd,
+      blobPayloadSelectCallsDelta,
+      payloadMetadataSelectCallsStart,
+      payloadMetadataSelectCallsEnd,
+      payloadMetadataSelectCallsDelta,
+      payloadSizeListingCallsStart,
+      payloadSizeListingCallsEnd,
+      payloadSizeListingCallsDelta,
+      payloadOtherSelectCallsStart,
+      payloadOtherSelectCallsEnd,
+      payloadOtherSelectCallsDelta,
+      // Backwards-compatible alias retained in JSON payload.
+      payloadSelectCallsStart: blobPayloadSelectCallsStart,
+      payloadSelectCallsEnd: blobPayloadSelectCallsEnd,
+      payloadSelectCallsDelta: blobPayloadSelectCallsDelta,
       payloadUpsertCallsStart,
       payloadUpsertCallsEnd,
       payloadUpsertCallsDelta,
       guardedErrorCount,
     },
     checks: {
-      payloadSelectNearZero: {
-        pass: payloadSelectPass,
+      blobPayloadSelectNearZero: {
+        pass: blobPayloadSelectPass,
         description:
-          "SELECT payload FROM rt_cache should be near-zero on stationboard path",
+          "Blob SELECT payload FROM rt_cache should be near-zero on stationboard path",
       },
       payloadUpsertNearZero: {
         pass: payloadUpsertPass,
@@ -466,8 +537,14 @@ function evaluateAcceptance({ startSnapshot, endSnapshot, thresholds, summary })
         description:
           "stationboard rtStatus=guarded_error should not appear in measurement window",
       },
+      // Backwards-compatible alias retained in JSON payload.
+      payloadSelectNearZero: {
+        pass: blobPayloadSelectPass,
+        description:
+          "Blob SELECT payload FROM rt_cache should be near-zero on stationboard path",
+      },
     },
-    overallPass: payloadSelectPass && payloadUpsertPass && guardedErrorPass,
+    overallPass: blobPayloadSelectPass && payloadUpsertPass && guardedErrorPass,
   };
 }
 
@@ -510,15 +587,24 @@ function buildMarkdownReport({
 
 | Check | Threshold | Observed | Pass |
 | --- | --- | --- | --- |
-| SELECT payload FROM rt_cache | <= ${acceptance.thresholds.maxPayloadSelectCalls} calls | ${acceptance.observed.payloadSelectCallsStart} -> ${acceptance.observed.payloadSelectCallsEnd} (delta ${acceptance.observed.payloadSelectCallsDelta}) | ${acceptance.checks.payloadSelectNearZero.pass ? "yes" : "no"} |
+| SELECT payload FROM rt_cache (blob read) | <= ${acceptance.thresholds.maxPayloadSelectCalls} calls | ${acceptance.observed.blobPayloadSelectCallsStart} -> ${acceptance.observed.blobPayloadSelectCallsEnd} (delta ${acceptance.observed.blobPayloadSelectCallsDelta}) | ${acceptance.checks.blobPayloadSelectNearZero.pass ? "yes" : "no"} |
 | UPSERT rt_cache with payload | <= ${acceptance.thresholds.maxPayloadUpsertCalls} calls | ${acceptance.observed.payloadUpsertCallsStart} -> ${acceptance.observed.payloadUpsertCallsEnd} (delta ${acceptance.observed.payloadUpsertCallsDelta}) | ${acceptance.checks.payloadUpsertNearZero.pass ? "yes" : "no"} |
 | rtStatus=guarded_error occurrences | <= ${acceptance.thresholds.maxGuardedErrorCount} responses | ${acceptance.observed.guardedErrorCount} | ${acceptance.checks.noGuardedErrorStatus.pass ? "yes" : "no"} |
 
 Overall acceptance: ${acceptance.overallPass ? "PASS" : "FAIL"}
 
+## Informational payload metadata reads (not acceptance-gated)
+
+- octet_length(payload) SELECTs: ${acceptance.observed.payloadMetadataSelectCallsStart} -> ${acceptance.observed.payloadMetadataSelectCallsEnd} (delta ${acceptance.observed.payloadMetadataSelectCallsDelta})
+- payload size listing SELECTs: ${acceptance.observed.payloadSizeListingCallsStart} -> ${acceptance.observed.payloadSizeListingCallsEnd} (delta ${acceptance.observed.payloadSizeListingCallsDelta})
+- other payload-referencing SELECTs: ${acceptance.observed.payloadOtherSelectCallsStart} -> ${acceptance.observed.payloadOtherSelectCallsEnd} (delta ${acceptance.observed.payloadOtherSelectCallsDelta})
+
 ## pg_stat_statements counters (start -> end)
 
-- payloadSelectCalls: ${startSnapshot?.counters?.payloadSelectCalls ?? 0} -> ${endSnapshot?.counters?.payloadSelectCalls ?? 0}
+- blobPayloadSelectCalls: ${startSnapshot?.counters?.blobPayloadSelectCalls ?? startSnapshot?.counters?.payloadSelectCalls ?? 0} -> ${endSnapshot?.counters?.blobPayloadSelectCalls ?? endSnapshot?.counters?.payloadSelectCalls ?? 0}
+- payloadMetadataSelectCalls: ${startSnapshot?.counters?.payloadMetadataSelectCalls ?? 0} -> ${endSnapshot?.counters?.payloadMetadataSelectCalls ?? 0}
+- payloadSizeListingCalls: ${startSnapshot?.counters?.payloadSizeListingCalls ?? 0} -> ${endSnapshot?.counters?.payloadSizeListingCalls ?? 0}
+- payloadOtherSelectCalls: ${startSnapshot?.counters?.payloadOtherSelectCalls ?? 0} -> ${endSnapshot?.counters?.payloadOtherSelectCalls ?? 0}
 - payloadUpsertCalls: ${startSnapshot?.counters?.payloadUpsertCalls ?? 0} -> ${endSnapshot?.counters?.payloadUpsertCalls ?? 0}
 - metadataUpdateCalls: ${startSnapshot?.counters?.metadataUpdateCalls ?? 0} -> ${endSnapshot?.counters?.metadataUpdateCalls ?? 0}
 - totalRtCacheCalls: ${startSnapshot?.counters?.totalRtCacheCalls ?? 0} -> ${endSnapshot?.counters?.totalRtCacheCalls ?? 0}
@@ -683,7 +769,10 @@ async function main() {
   console.log(`[rt-baseline] wrote ${path.relative(backendRoot, jsonPath)}`);
   console.log(`[rt-baseline] wrote ${path.relative(backendRoot, mdPath)}`);
   console.log(
-    `[rt-baseline] acceptance payload_select_delta=${acceptanceResult.observed.payloadSelectCallsDelta} threshold=${acceptanceResult.thresholds.maxPayloadSelectCalls}`
+    `[rt-baseline] acceptance blob_payload_select_delta=${acceptanceResult.observed.blobPayloadSelectCallsDelta} threshold=${acceptanceResult.thresholds.maxPayloadSelectCalls}`
+  );
+  console.log(
+    `[rt-baseline] informational payload_metadata_select_delta=${acceptanceResult.observed.payloadMetadataSelectCallsDelta} size_listing_delta=${acceptanceResult.observed.payloadSizeListingCallsDelta} other_payload_select_delta=${acceptanceResult.observed.payloadOtherSelectCallsDelta}`
   );
   console.log(
     `[rt-baseline] acceptance payload_upsert_delta=${acceptanceResult.observed.payloadUpsertCallsDelta} threshold=${acceptanceResult.thresholds.maxPayloadUpsertCalls}`
@@ -694,7 +783,7 @@ async function main() {
   console.log(`[rt-baseline] acceptance overall=${acceptanceResult.overallPass ? "PASS" : "FAIL"}`);
   if (!acceptanceResult.overallPass) {
     throw new Error(
-      `model_a_plus_acceptance_failed payload_select_delta=${acceptanceResult.observed.payloadSelectCallsDelta} payload_upsert_delta=${acceptanceResult.observed.payloadUpsertCallsDelta} guarded_error_count=${acceptanceResult.observed.guardedErrorCount}`
+      `model_a_plus_acceptance_failed blob_payload_select_delta=${acceptanceResult.observed.blobPayloadSelectCallsDelta} payload_upsert_delta=${acceptanceResult.observed.payloadUpsertCallsDelta} guarded_error_count=${acceptanceResult.observed.guardedErrorCount}`
     );
   }
 }
