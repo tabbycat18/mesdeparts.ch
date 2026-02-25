@@ -1,0 +1,736 @@
+{
+  "generatedAtUtc": "2026-02-25T19:08:57.496Z",
+  "window": {
+    "startedAtUtc": "2026-02-25T19:08:57.723Z",
+    "endedAtUtc": "2026-02-25T19:13:57.965Z",
+    "durationMinutes": 5,
+    "resetStatements": true,
+    "resetError": null,
+    "sampleCount": 30
+  },
+  "baseUrl": "https://api.mesdeparts.ch",
+  "stopIds": [
+    "Parent8576391"
+  ],
+  "requestCount": 30,
+  "db": {
+    "rtCachePayloadsStart": [
+      {
+        "feed_key": "la_servicealerts",
+        "bytes": 8662639,
+        "fetched_at": "2026-02-25T19:08:11.816Z",
+        "last_status": 200
+      },
+      {
+        "feed_key": "la_tripupdates",
+        "bytes": 5639357,
+        "fetched_at": "2026-02-25T19:08:48.051Z",
+        "last_status": 200
+      }
+    ],
+    "rtCachePayloadsEnd": [
+      {
+        "feed_key": "la_servicealerts",
+        "bytes": 8662639,
+        "fetched_at": "2026-02-25T19:13:31.171Z",
+        "last_status": 200
+      },
+      {
+        "feed_key": "la_tripupdates",
+        "bytes": 5639357,
+        "fetched_at": "2026-02-25T19:13:51.507Z",
+        "last_status": 200
+      }
+    ],
+    "pgStatStatements": {
+      "start": {
+        "capturedAtUtc": "2026-02-25T19:08:57.676Z",
+        "rows": [],
+        "error": null,
+        "counters": {
+          "payloadSelectCalls": 0,
+          "payloadUpsertCalls": 0,
+          "metadataUpdateCalls": 0,
+          "totalRtCacheCalls": 0
+        }
+      },
+      "end": {
+        "capturedAtUtc": "2026-02-25T19:13:57.921Z",
+        "rows": [
+          {
+            "query": "SELECT\n        fetched_at,\n        last_status,\n        octet_length(payload) AS payload_bytes,\n        etag,\n        last_error\n      FROM public.rt_cache\n      WHERE feed_key = $1\n      LIMIT $2",
+            "calls": 67,
+            "rows": 67,
+            "totalExecMs": 1.270577,
+            "meanExecMs": 0.01896383582089552
+          },
+          {
+            "query": "WITH lock_state AS (\n            SELECT pg_try_advisory_xact_lock($6::bigint) AS acquired\n          ),\n          updated AS (\n            UPDATE public.rt_cache\n            SET\n              fetched_at = $2,\n              etag = COALESCE($3, etag),\n              last_status = $4,\n              last_error = $5\n            FROM lock_state\n            WHERE public.rt_cache.feed_key = $1\n              AND lock_state.acquired\n            RETURNING $7 AS touched\n          )\n          SELECT\n            EXISTS (SELECT $8 FROM updated) AS updated,\n            $9 AS write_skipped_by_lock\n          FROM lock_state\n          WHERE acquired\n          UNION ALL\n          SELECT\n            $10 AS updated,\n            $11 AS write_skipped_by_lock\n          FROM lock_state\n          WHERE NOT acquired\n          LIMIT $12",
+            "calls": 16,
+            "rows": 16,
+            "totalExecMs": 1.514958,
+            "meanExecMs": 0.094684875
+          },
+          {
+            "query": "SELECT\n      feed_key,\n      octet_length(payload) AS bytes,\n      fetched_at,\n      last_status\n    FROM public.rt_cache\n    ORDER BY bytes DESC NULLS LAST",
+            "calls": 1,
+            "rows": 2,
+            "totalExecMs": 0.027858,
+            "meanExecMs": 0.027858
+          }
+        ],
+        "error": null,
+        "counters": {
+          "payloadSelectCalls": 68,
+          "payloadUpsertCalls": 0,
+          "metadataUpdateCalls": 16,
+          "totalRtCacheCalls": 84
+        }
+      },
+      "delta": [
+        {
+          "query": "SELECT\n        fetched_at,\n        last_status,\n        octet_length(payload) AS payload_bytes,\n        etag,\n        last_error\n      FROM public.rt_cache\n      WHERE feed_key = $1\n      LIMIT $2",
+          "startCalls": 0,
+          "endCalls": 67,
+          "deltaCalls": 67,
+          "deltaRows": 67,
+          "deltaTotalExecMs": 1.271
+        },
+        {
+          "query": "WITH lock_state AS (\n            SELECT pg_try_advisory_xact_lock($6::bigint) AS acquired\n          ),\n          updated AS (\n            UPDATE public.rt_cache\n            SET\n              fetched_at = $2,\n              etag = COALESCE($3, etag),\n              last_status = $4,\n              last_error = $5\n            FROM lock_state\n            WHERE public.rt_cache.feed_key = $1\n              AND lock_state.acquired\n            RETURNING $7 AS touched\n          )\n          SELECT\n            EXISTS (SELECT $8 FROM updated) AS updated,\n            $9 AS write_skipped_by_lock\n          FROM lock_state\n          WHERE acquired\n          UNION ALL\n          SELECT\n            $10 AS updated,\n            $11 AS write_skipped_by_lock\n          FROM lock_state\n          WHERE NOT acquired\n          LIMIT $12",
+          "startCalls": 0,
+          "endCalls": 16,
+          "deltaCalls": 16,
+          "deltaRows": 16,
+          "deltaTotalExecMs": 1.515
+        },
+        {
+          "query": "SELECT\n      feed_key,\n      octet_length(payload) AS bytes,\n      fetched_at,\n      last_status\n    FROM public.rt_cache\n    ORDER BY bytes DESC NULLS LAST",
+          "startCalls": 0,
+          "endCalls": 1,
+          "deltaCalls": 1,
+          "deltaRows": 2,
+          "deltaTotalExecMs": 0.028
+        }
+      ]
+    }
+  },
+  "stationboardSamples": [
+    {
+      "sampleIndex": 1,
+      "stopId": "Parent8576391",
+      "url": "https://api.mesdeparts.ch/api/stationboard?stop_id=Parent8576391&limit=8&_rtb=1",
+      "ok": true,
+      "httpStatus": 200,
+      "clientDurationMs": 439,
+      "meta": {
+        "serverTime": "2026-02-25T19:08:58.145Z",
+        "totalBackendMs": 259.5,
+        "rtStatus": "applied",
+        "rtAppliedCount": 1,
+        "rtFetchedAt": "2026-02-25T19:08:44.934Z",
+        "rtCacheAgeMs": 12958,
+        "responseMode": "full"
+      },
+      "parseError": null,
+      "bodySnippet": null
+    },
+    {
+      "sampleIndex": 2,
+      "stopId": "Parent8576391",
+      "url": "https://api.mesdeparts.ch/api/stationboard?stop_id=Parent8576391&limit=8&_rtb=2",
+      "ok": true,
+      "httpStatus": 200,
+      "clientDurationMs": 92,
+      "meta": {
+        "serverTime": "2026-02-25T19:08:58.145Z",
+        "totalBackendMs": 259.5,
+        "rtStatus": "applied",
+        "rtAppliedCount": 1,
+        "rtFetchedAt": "2026-02-25T19:08:44.934Z",
+        "rtCacheAgeMs": 12958,
+        "responseMode": "full"
+      },
+      "parseError": null,
+      "bodySnippet": null
+    },
+    {
+      "sampleIndex": 3,
+      "stopId": "Parent8576391",
+      "url": "https://api.mesdeparts.ch/api/stationboard?stop_id=Parent8576391&limit=8&_rtb=3",
+      "ok": true,
+      "httpStatus": 200,
+      "clientDurationMs": 688,
+      "meta": {
+        "serverTime": "2026-02-25T19:09:18.077Z",
+        "totalBackendMs": 248.8,
+        "rtStatus": "applied",
+        "rtAppliedCount": 1,
+        "rtFetchedAt": "2026-02-25T19:08:44.934Z",
+        "rtCacheAgeMs": 32901,
+        "responseMode": "full"
+      },
+      "parseError": null,
+      "bodySnippet": null
+    },
+    {
+      "sampleIndex": 4,
+      "stopId": "Parent8576391",
+      "url": "https://api.mesdeparts.ch/api/stationboard?stop_id=Parent8576391&limit=8&_rtb=4",
+      "ok": true,
+      "httpStatus": 200,
+      "clientDurationMs": 73,
+      "meta": {
+        "serverTime": "2026-02-25T19:09:18.077Z",
+        "totalBackendMs": 248.8,
+        "rtStatus": "applied",
+        "rtAppliedCount": 1,
+        "rtFetchedAt": "2026-02-25T19:08:44.934Z",
+        "rtCacheAgeMs": 32901,
+        "responseMode": "full"
+      },
+      "parseError": null,
+      "bodySnippet": null
+    },
+    {
+      "sampleIndex": 5,
+      "stopId": "Parent8576391",
+      "url": "https://api.mesdeparts.ch/api/stationboard?stop_id=Parent8576391&limit=8&_rtb=5",
+      "ok": true,
+      "httpStatus": 200,
+      "clientDurationMs": 487,
+      "meta": {
+        "serverTime": "2026-02-25T19:09:38.219Z",
+        "totalBackendMs": 391,
+        "rtStatus": "applied",
+        "rtAppliedCount": 0,
+        "rtFetchedAt": "2026-02-25T19:09:27.856Z",
+        "rtCacheAgeMs": 10219,
+        "responseMode": "full"
+      },
+      "parseError": null,
+      "bodySnippet": null
+    },
+    {
+      "sampleIndex": 6,
+      "stopId": "Parent8576391",
+      "url": "https://api.mesdeparts.ch/api/stationboard?stop_id=Parent8576391&limit=8&_rtb=6",
+      "ok": true,
+      "httpStatus": 200,
+      "clientDurationMs": 55,
+      "meta": {
+        "serverTime": "2026-02-25T19:09:38.219Z",
+        "totalBackendMs": 391,
+        "rtStatus": "applied",
+        "rtAppliedCount": 0,
+        "rtFetchedAt": "2026-02-25T19:09:27.856Z",
+        "rtCacheAgeMs": 10219,
+        "responseMode": "full"
+      },
+      "parseError": null,
+      "bodySnippet": null
+    },
+    {
+      "sampleIndex": 7,
+      "stopId": "Parent8576391",
+      "url": "https://api.mesdeparts.ch/api/stationboard?stop_id=Parent8576391&limit=8&_rtb=7",
+      "ok": true,
+      "httpStatus": 200,
+      "clientDurationMs": 545,
+      "meta": {
+        "serverTime": "2026-02-25T19:09:58.273Z",
+        "totalBackendMs": 457.6,
+        "rtStatus": "applied",
+        "rtAppliedCount": 0,
+        "rtFetchedAt": "2026-02-25T19:09:27.856Z",
+        "rtCacheAgeMs": 30286,
+        "responseMode": "full"
+      },
+      "parseError": null,
+      "bodySnippet": null
+    },
+    {
+      "sampleIndex": 8,
+      "stopId": "Parent8576391",
+      "url": "https://api.mesdeparts.ch/api/stationboard?stop_id=Parent8576391&limit=8&_rtb=8",
+      "ok": true,
+      "httpStatus": 200,
+      "clientDurationMs": 61,
+      "meta": {
+        "serverTime": "2026-02-25T19:09:58.273Z",
+        "totalBackendMs": 457.6,
+        "rtStatus": "applied",
+        "rtAppliedCount": 0,
+        "rtFetchedAt": "2026-02-25T19:09:27.856Z",
+        "rtCacheAgeMs": 30286,
+        "responseMode": "full"
+      },
+      "parseError": null,
+      "bodySnippet": null
+    },
+    {
+      "sampleIndex": 9,
+      "stopId": "Parent8576391",
+      "url": "https://api.mesdeparts.ch/api/stationboard?stop_id=Parent8576391&limit=8&_rtb=9",
+      "ok": true,
+      "httpStatus": 200,
+      "clientDurationMs": 558,
+      "meta": {
+        "serverTime": "2026-02-25T19:10:18.278Z",
+        "totalBackendMs": 443.8,
+        "rtStatus": "applied",
+        "rtAppliedCount": 0,
+        "rtFetchedAt": "2026-02-25T19:09:51.499Z",
+        "rtCacheAgeMs": 26660,
+        "responseMode": "full"
+      },
+      "parseError": null,
+      "bodySnippet": null
+    },
+    {
+      "sampleIndex": 10,
+      "stopId": "Parent8576391",
+      "url": "https://api.mesdeparts.ch/api/stationboard?stop_id=Parent8576391&limit=8&_rtb=10",
+      "ok": true,
+      "httpStatus": 200,
+      "clientDurationMs": 67,
+      "meta": {
+        "serverTime": "2026-02-25T19:10:18.278Z",
+        "totalBackendMs": 443.8,
+        "rtStatus": "applied",
+        "rtAppliedCount": 0,
+        "rtFetchedAt": "2026-02-25T19:09:51.499Z",
+        "rtCacheAgeMs": 26660,
+        "responseMode": "full"
+      },
+      "parseError": null,
+      "bodySnippet": null
+    },
+    {
+      "sampleIndex": 11,
+      "stopId": "Parent8576391",
+      "url": "https://api.mesdeparts.ch/api/stationboard?stop_id=Parent8576391&limit=8&_rtb=11",
+      "ok": true,
+      "httpStatus": 200,
+      "clientDurationMs": 498,
+      "meta": {
+        "serverTime": "2026-02-25T19:10:38.222Z",
+        "totalBackendMs": 409.7,
+        "rtStatus": "applied",
+        "rtAppliedCount": 0,
+        "rtFetchedAt": "2026-02-25T19:10:24.555Z",
+        "rtCacheAgeMs": 13534,
+        "responseMode": "full"
+      },
+      "parseError": null,
+      "bodySnippet": null
+    },
+    {
+      "sampleIndex": 12,
+      "stopId": "Parent8576391",
+      "url": "https://api.mesdeparts.ch/api/stationboard?stop_id=Parent8576391&limit=8&_rtb=12",
+      "ok": true,
+      "httpStatus": 200,
+      "clientDurationMs": 72,
+      "meta": {
+        "serverTime": "2026-02-25T19:10:38.222Z",
+        "totalBackendMs": 409.7,
+        "rtStatus": "applied",
+        "rtAppliedCount": 0,
+        "rtFetchedAt": "2026-02-25T19:10:24.555Z",
+        "rtCacheAgeMs": 13534,
+        "responseMode": "full"
+      },
+      "parseError": null,
+      "bodySnippet": null
+    },
+    {
+      "sampleIndex": 13,
+      "stopId": "Parent8576391",
+      "url": "https://api.mesdeparts.ch/api/stationboard?stop_id=Parent8576391&limit=8&_rtb=13",
+      "ok": true,
+      "httpStatus": 200,
+      "clientDurationMs": 493,
+      "meta": {
+        "serverTime": "2026-02-25T19:10:58.217Z",
+        "totalBackendMs": 408.5,
+        "rtStatus": "applied",
+        "rtAppliedCount": 0,
+        "rtFetchedAt": "2026-02-25T19:10:24.555Z",
+        "rtCacheAgeMs": 33524,
+        "responseMode": "full"
+      },
+      "parseError": null,
+      "bodySnippet": null
+    },
+    {
+      "sampleIndex": 14,
+      "stopId": "Parent8576391",
+      "url": "https://api.mesdeparts.ch/api/stationboard?stop_id=Parent8576391&limit=8&_rtb=14",
+      "ok": true,
+      "httpStatus": 200,
+      "clientDurationMs": 74,
+      "meta": {
+        "serverTime": "2026-02-25T19:10:58.217Z",
+        "totalBackendMs": 408.5,
+        "rtStatus": "applied",
+        "rtAppliedCount": 0,
+        "rtFetchedAt": "2026-02-25T19:10:24.555Z",
+        "rtCacheAgeMs": 33524,
+        "responseMode": "full"
+      },
+      "parseError": null,
+      "bodySnippet": null
+    },
+    {
+      "sampleIndex": 15,
+      "stopId": "Parent8576391",
+      "url": "https://api.mesdeparts.ch/api/stationboard?stop_id=Parent8576391&limit=8&_rtb=15",
+      "ok": true,
+      "httpStatus": 200,
+      "clientDurationMs": 471,
+      "meta": {
+        "serverTime": "2026-02-25T19:11:18.196Z",
+        "totalBackendMs": 381.5,
+        "rtStatus": "applied",
+        "rtAppliedCount": 0,
+        "rtFetchedAt": "2026-02-25T19:10:51.880Z",
+        "rtCacheAgeMs": 26185,
+        "responseMode": "full"
+      },
+      "parseError": null,
+      "bodySnippet": null
+    },
+    {
+      "sampleIndex": 16,
+      "stopId": "Parent8576391",
+      "url": "https://api.mesdeparts.ch/api/stationboard?stop_id=Parent8576391&limit=8&_rtb=16",
+      "ok": true,
+      "httpStatus": 200,
+      "clientDurationMs": 76,
+      "meta": {
+        "serverTime": "2026-02-25T19:11:18.196Z",
+        "totalBackendMs": 381.5,
+        "rtStatus": "applied",
+        "rtAppliedCount": 0,
+        "rtFetchedAt": "2026-02-25T19:10:51.880Z",
+        "rtCacheAgeMs": 26185,
+        "responseMode": "full"
+      },
+      "parseError": null,
+      "bodySnippet": null
+    },
+    {
+      "sampleIndex": 17,
+      "stopId": "Parent8576391",
+      "url": "https://api.mesdeparts.ch/api/stationboard?stop_id=Parent8576391&limit=8&_rtb=17",
+      "ok": true,
+      "httpStatus": 200,
+      "clientDurationMs": 540,
+      "meta": {
+        "serverTime": "2026-02-25T19:11:38.263Z",
+        "totalBackendMs": 450.5,
+        "rtStatus": "applied",
+        "rtAppliedCount": 0,
+        "rtFetchedAt": "2026-02-25T19:11:16.921Z",
+        "rtCacheAgeMs": 21199,
+        "responseMode": "full"
+      },
+      "parseError": null,
+      "bodySnippet": null
+    },
+    {
+      "sampleIndex": 18,
+      "stopId": "Parent8576391",
+      "url": "https://api.mesdeparts.ch/api/stationboard?stop_id=Parent8576391&limit=8&_rtb=18",
+      "ok": true,
+      "httpStatus": 200,
+      "clientDurationMs": 85,
+      "meta": {
+        "serverTime": "2026-02-25T19:11:38.263Z",
+        "totalBackendMs": 450.5,
+        "rtStatus": "applied",
+        "rtAppliedCount": 0,
+        "rtFetchedAt": "2026-02-25T19:11:16.921Z",
+        "rtCacheAgeMs": 21199,
+        "responseMode": "full"
+      },
+      "parseError": null,
+      "bodySnippet": null
+    },
+    {
+      "sampleIndex": 19,
+      "stopId": "Parent8576391",
+      "url": "https://api.mesdeparts.ch/api/stationboard?stop_id=Parent8576391&limit=8&_rtb=19",
+      "ok": true,
+      "httpStatus": 200,
+      "clientDurationMs": 542,
+      "meta": {
+        "serverTime": "2026-02-25T19:11:58.267Z",
+        "totalBackendMs": 461.7,
+        "rtStatus": "applied",
+        "rtAppliedCount": 0,
+        "rtFetchedAt": "2026-02-25T19:11:16.921Z",
+        "rtCacheAgeMs": 41204,
+        "responseMode": "full"
+      },
+      "parseError": null,
+      "bodySnippet": null
+    },
+    {
+      "sampleIndex": 20,
+      "stopId": "Parent8576391",
+      "url": "https://api.mesdeparts.ch/api/stationboard?stop_id=Parent8576391&limit=8&_rtb=20",
+      "ok": true,
+      "httpStatus": 200,
+      "clientDurationMs": 65,
+      "meta": {
+        "serverTime": "2026-02-25T19:11:58.267Z",
+        "totalBackendMs": 461.7,
+        "rtStatus": "applied",
+        "rtAppliedCount": 0,
+        "rtFetchedAt": "2026-02-25T19:11:16.921Z",
+        "rtCacheAgeMs": 41204,
+        "responseMode": "full"
+      },
+      "parseError": null,
+      "bodySnippet": null
+    },
+    {
+      "sampleIndex": 21,
+      "stopId": "Parent8576391",
+      "url": "https://api.mesdeparts.ch/api/stationboard?stop_id=Parent8576391&limit=8&_rtb=21",
+      "ok": true,
+      "httpStatus": 200,
+      "clientDurationMs": 517,
+      "meta": {
+        "serverTime": "2026-02-25T19:12:18.234Z",
+        "totalBackendMs": 416.4,
+        "rtStatus": "applied",
+        "rtAppliedCount": 0,
+        "rtFetchedAt": "2026-02-25T19:11:53.533Z",
+        "rtCacheAgeMs": 24573,
+        "responseMode": "full"
+      },
+      "parseError": null,
+      "bodySnippet": null
+    },
+    {
+      "sampleIndex": 22,
+      "stopId": "Parent8576391",
+      "url": "https://api.mesdeparts.ch/api/stationboard?stop_id=Parent8576391&limit=8&_rtb=22",
+      "ok": true,
+      "httpStatus": 200,
+      "clientDurationMs": 72,
+      "meta": {
+        "serverTime": "2026-02-25T19:12:18.234Z",
+        "totalBackendMs": 416.4,
+        "rtStatus": "applied",
+        "rtAppliedCount": 0,
+        "rtFetchedAt": "2026-02-25T19:11:53.533Z",
+        "rtCacheAgeMs": 24573,
+        "responseMode": "full"
+      },
+      "parseError": null,
+      "bodySnippet": null
+    },
+    {
+      "sampleIndex": 23,
+      "stopId": "Parent8576391",
+      "url": "https://api.mesdeparts.ch/api/stationboard?stop_id=Parent8576391&limit=8&_rtb=23",
+      "ok": true,
+      "httpStatus": 200,
+      "clientDurationMs": 501,
+      "meta": {
+        "serverTime": "2026-02-25T19:12:38.223Z",
+        "totalBackendMs": 398.2,
+        "rtStatus": "applied",
+        "rtAppliedCount": 0,
+        "rtFetchedAt": "2026-02-25T19:12:21.051Z",
+        "rtCacheAgeMs": 17039,
+        "responseMode": "full"
+      },
+      "parseError": null,
+      "bodySnippet": null
+    },
+    {
+      "sampleIndex": 24,
+      "stopId": "Parent8576391",
+      "url": "https://api.mesdeparts.ch/api/stationboard?stop_id=Parent8576391&limit=8&_rtb=24",
+      "ok": true,
+      "httpStatus": 200,
+      "clientDurationMs": 63,
+      "meta": {
+        "serverTime": "2026-02-25T19:12:38.223Z",
+        "totalBackendMs": 398.2,
+        "rtStatus": "applied",
+        "rtAppliedCount": 0,
+        "rtFetchedAt": "2026-02-25T19:12:21.051Z",
+        "rtCacheAgeMs": 17039,
+        "responseMode": "full"
+      },
+      "parseError": null,
+      "bodySnippet": null
+    },
+    {
+      "sampleIndex": 25,
+      "stopId": "Parent8576391",
+      "url": "https://api.mesdeparts.ch/api/stationboard?stop_id=Parent8576391&limit=8&_rtb=25",
+      "ok": true,
+      "httpStatus": 200,
+      "clientDurationMs": 507,
+      "meta": {
+        "serverTime": "2026-02-25T19:12:58.231Z",
+        "totalBackendMs": 422.9,
+        "rtStatus": "applied",
+        "rtAppliedCount": 0,
+        "rtFetchedAt": "2026-02-25T19:12:21.051Z",
+        "rtCacheAgeMs": 37037,
+        "responseMode": "full"
+      },
+      "parseError": null,
+      "bodySnippet": null
+    },
+    {
+      "sampleIndex": 26,
+      "stopId": "Parent8576391",
+      "url": "https://api.mesdeparts.ch/api/stationboard?stop_id=Parent8576391&limit=8&_rtb=26",
+      "ok": true,
+      "httpStatus": 200,
+      "clientDurationMs": 68,
+      "meta": {
+        "serverTime": "2026-02-25T19:12:58.231Z",
+        "totalBackendMs": 422.9,
+        "rtStatus": "applied",
+        "rtAppliedCount": 0,
+        "rtFetchedAt": "2026-02-25T19:12:21.051Z",
+        "rtCacheAgeMs": 37037,
+        "responseMode": "full"
+      },
+      "parseError": null,
+      "bodySnippet": null
+    },
+    {
+      "sampleIndex": 27,
+      "stopId": "Parent8576391",
+      "url": "https://api.mesdeparts.ch/api/stationboard?stop_id=Parent8576391&limit=8&_rtb=27",
+      "ok": true,
+      "httpStatus": 200,
+      "clientDurationMs": 490,
+      "meta": {
+        "serverTime": "2026-02-25T19:13:18.215Z",
+        "totalBackendMs": 409.6,
+        "rtStatus": "applied",
+        "rtAppliedCount": 0,
+        "rtFetchedAt": "2026-02-25T19:12:53.271Z",
+        "rtCacheAgeMs": 24812,
+        "responseMode": "full"
+      },
+      "parseError": null,
+      "bodySnippet": null
+    },
+    {
+      "sampleIndex": 28,
+      "stopId": "Parent8576391",
+      "url": "https://api.mesdeparts.ch/api/stationboard?stop_id=Parent8576391&limit=8&_rtb=28",
+      "ok": true,
+      "httpStatus": 200,
+      "clientDurationMs": 63,
+      "meta": {
+        "serverTime": "2026-02-25T19:13:18.215Z",
+        "totalBackendMs": 409.6,
+        "rtStatus": "applied",
+        "rtAppliedCount": 0,
+        "rtFetchedAt": "2026-02-25T19:12:53.271Z",
+        "rtCacheAgeMs": 24812,
+        "responseMode": "full"
+      },
+      "parseError": null,
+      "bodySnippet": null
+    },
+    {
+      "sampleIndex": 29,
+      "stopId": "Parent8576391",
+      "url": "https://api.mesdeparts.ch/api/stationboard?stop_id=Parent8576391&limit=8&_rtb=29",
+      "ok": true,
+      "httpStatus": 200,
+      "clientDurationMs": 1325,
+      "meta": {
+        "serverTime": "2026-02-25T19:13:39.049Z",
+        "totalBackendMs": 1241.6,
+        "rtStatus": "applied",
+        "rtAppliedCount": 0,
+        "rtFetchedAt": "2026-02-25T19:13:16.089Z",
+        "rtCacheAgeMs": 22621,
+        "responseMode": "full"
+      },
+      "parseError": null,
+      "bodySnippet": null
+    },
+    {
+      "sampleIndex": 30,
+      "stopId": "Parent8576391",
+      "url": "https://api.mesdeparts.ch/api/stationboard?stop_id=Parent8576391&limit=8&_rtb=30",
+      "ok": true,
+      "httpStatus": 200,
+      "clientDurationMs": 64,
+      "meta": {
+        "serverTime": "2026-02-25T19:13:39.049Z",
+        "totalBackendMs": 1241.6,
+        "rtStatus": "applied",
+        "rtAppliedCount": 0,
+        "rtFetchedAt": "2026-02-25T19:13:16.089Z",
+        "rtCacheAgeMs": 22621,
+        "responseMode": "full"
+      },
+      "parseError": null,
+      "bodySnippet": null
+    }
+  ],
+  "summary": {
+    "requestCount": 30,
+    "successCount": 30,
+    "p50TotalBackendMs": 409.7,
+    "p95TotalBackendMs": 1241.6,
+    "rtStatusDistribution": {
+      "applied": 30
+    },
+    "avgRtCacheAgeMs": 24983.47,
+    "medianRtCacheAgeMs": 24812,
+    "maxRtCacheAgeMs": 41204,
+    "percentRtApplied": 100,
+    "guardedErrorCount": 0,
+    "percentRtGuardedError": 0
+  },
+  "acceptance": {
+    "thresholds": {
+      "maxPayloadSelectCalls": 2,
+      "maxPayloadUpsertCalls": 2,
+      "maxGuardedErrorCount": 0
+    },
+    "observed": {
+      "payloadSelectCallsStart": 0,
+      "payloadSelectCallsEnd": 68,
+      "payloadSelectCallsDelta": 68,
+      "payloadUpsertCallsStart": 0,
+      "payloadUpsertCallsEnd": 0,
+      "payloadUpsertCallsDelta": 0,
+      "guardedErrorCount": 0
+    },
+    "checks": {
+      "payloadSelectNearZero": {
+        "pass": false,
+        "description": "SELECT payload FROM rt_cache should be near-zero on stationboard path"
+      },
+      "payloadUpsertNearZero": {
+        "pass": true,
+        "description": "UPSERT rt_cache with payload should be near-zero after parsed poller writes"
+      },
+      "noGuardedErrorStatus": {
+        "pass": true,
+        "description": "stationboard rtStatus=guarded_error should not appear in measurement window"
+      }
+    },
+    "overallPass": false
+  }
+}

@@ -1,0 +1,157 @@
+{
+  "generatedAtUtc": "2026-02-25T19:22:46.502Z",
+  "window": {
+    "startedAtUtc": "2026-02-25T19:22:46.796Z",
+    "endedAtUtc": "2026-02-25T19:22:46.993Z",
+    "durationMinutes": 0,
+    "resetStatements": true,
+    "resetError": null,
+    "sampleCount": 0
+  },
+  "baseUrl": "https://api.mesdeparts.ch",
+  "stopIds": [
+    "Parent8576391"
+  ],
+  "requestCount": 0,
+  "db": {
+    "rtCachePayloadsStart": [
+      {
+        "feed_key": "la_servicealerts",
+        "bytes": 8662639,
+        "fetched_at": "2026-02-25T19:22:03.267Z",
+        "last_status": 200
+      },
+      {
+        "feed_key": "la_tripupdates",
+        "bytes": 5639357,
+        "fetched_at": "2026-02-25T19:22:27.040Z",
+        "last_status": 200
+      }
+    ],
+    "rtCachePayloadsEnd": [
+      {
+        "feed_key": "la_servicealerts",
+        "bytes": 8662639,
+        "fetched_at": "2026-02-25T19:22:03.267Z",
+        "last_status": 200
+      },
+      {
+        "feed_key": "la_tripupdates",
+        "bytes": 5639357,
+        "fetched_at": "2026-02-25T19:22:27.040Z",
+        "last_status": 200
+      }
+    ],
+    "pgStatStatements": {
+      "start": {
+        "capturedAtUtc": "2026-02-25T19:22:46.732Z",
+        "rows": [],
+        "error": null,
+        "counters": {
+          "blobPayloadSelectCalls": 0,
+          "payloadMetadataSelectCalls": 0,
+          "payloadSizeListingCalls": 0,
+          "payloadOtherSelectCalls": 0,
+          "payloadUpsertCalls": 0,
+          "metadataUpdateCalls": 0,
+          "totalRtCacheCalls": 0,
+          "payloadSelectCalls": 0
+        }
+      },
+      "end": {
+        "capturedAtUtc": "2026-02-25T19:22:46.939Z",
+        "rows": [
+          {
+            "query": "SELECT\n      feed_key,\n      octet_length(payload) AS bytes,\n      fetched_at,\n      last_status\n    FROM public.rt_cache\n    ORDER BY bytes DESC NULLS LAST",
+            "calls": 1,
+            "rows": 2,
+            "totalExecMs": 0.02995,
+            "meanExecMs": 0.02995
+          }
+        ],
+        "error": null,
+        "counters": {
+          "blobPayloadSelectCalls": 0,
+          "payloadMetadataSelectCalls": 1,
+          "payloadSizeListingCalls": 1,
+          "payloadOtherSelectCalls": 0,
+          "payloadUpsertCalls": 0,
+          "metadataUpdateCalls": 0,
+          "totalRtCacheCalls": 1,
+          "payloadSelectCalls": 0
+        }
+      },
+      "delta": [
+        {
+          "query": "SELECT\n      feed_key,\n      octet_length(payload) AS bytes,\n      fetched_at,\n      last_status\n    FROM public.rt_cache\n    ORDER BY bytes DESC NULLS LAST",
+          "startCalls": 0,
+          "endCalls": 1,
+          "deltaCalls": 1,
+          "deltaRows": 2,
+          "deltaTotalExecMs": 0.03
+        }
+      ]
+    }
+  },
+  "stationboardSamples": [],
+  "summary": {
+    "requestCount": 0,
+    "successCount": 0,
+    "p50TotalBackendMs": null,
+    "p95TotalBackendMs": null,
+    "rtStatusDistribution": {},
+    "avgRtCacheAgeMs": null,
+    "medianRtCacheAgeMs": null,
+    "maxRtCacheAgeMs": null,
+    "percentRtApplied": null,
+    "guardedErrorCount": 0,
+    "percentRtGuardedError": null
+  },
+  "acceptance": {
+    "thresholds": {
+      "maxPayloadSelectCalls": 2,
+      "maxPayloadUpsertCalls": 2,
+      "maxGuardedErrorCount": 0
+    },
+    "observed": {
+      "blobPayloadSelectCallsStart": 0,
+      "blobPayloadSelectCallsEnd": 0,
+      "blobPayloadSelectCallsDelta": 0,
+      "payloadMetadataSelectCallsStart": 0,
+      "payloadMetadataSelectCallsEnd": 1,
+      "payloadMetadataSelectCallsDelta": 1,
+      "payloadSizeListingCallsStart": 0,
+      "payloadSizeListingCallsEnd": 1,
+      "payloadSizeListingCallsDelta": 1,
+      "payloadOtherSelectCallsStart": 0,
+      "payloadOtherSelectCallsEnd": 0,
+      "payloadOtherSelectCallsDelta": 0,
+      "payloadSelectCallsStart": 0,
+      "payloadSelectCallsEnd": 0,
+      "payloadSelectCallsDelta": 0,
+      "payloadUpsertCallsStart": 0,
+      "payloadUpsertCallsEnd": 0,
+      "payloadUpsertCallsDelta": 0,
+      "guardedErrorCount": 0
+    },
+    "checks": {
+      "blobPayloadSelectNearZero": {
+        "pass": true,
+        "description": "Blob SELECT payload FROM rt_cache should be near-zero on stationboard path"
+      },
+      "payloadUpsertNearZero": {
+        "pass": true,
+        "description": "UPSERT rt_cache with payload should be near-zero after parsed poller writes"
+      },
+      "noGuardedErrorStatus": {
+        "pass": true,
+        "description": "stationboard rtStatus=guarded_error should not appear in measurement window"
+      },
+      "payloadSelectNearZero": {
+        "pass": true,
+        "description": "Blob SELECT payload FROM rt_cache should be near-zero on stationboard path"
+      }
+    },
+    "overallPass": true
+  }
+}
