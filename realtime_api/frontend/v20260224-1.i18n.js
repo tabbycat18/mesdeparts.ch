@@ -1227,10 +1227,10 @@ const TRANSLATIONS = {
     en: "Refreshing…",
   },
   rtTemporarilyUnavailable: {
-    fr: "RT temporairement indisponible",
-    de: "Echtzeit voruebergehend nicht verfuegbar",
-    it: "Tempo reale temporaneamente non disponibile",
-    en: "Real-time temporarily unavailable",
+    fr: "Données live momentanément indisponibles",
+    de: "Live-Daten momentan nicht verfuegbar",
+    it: "Dati in tempo reale momentaneamente non disponibili",
+    en: "Realtime data currently unavailable",
   },
 };
 
