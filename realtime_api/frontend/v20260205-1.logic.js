@@ -106,6 +106,61 @@ const NETWORK_MAP_DEBUG =
 // Keep stationboard requests bounded to what the UI can display
 const STATIONBOARD_LIMIT = Math.max(MAX_TRAIN_ROWS * 2, MIN_ROWS * 3, 60);
 
+const DEFAULT_NETWORK_MAP_CONFIG = Object.freeze({
+  defaultNetwork: "generic",
+  networks: {
+    tpg: {
+      operatorPatterns: ["transports publics genevois", "\\btpg\\b"],
+      stationPatterns: [
+        "gen[eè]ve|geneve|versoix|thonex|th[ôo]nex|lancy|carouge|meyrin|onex|bernex|a[iï]re|plan-les-ouates|pregny|ch[êe]ne-bourg|ch[êe]ne-bougeries|grand[- ]saconnex",
+      ],
+      palette: { classPrefix: "line-tpg-", fallbackClass: "line-generic" },
+    },
+    tl: {
+      operatorPatterns: ["\\btl\\b", "transports publics de la r[eé]gion lausannoise"],
+      stationPatterns: ["lausanne|renens|pully|epalinges|ecublens|crissier|prilly|\\btl\\b"],
+      palette: { classPrefix: "line-tl-", fallbackClass: "line-generic" },
+    },
+    zvv: {
+      operatorPatterns: [
+        "vbz",
+        "z[üu]rcher verkehrsbetriebe",
+        "zuercher verkehrsbetriebe",
+        "\\bzvv\\b",
+      ],
+      stationPatterns: ["z[üu]rich|oerlikon|altstetten|hardbr[üu]cke|\\bvbz\\b|\\bzvv\\b"],
+      palette: { classPrefix: "line-zvv-", fallbackClass: "line-generic" },
+    },
+    tpn: {
+      operatorPatterns: [
+        "\\btpn\\b",
+        "transports publics nyonnais",
+        "transports publics de la r[eé]gion nyonnaise",
+        "nyonnaise",
+      ],
+      routeIdPatterns: ["^92-"],
+      stationPatterns: ["nyon|rolle|gland|st-cergue|prangins|coppet|c[ée]ligny|\\btpn\\b"],
+      palette: { classPrefix: "line-tpn-", fallbackClass: "line-generic" },
+    },
+    mbc: {
+      operatorPatterns: ["\\bmbc\\b", "morges-bi[eè]re", "cossonay"],
+      stationPatterns: ["morges|cossonay|bi[eè]re|\\bmbc\\b"],
+      palette: { classPrefix: "line-mbc-", fallbackClass: "line-generic" },
+    },
+    vmcv: {
+      operatorPatterns: ["\\bvmcv\\b", "vevey-montreux"],
+      stationPatterns: ["vevey|montreux|clarens|villeneuve|rennaz|blonay|\\bvmcv\\b"],
+      palette: { classPrefix: "line-vmcv-", fallbackClass: "line-generic" },
+    },
+    postauto: {
+      operatorPatterns: ["postauto", "carpostal", "autopostale", "postbus"],
+      routeIdPatterns: ["^96-"],
+      stationPatterns: [],
+      palette: { classPrefix: "line-postbus", fallbackClass: "line-postbus" },
+    },
+  },
+});
+
 const EMPTY_NETWORK_MAP = Object.freeze({
   source: "empty",
   loadedAt: null,
@@ -256,8 +311,8 @@ export async function initNetworkMapConfig({ forceReload = false } = {}) {
       }
       return compiledNetworkMap;
     } catch (err) {
-      compiledNetworkMap = compileNetworkMap({}, "empty-fallback");
-      console.warn("[MesDeparts][network-map] failed to load config, using empty fallback", err);
+      compiledNetworkMap = compileNetworkMap(DEFAULT_NETWORK_MAP_CONFIG, "inline-default-fallback");
+      console.warn("[MesDeparts][network-map] failed to load config, using inline default", err);
       return compiledNetworkMap;
     }
   })();

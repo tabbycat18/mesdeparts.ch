@@ -50,6 +50,7 @@ Static, dependency-free front-end for mesdeparts.ch. Everything in this folder i
 - Embeds: pages add a `dual-embed` class when framed; `publishEmbedState` exposes current board state to the parent.
 - Dual board consumes embedded `boardLoading`/`boardNotice` state so each pane can surface live status in the top banner (localized “Refreshing…” and “Realtime data currently unavailable” when RT is degraded).
 - Network detection is config-driven: operator/agency matching is primary, route-id matching is secondary fallback, and station-name matching is last fallback when operator/route context is missing.
+- If `config/network-map.json` fails to load (for example 404 on a misconfigured static deployment), logic falls back to an embedded default map so line/network colors still resolve.
 - When network detection is unresolved or line-specific classes are missing, both row badges and “Served by lines” chips probe available CSS line classes across known network palettes before falling back to deterministic generic tones.
 
 ## Running locally
