@@ -4,6 +4,7 @@ import GtfsRealtimeBindings from "gtfs-realtime-bindings";
 import {
   getRtCache,
   getRtCacheMeta,
+  getRtCachePayloadSha,
   LA_TRIPUPDATES_FEED_KEY,
 } from "../src/db/rtCache.js";
 import { computeDepartureDelayDisplayFromSeconds } from "../src/util/departureDelay.js";
@@ -496,28 +497,48 @@ function normalizeRtCacheMeta(metaRow) {
   };
 }
 
+function normalizePayloadSha(value) {
+  const out = String(value || "").trim().toLowerCase();
+  if (!out) return null;
+  return /^[0-9a-f]{64}$/.test(out) ? out : null;
+}
+
+function contentKeyFromMeta(meta = {}) {
+  const etag = String(meta?.etag || "").trim();
+  if (etag) return `etag:${etag}`;
+  const sha = normalizePayloadSha(meta?.payloadSha);
+  if (sha) return `sha:${sha}`;
+  const fetchedAtMs = Number(meta?.fetchedAtMs);
+  if (Number.isFinite(fetchedAtMs)) return `fetched_at:${fetchedAtMs}`;
+  return "unknown";
+}
+
 async function readTripUpdatesFeedFromCacheStore({
   feedKey,
   getRtCacheMetaLike,
+  getRtCachePayloadShaLike,
   getRtCacheLike,
   previousValue,
 }) {
   const normalizedFeedKey = normalizeFeedKey(feedKey);
   const metaRow = await getRtCacheMetaLike(normalizedFeedKey);
   const meta = normalizeRtCacheMeta(metaRow);
+  meta.payloadSha = await getRtCachePayloadShaLike(normalizedFeedKey).catch(() => null);
+  const contentKey = contentKeyFromMeta(meta);
 
-  const previousFetchedAtMs = Number(previousValue?.fetchedAtMs);
-  const previousHasKnownFetchedAt =
-    previousValue?.feedKey === normalizedFeedKey && Number.isFinite(previousFetchedAtMs);
-  const metaHasKnownFetchedAt = Number.isFinite(meta.fetchedAtMs);
-  const fetchedAtUnchanged =
-    previousHasKnownFetchedAt && metaHasKnownFetchedAt && previousFetchedAtMs === meta.fetchedAtMs;
+  const previousContentKey = String(previousValue?.contentKey || "").trim();
+  const contentUnchanged =
+    previousValue?.feedKey === normalizedFeedKey &&
+    previousContentKey &&
+    contentKey &&
+    previousContentKey === contentKey;
 
-  if (fetchedAtUnchanged) {
+  if (contentUnchanged) {
     if (meta.hasPayload && previousValue?.hasPayload === true && previousValue?.feed) {
       return {
         ...previousValue,
         feedKey: normalizedFeedKey,
+        contentKey,
         fetchedAtMs: meta.fetchedAtMs,
         payloadBytes: meta.payloadBytes,
         hasPayload: true,
@@ -533,6 +554,7 @@ async function readTripUpdatesFeedFromCacheStore({
       return {
         feed: null,
         feedKey: normalizedFeedKey,
+        contentKey,
         fetchedAtMs: meta.fetchedAtMs,
         payloadBytes: meta.payloadBytes,
         lastStatus: meta.lastStatus,
@@ -551,6 +573,7 @@ async function readTripUpdatesFeedFromCacheStore({
     return {
       feed: null,
       feedKey: normalizedFeedKey,
+      contentKey,
       fetchedAtMs: meta.fetchedAtMs,
       payloadBytes: meta.payloadBytes,
       lastStatus: meta.lastStatus,
@@ -564,7 +587,11 @@ async function readTripUpdatesFeedFromCacheStore({
     };
   }
 
-  return readTripUpdatesFeedFromDb(normalizedFeedKey, getRtCacheLike);
+  const result = await readTripUpdatesFeedFromDb(normalizedFeedKey, getRtCacheLike);
+  return {
+    ...result,
+    contentKey,
+  };
 }
 
 export async function readTripUpdatesFeedFromCache(options = {}) {
@@ -581,6 +608,10 @@ export async function readTripUpdatesFeedFromCache(options = {}) {
     typeof normalizedOptions.getRtCacheMetaLike === "function"
       ? normalizedOptions.getRtCacheMetaLike
       : getRtCacheMeta;
+  const getRtCachePayloadShaLike =
+    typeof normalizedOptions.getRtCachePayloadShaLike === "function"
+      ? normalizedOptions.getRtCachePayloadShaLike
+      : getRtCachePayloadSha;
 
   const cacheEntry = getOrCreateDecodedFeedCacheEntry(feedKey);
   const nowMs = Date.now();
@@ -606,6 +637,7 @@ export async function readTripUpdatesFeedFromCache(options = {}) {
   const refreshPromise = readTripUpdatesFeedFromCacheStore({
     feedKey,
     getRtCacheMetaLike,
+    getRtCachePayloadShaLike,
     getRtCacheLike,
     previousValue: cacheEntry.value,
   })

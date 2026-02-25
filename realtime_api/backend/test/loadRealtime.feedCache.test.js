@@ -47,11 +47,13 @@ test("readTripUpdatesFeedFromCache uses one payload SELECT within TTL", async ()
   const first = await mod.readTripUpdatesFeedFromCache({
     feedKey: "la_tripupdates",
     getRtCacheMetaLike,
+    getRtCachePayloadShaLike: async () => null,
     getRtCacheLike,
   });
   const second = await mod.readTripUpdatesFeedFromCache({
     feedKey: "la_tripupdates",
     getRtCacheMetaLike,
+    getRtCachePayloadShaLike: async () => null,
     getRtCacheLike,
   });
 
@@ -96,11 +98,13 @@ test("readTripUpdatesFeedFromCache coalesces concurrent payload SELECTs", async 
   const p1 = mod.readTripUpdatesFeedFromCache({
     feedKey: "la_tripupdates",
     getRtCacheMetaLike,
+    getRtCachePayloadShaLike: async () => null,
     getRtCacheLike,
   });
   const p2 = mod.readTripUpdatesFeedFromCache({
     feedKey: "la_tripupdates",
     getRtCacheMetaLike,
+    getRtCachePayloadShaLike: async () => null,
     getRtCacheLike,
   });
   release();
@@ -113,15 +117,17 @@ test("readTripUpdatesFeedFromCache coalesces concurrent payload SELECTs", async 
   assert.equal(r1.payloadBytes, r2.payloadBytes);
 });
 
-test("readTripUpdatesFeedFromCache skips payload SELECT when fetched_at is unchanged after TTL expiry", async () => {
+test("readTripUpdatesFeedFromCache skips payload SELECT when etag is unchanged even if fetched_at changes", async () => {
   const mod = await loadRealtimeModule();
   mod.__resetDecodedRtFeedMemoryCacheForTests();
   const payload = buildTripUpdatesPayload();
-  const fetchedAt = new Date("2026-02-25T13:42:00.000Z");
+  const fetchedAt1 = new Date("2026-02-25T13:42:00.000Z");
+  const fetchedAt2 = new Date("2026-02-25T13:42:10.000Z");
   let metaReads = 0;
   let payloadReads = 0;
   const getRtCacheMetaLike = async () => {
     metaReads += 1;
+    const fetchedAt = metaReads < 2 ? fetchedAt1 : fetchedAt2;
     return {
       fetched_at: fetchedAt,
       last_status: 200,
@@ -134,7 +140,7 @@ test("readTripUpdatesFeedFromCache skips payload SELECT when fetched_at is uncha
     payloadReads += 1;
     return {
       payloadBytes: payload,
-      fetched_at: fetchedAt,
+      fetched_at: fetchedAt1,
       etag: "etag-1",
       last_status: 200,
       last_error: null,
@@ -144,12 +150,14 @@ test("readTripUpdatesFeedFromCache skips payload SELECT when fetched_at is uncha
   const first = await mod.readTripUpdatesFeedFromCache({
     feedKey: "la_tripupdates",
     getRtCacheMetaLike,
+    getRtCachePayloadShaLike: async () => null,
     getRtCacheLike,
   });
   mod.__expireDecodedRtFeedMemoryCacheForTests("la_tripupdates");
   const second = await mod.readTripUpdatesFeedFromCache({
     feedKey: "la_tripupdates",
     getRtCacheMetaLike,
+    getRtCachePayloadShaLike: async () => null,
     getRtCacheLike,
   });
 
@@ -160,7 +168,7 @@ test("readTripUpdatesFeedFromCache skips payload SELECT when fetched_at is uncha
   assert.equal(second.rtCacheHit, true);
 });
 
-test("readTripUpdatesFeedFromCache fetches payload once when fetched_at changes", async () => {
+test("readTripUpdatesFeedFromCache fetches payload when etag changes", async () => {
   const mod = await loadRealtimeModule();
   mod.__resetDecodedRtFeedMemoryCacheForTests();
   const payload = buildTripUpdatesPayload();
@@ -175,7 +183,7 @@ test("readTripUpdatesFeedFromCache fetches payload once when fetched_at changes"
       fetched_at: fetchedAt,
       last_status: 200,
       payload_bytes: payload.length,
-      etag: "etag-1",
+      etag: metaCall < 2 ? "etag-1" : "etag-2",
       last_error: null,
     };
   };
@@ -194,12 +202,114 @@ test("readTripUpdatesFeedFromCache fetches payload once when fetched_at changes"
   await mod.readTripUpdatesFeedFromCache({
     feedKey: "la_tripupdates",
     getRtCacheMetaLike,
+    getRtCachePayloadShaLike: async () => null,
     getRtCacheLike,
   });
   mod.__expireDecodedRtFeedMemoryCacheForTests("la_tripupdates");
   const second = await mod.readTripUpdatesFeedFromCache({
     feedKey: "la_tripupdates",
     getRtCacheMetaLike,
+    getRtCachePayloadShaLike: async () => null,
+    getRtCacheLike,
+  });
+
+  assert.equal(payloadReads, 2);
+  assert.equal(second.rtReadSource, "db");
+  assert.equal(second.rtCacheHit, false);
+});
+
+test("readTripUpdatesFeedFromCache uses payload_sha when etag is absent", async () => {
+  const mod = await loadRealtimeModule();
+  mod.__resetDecodedRtFeedMemoryCacheForTests();
+  const payload = buildTripUpdatesPayload();
+  const fetchedAt1 = new Date("2026-02-25T13:44:00.000Z");
+  const fetchedAt2 = new Date("2026-02-25T13:44:10.000Z");
+  let metaCall = 0;
+  let payloadReads = 0;
+
+  const getRtCacheMetaLike = async () => {
+    metaCall += 1;
+    return {
+      fetched_at: metaCall < 2 ? fetchedAt1 : fetchedAt2,
+      last_status: 200,
+      payload_bytes: payload.length,
+      etag: null,
+      last_error: null,
+    };
+  };
+  const getRtCachePayloadShaLike = async () =>
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  const getRtCacheLike = async () => {
+    payloadReads += 1;
+    return {
+      payloadBytes: payload,
+      fetched_at: fetchedAt1,
+      etag: null,
+      last_status: 200,
+      last_error: null,
+    };
+  };
+
+  await mod.readTripUpdatesFeedFromCache({
+    feedKey: "la_tripupdates",
+    getRtCacheMetaLike,
+    getRtCachePayloadShaLike,
+    getRtCacheLike,
+  });
+  mod.__expireDecodedRtFeedMemoryCacheForTests("la_tripupdates");
+  const second = await mod.readTripUpdatesFeedFromCache({
+    feedKey: "la_tripupdates",
+    getRtCacheMetaLike,
+    getRtCachePayloadShaLike,
+    getRtCacheLike,
+  });
+
+  assert.equal(payloadReads, 1);
+  assert.equal(second.rtReadSource, "memory");
+  assert.equal(second.rtCacheHit, true);
+});
+
+test("readTripUpdatesFeedFromCache falls back to fetched_at when etag and sha are absent", async () => {
+  const mod = await loadRealtimeModule();
+  mod.__resetDecodedRtFeedMemoryCacheForTests();
+  const payload = buildTripUpdatesPayload();
+  const fetchedAt1 = new Date("2026-02-25T13:45:00.000Z");
+  const fetchedAt2 = new Date("2026-02-25T13:45:10.000Z");
+  let metaCall = 0;
+  let payloadReads = 0;
+
+  const getRtCacheMetaLike = async () => {
+    metaCall += 1;
+    return {
+      fetched_at: metaCall < 2 ? fetchedAt1 : fetchedAt2,
+      last_status: 200,
+      payload_bytes: payload.length,
+      etag: null,
+      last_error: null,
+    };
+  };
+  const getRtCacheLike = async () => {
+    payloadReads += 1;
+    return {
+      payloadBytes: payload,
+      fetched_at: payloadReads < 2 ? fetchedAt1 : fetchedAt2,
+      etag: null,
+      last_status: 200,
+      last_error: null,
+    };
+  };
+
+  await mod.readTripUpdatesFeedFromCache({
+    feedKey: "la_tripupdates",
+    getRtCacheMetaLike,
+    getRtCachePayloadShaLike: async () => null,
+    getRtCacheLike,
+  });
+  mod.__expireDecodedRtFeedMemoryCacheForTests("la_tripupdates");
+  const second = await mod.readTripUpdatesFeedFromCache({
+    feedKey: "la_tripupdates",
+    getRtCacheMetaLike,
+    getRtCachePayloadShaLike: async () => null,
     getRtCacheLike,
   });
 

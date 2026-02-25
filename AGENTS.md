@@ -70,6 +70,8 @@ If context is still missing after this order, then inspect code.
 | Stop search normalization/ranking/sql strategy | `realtime_api/backend/src/search/stopsSearch.js`, `realtime_api/backend/src/util/searchNormalize.js` |
 | Search DB normalization/index setup | `realtime_api/backend/sql/optimize_stop_search.sql` |
 | Stationboard DB optimization SQL | `realtime_api/backend/sql/optimize_stationboard.sql`, `realtime_api/backend/sql/optimize_stationboard_latency.sql` |
+| Stationboard RT baseline diagnostics (DB churn + freshness + latency snapshot) | `realtime_api/backend/scripts/rtBaselineReport.mjs`, output `realtime_api/backend/docs/diagnostics/rt-baseline-*.json` and `rt-baseline-*.md` |
+| RT cache churn quick measurement (payload sizes/statements/activity) | `realtime_api/backend/scripts/measureRtCacheChurn.mjs`, docs in `realtime_api/backend/README_backend.md` |
 | Poll cadence/backoff | `realtime_api/backend/scripts/pollLaTripUpdates.js`, `realtime_api/backend/scripts/pollLaServiceAlerts.js` |
 | Frontend polling/render behavior | `realtime_api/frontend/logic.v*.js`, `realtime_api/frontend/ui.v*.js`, `realtime_api/frontend/state.v*.js` |
 | Frontend refresh request coalescing (avoid parallel fetch bursts) | `realtime_api/frontend/v20260223-1.main.js` |
@@ -88,6 +90,8 @@ If context is still missing after this order, then inspect code.
 - `cd realtime_api/backend && npm run search:verify`
 - `cd realtime_api/backend && npm run search:bench`
 - `cd realtime_api/backend && node scripts/debugStationboard.js Parent8587387`
+- `cd realtime_api/backend && node scripts/rtBaselineReport.mjs --url https://api.mesdeparts.ch --stops Parent8587387,Parent8501000,Parent8501120 --n 30`
+- `cd realtime_api/backend && node scripts/measureRtCacheChurn.mjs`
 - `cd realtime_api/frontend && npm test`
 - `npx wrangler deploy --config realtime_api/edge/wrangler.toml`
 

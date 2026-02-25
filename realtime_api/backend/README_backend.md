@@ -163,6 +163,7 @@ This prevents repeated `optimize_stop_search.sql` rebuild churn on unchanged hou
 To reduce per-request DB pressure and poller write churn:
 
 - Stationboard TripUpdates reads use a short in-process decoded-feed cache (`RT_DECODED_FEED_CACHE_MS`, default `10s`, clamped `5s..30s`) with in-flight read coalescing.
+- Decoded-feed cache invalidation uses RT content identity per feed (`etag` -> payload SHA -> `fetched_at` fallback) to avoid unnecessary payload re-reads when content is unchanged.
 - `debug=1` diagnostics now include:
   - `debug.rt.tripUpdates.rtReadSource` (`memory` or `db`)
   - `debug.rt.tripUpdates.rtCacheHit`
