@@ -14,6 +14,7 @@ const DEFAULT_N = 30;
 const DEFAULT_DURATION_MINUTES = 0;
 const DEFAULT_ACCEPT_MAX_PAYLOAD_SELECT_CALLS = 2;
 const DEFAULT_ACCEPT_MAX_PAYLOAD_UPSERT_CALLS = 2;
+const DEFAULT_ACCEPT_MAX_GUARDED_ERROR_COUNT = 0;
 
 function asText(value) {
   return String(value || "").trim();
@@ -37,6 +38,7 @@ function parseArgs(argv) {
   let resetStatements = false;
   let acceptMaxPayloadSelectCalls = DEFAULT_ACCEPT_MAX_PAYLOAD_SELECT_CALLS;
   let acceptMaxPayloadUpsertCalls = DEFAULT_ACCEPT_MAX_PAYLOAD_UPSERT_CALLS;
+  let acceptMaxGuardedErrorCount = DEFAULT_ACCEPT_MAX_GUARDED_ERROR_COUNT;
 
   for (let i = 0; i < argv.length; i += 1) {
     const key = argv[i];
@@ -86,6 +88,14 @@ function parseArgs(argv) {
       i += 1;
       continue;
     }
+    if (key === "--accept-max-guarded-error-count" && value) {
+      acceptMaxGuardedErrorCount = Math.max(
+        0,
+        asInt(value, DEFAULT_ACCEPT_MAX_GUARDED_ERROR_COUNT)
+      );
+      i += 1;
+      continue;
+    }
   }
 
   return {
@@ -97,6 +107,7 @@ function parseArgs(argv) {
     acceptance: {
       maxPayloadSelectCalls: acceptMaxPayloadSelectCalls,
       maxPayloadUpsertCalls: acceptMaxPayloadUpsertCalls,
+      maxGuardedErrorCount: acceptMaxGuardedErrorCount,
     },
   };
 }
@@ -384,11 +395,13 @@ function summarizeSamples(samples) {
     .filter((v) => Number.isFinite(v));
   const statusCounts = {};
   let appliedCount = 0;
+  let guardedErrorCount = 0;
 
   for (const sample of items) {
     const key = asText(sample?.meta?.rtStatus) || "unknown";
     statusCounts[key] = (statusCounts[key] || 0) + 1;
     if (key === "applied") appliedCount += 1;
+    if (key === "guarded_error") guardedErrorCount += 1;
   }
 
   return {
@@ -402,26 +415,40 @@ function summarizeSamples(samples) {
     maxRtCacheAgeMs: roundMaybe(cacheAges.length ? Math.max(...cacheAges) : null, 2),
     percentRtApplied:
       items.length > 0 ? roundMaybe((appliedCount / items.length) * 100, 2) : null,
+    guardedErrorCount,
+    percentRtGuardedError:
+      items.length > 0 ? roundMaybe((guardedErrorCount / items.length) * 100, 2) : null,
   };
 }
 
-function evaluateAcceptance({ startSnapshot, endSnapshot, thresholds }) {
+function evaluateAcceptance({ startSnapshot, endSnapshot, thresholds, summary }) {
   const startCounters = startSnapshot?.counters || {};
   const endCounters = endSnapshot?.counters || {};
 
+  const payloadSelectCallsStart = Number(startCounters.payloadSelectCalls || 0);
+  const payloadSelectCallsEnd = Number(endCounters.payloadSelectCalls || 0);
+  const payloadUpsertCallsStart = Number(startCounters.payloadUpsertCalls || 0);
+  const payloadUpsertCallsEnd = Number(endCounters.payloadUpsertCalls || 0);
   const payloadSelectCallsDelta =
-    Number(endCounters.payloadSelectCalls || 0) - Number(startCounters.payloadSelectCalls || 0);
+    payloadSelectCallsEnd - payloadSelectCallsStart;
   const payloadUpsertCallsDelta =
-    Number(endCounters.payloadUpsertCalls || 0) - Number(startCounters.payloadUpsertCalls || 0);
+    payloadUpsertCallsEnd - payloadUpsertCallsStart;
+  const guardedErrorCount = Number(summary?.guardedErrorCount || 0);
 
   const payloadSelectPass = payloadSelectCallsDelta <= Number(thresholds.maxPayloadSelectCalls || 0);
   const payloadUpsertPass = payloadUpsertCallsDelta <= Number(thresholds.maxPayloadUpsertCalls || 0);
+  const guardedErrorPass = guardedErrorCount <= Number(thresholds.maxGuardedErrorCount || 0);
 
   return {
     thresholds,
     observed: {
+      payloadSelectCallsStart,
+      payloadSelectCallsEnd,
       payloadSelectCallsDelta,
+      payloadUpsertCallsStart,
+      payloadUpsertCallsEnd,
       payloadUpsertCallsDelta,
+      guardedErrorCount,
     },
     checks: {
       payloadSelectNearZero: {
@@ -434,8 +461,13 @@ function evaluateAcceptance({ startSnapshot, endSnapshot, thresholds }) {
         description:
           "UPSERT rt_cache with payload should be near-zero after parsed poller writes",
       },
+      noGuardedErrorStatus: {
+        pass: guardedErrorPass,
+        description:
+          "stationboard rtStatus=guarded_error should not appear in measurement window",
+      },
     },
-    overallPass: payloadSelectPass && payloadUpsertPass,
+    overallPass: payloadSelectPass && payloadUpsertPass && guardedErrorPass,
   };
 }
 
@@ -472,13 +504,15 @@ function buildMarkdownReport({
 | median rtCacheAgeMs | ${summary.medianRtCacheAgeMs ?? "n/a"} |
 | max rtCacheAgeMs | ${summary.maxRtCacheAgeMs ?? "n/a"} |
 | % responses rtStatus=applied | ${summary.percentRtApplied ?? "n/a"} |
+| % responses rtStatus=guarded_error | ${summary.percentRtGuardedError ?? "n/a"} |
 
 ## Acceptance (10-minute thresholds)
 
-| Check | Threshold | Observed delta | Pass |
+| Check | Threshold | Observed | Pass |
 | --- | --- | --- | --- |
-| SELECT payload FROM rt_cache | <= ${acceptance.thresholds.maxPayloadSelectCalls} calls | ${acceptance.observed.payloadSelectCallsDelta} | ${acceptance.checks.payloadSelectNearZero.pass ? "yes" : "no"} |
-| UPSERT rt_cache with payload | <= ${acceptance.thresholds.maxPayloadUpsertCalls} calls | ${acceptance.observed.payloadUpsertCallsDelta} | ${acceptance.checks.payloadUpsertNearZero.pass ? "yes" : "no"} |
+| SELECT payload FROM rt_cache | <= ${acceptance.thresholds.maxPayloadSelectCalls} calls | ${acceptance.observed.payloadSelectCallsStart} -> ${acceptance.observed.payloadSelectCallsEnd} (delta ${acceptance.observed.payloadSelectCallsDelta}) | ${acceptance.checks.payloadSelectNearZero.pass ? "yes" : "no"} |
+| UPSERT rt_cache with payload | <= ${acceptance.thresholds.maxPayloadUpsertCalls} calls | ${acceptance.observed.payloadUpsertCallsStart} -> ${acceptance.observed.payloadUpsertCallsEnd} (delta ${acceptance.observed.payloadUpsertCallsDelta}) | ${acceptance.checks.payloadUpsertNearZero.pass ? "yes" : "no"} |
+| rtStatus=guarded_error occurrences | <= ${acceptance.thresholds.maxGuardedErrorCount} responses | ${acceptance.observed.guardedErrorCount} | ${acceptance.checks.noGuardedErrorStatus.pass ? "yes" : "no"} |
 
 Overall acceptance: ${acceptance.overallPass ? "PASS" : "FAIL"}
 
@@ -597,6 +631,7 @@ async function main() {
     startSnapshot,
     endSnapshot,
     thresholds: acceptance,
+    summary,
   });
 
   const payload = {
@@ -653,7 +688,15 @@ async function main() {
   console.log(
     `[rt-baseline] acceptance payload_upsert_delta=${acceptanceResult.observed.payloadUpsertCallsDelta} threshold=${acceptanceResult.thresholds.maxPayloadUpsertCalls}`
   );
+  console.log(
+    `[rt-baseline] acceptance guarded_error_count=${acceptanceResult.observed.guardedErrorCount} threshold=${acceptanceResult.thresholds.maxGuardedErrorCount}`
+  );
   console.log(`[rt-baseline] acceptance overall=${acceptanceResult.overallPass ? "PASS" : "FAIL"}`);
+  if (!acceptanceResult.overallPass) {
+    throw new Error(
+      `model_a_plus_acceptance_failed payload_select_delta=${acceptanceResult.observed.payloadSelectCallsDelta} payload_upsert_delta=${acceptanceResult.observed.payloadUpsertCallsDelta} guarded_error_count=${acceptanceResult.observed.guardedErrorCount}`
+    );
+  }
 }
 
 main().catch((err) => {
