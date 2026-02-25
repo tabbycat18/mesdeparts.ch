@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import {
   getHasSeenThreeDotsTip,
   setHasSeenThreeDotsTip,
-} from "../v20260224-1.threeDotsTip.js";
+} from "../v20260205-1.threeDotsTip.js";
 
 class MemoryStorage {
   constructor() {
