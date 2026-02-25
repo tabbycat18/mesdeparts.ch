@@ -181,6 +181,7 @@ To reduce per-request DB pressure and poller write churn:
   - `debug.rt.tripUpdates.instanceId` / `debug.rt.alerts.instanceId` (instance attribution in multi-machine deployments)
 - Pollers avoid redundant writes:
   - pollers persist decoded protobuf snapshots into parsed RT tables (`rt_trip_updates`, `rt_stop_time_updates`, `rt_service_alerts`)
+  - parsed-table compaction strategy is snapshot replacement (bounded cardinality); retention window knob `RT_PARSED_RETENTION_HOURS` (default `6`) controls stale-row pruning metrics per tick
   - `rt_cache` now stores lightweight metadata only (`fetched_at`, `last_status`, `etag`, `last_error`); payload SHA-256 is tracked in `meta_kv`
   - unchanged `200` payloads skip parsed snapshot rewrites when SHA-256 matches (`RT_CACHE_MIN_WRITE_INTERVAL_MS`, default `30000`)
   - frequent `304` status writes are throttled by the same interval

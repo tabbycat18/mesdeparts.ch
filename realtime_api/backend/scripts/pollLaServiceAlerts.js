@@ -37,6 +37,10 @@ const RT_CACHE_MIN_WRITE_INTERVAL_MS = Math.max(
   5_000,
   Number(process.env.RT_CACHE_MIN_WRITE_INTERVAL_MS || "30000")
 );
+const RT_PARSED_RETENTION_HOURS = Math.max(
+  1,
+  Number(process.env.RT_PARSED_RETENTION_HOURS || "6")
+);
 const FEED_KEY = LA_SERVICEALERTS_FEED_KEY;
 const FEED_WRITE_LOCK_ID = 7_483_922;
 const UPSTREAM_URL =
@@ -143,7 +147,10 @@ export function createLaServiceAlertsPoller({
   let consecutive429Count = 0;
   let consecutiveErrCount = 0;
 
-  function logLine(event, { status = null, backoffMs = 0, lastFetchedAgeMs = null, etagPresent = false } = {}) {
+  function logLine(
+    event,
+    { status = null, backoffMs = 0, lastFetchedAgeMs = null, etagPresent = false, extra = {} } = {}
+  ) {
     logLike({
       event,
       nowISO: new Date(nowLike()).toISOString(),
@@ -151,6 +158,7 @@ export function createLaServiceAlertsPoller({
       backoffMs,
       lastFetchedAgeMs,
       etagPresent: etagPresent === true,
+      ...extra,
     });
   }
 
@@ -304,6 +312,7 @@ export function createLaServiceAlertsPoller({
         const decodedFeed = decodeFeedLike(payloadBytes);
         parsedWrite = await persistParsedServiceAlertsSnapshotLike(decodedFeed, {
           writeLockId: FEED_WRITE_LOCK_ID,
+          retentionHours: RT_PARSED_RETENTION_HOURS,
         });
       } catch (err) {
         const backoffMs = backoffErrMs();
@@ -350,6 +359,12 @@ export function createLaServiceAlertsPoller({
         backoffMs: 0,
         lastFetchedAgeMs: 0,
         etagPresent: !!responseEtag,
+        extra: {
+          retentionHours: RT_PARSED_RETENTION_HOURS,
+          parsedAlertRowsInserted: Number(parsedWrite?.alertRows || 0),
+          parsedAlertRowsDeletedBySnapshot: Number(parsedWrite?.deletedBySnapshotAlertRows || 0),
+          parsedAlertRowsDeletedByRetention: Number(parsedWrite?.deletedByRetentionAlertRows || 0),
+        },
       });
       return INTERVAL_MS;
     }

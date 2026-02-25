@@ -1,6 +1,11 @@
 import { pool } from "../../db.js";
 import { normalizeAlertEntity } from "../loaders/fetchServiceAlerts.js";
 
+const DEFAULT_RT_PARSED_RETENTION_HOURS = Math.max(
+  1,
+  Number(process.env.RT_PARSED_RETENTION_HOURS || "6")
+);
+
 function text(value) {
   return String(value || "").trim();
 }
@@ -194,8 +199,8 @@ function extractServiceAlertsRows(feed) {
   return rows;
 }
 
-async function withAdvisoryWriteLock(lockId, fn) {
-  const client = await pool.connect();
+async function withAdvisoryWriteLock(lockId, fn, poolLike = pool) {
+  const client = await poolLike.connect();
   try {
     await client.query("BEGIN");
     const lockRes = await client.query(
@@ -219,6 +224,23 @@ async function withAdvisoryWriteLock(lockId, fn) {
   } finally {
     client.release();
   }
+}
+
+function resolveRetentionHours(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return DEFAULT_RT_PARSED_RETENTION_HOURS;
+  return n;
+}
+
+async function deleteOlderThanRetention(client, tableName, retentionHours) {
+  const res = await client.query(
+    `
+      DELETE FROM ${tableName}
+      WHERE updated_at < NOW() - ($1::double precision * INTERVAL '1 hour')
+    `,
+    [retentionHours]
+  );
+  return Number(res?.rowCount || 0);
 }
 
 async function insertTripRows(client, rows = []) {
@@ -341,37 +363,68 @@ async function insertAlertRows(client, rows = []) {
   }
 }
 
-export async function persistParsedTripUpdatesSnapshot(feed, { writeLockId } = {}) {
+export async function persistParsedTripUpdatesSnapshot(
+  feed,
+  { writeLockId, retentionHours, poolLike } = {}
+) {
   const lockId = Number(writeLockId);
   if (!Number.isFinite(lockId)) {
     throw new Error("persist_parsed_trip_updates_missing_lock_id");
   }
+  const effectiveRetentionHours = resolveRetentionHours(retentionHours);
 
   const { tripRows, stopRows } = extractTripUpdatesRows(feed);
   return withAdvisoryWriteLock(lockId, async (client) => {
-    await client.query("DELETE FROM public.rt_stop_time_updates");
-    await client.query("DELETE FROM public.rt_trip_updates");
+    const deletedByRetentionStopRows = await deleteOlderThanRetention(
+      client,
+      "public.rt_stop_time_updates",
+      effectiveRetentionHours
+    );
+    const deletedByRetentionTripRows = await deleteOlderThanRetention(
+      client,
+      "public.rt_trip_updates",
+      effectiveRetentionHours
+    );
+    const deletedBySnapshotStop = await client.query("DELETE FROM public.rt_stop_time_updates");
+    const deletedBySnapshotTrip = await client.query("DELETE FROM public.rt_trip_updates");
     await insertTripRows(client, tripRows);
     await insertStopRows(client, stopRows);
     return {
+      retentionHours: effectiveRetentionHours,
       tripRows: tripRows.length,
       stopRows: stopRows.length,
+      deletedByRetentionTripRows,
+      deletedByRetentionStopRows,
+      deletedBySnapshotTripRows: Number(deletedBySnapshotTrip?.rowCount || 0),
+      deletedBySnapshotStopRows: Number(deletedBySnapshotStop?.rowCount || 0),
     };
-  });
+  }, poolLike);
 }
 
-export async function persistParsedServiceAlertsSnapshot(feed, { writeLockId } = {}) {
+export async function persistParsedServiceAlertsSnapshot(
+  feed,
+  { writeLockId, retentionHours, poolLike } = {}
+) {
   const lockId = Number(writeLockId);
   if (!Number.isFinite(lockId)) {
     throw new Error("persist_parsed_service_alerts_missing_lock_id");
   }
+  const effectiveRetentionHours = resolveRetentionHours(retentionHours);
 
   const rows = extractServiceAlertsRows(feed);
   return withAdvisoryWriteLock(lockId, async (client) => {
-    await client.query("DELETE FROM public.rt_service_alerts");
+    const deletedByRetentionAlertRows = await deleteOlderThanRetention(
+      client,
+      "public.rt_service_alerts",
+      effectiveRetentionHours
+    );
+    const deletedBySnapshot = await client.query("DELETE FROM public.rt_service_alerts");
     await insertAlertRows(client, rows);
     return {
+      retentionHours: effectiveRetentionHours,
       alertRows: rows.length,
+      deletedByRetentionAlertRows,
+      deletedBySnapshotAlertRows: Number(deletedBySnapshot?.rowCount || 0),
     };
-  });
+  }, poolLike);
 }

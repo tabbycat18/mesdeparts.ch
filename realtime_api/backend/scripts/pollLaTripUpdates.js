@@ -37,6 +37,10 @@ const RT_CACHE_MIN_WRITE_INTERVAL_MS = Math.max(
   5_000,
   Number(process.env.RT_CACHE_MIN_WRITE_INTERVAL_MS || "30000")
 );
+const RT_PARSED_RETENTION_HOURS = Math.max(
+  1,
+  Number(process.env.RT_PARSED_RETENTION_HOURS || "6")
+);
 const FEED_KEY = LA_TRIPUPDATES_FEED_KEY;
 const FEED_WRITE_LOCK_ID = 7_483_921;
 const UPSTREAM_URL =
@@ -139,7 +143,10 @@ export function createLaTripUpdatesPoller({
   let consecutive429Count = 0;
   let consecutiveErrCount = 0;
 
-  function logLine(event, { status = null, backoffMs = 0, lastFetchedAgeMs = null, etagPresent = false } = {}) {
+  function logLine(
+    event,
+    { status = null, backoffMs = 0, lastFetchedAgeMs = null, etagPresent = false, extra = {} } = {}
+  ) {
     logLike({
       event,
       nowISO: new Date(nowLike()).toISOString(),
@@ -147,6 +154,7 @@ export function createLaTripUpdatesPoller({
       backoffMs,
       lastFetchedAgeMs,
       etagPresent: etagPresent === true,
+      ...extra,
     });
   }
 
@@ -300,6 +308,7 @@ export function createLaTripUpdatesPoller({
         const decodedFeed = decodeFeedLike(payloadBytes);
         parsedWrite = await persistParsedTripUpdatesSnapshotLike(decodedFeed, {
           writeLockId: FEED_WRITE_LOCK_ID,
+          retentionHours: RT_PARSED_RETENTION_HOURS,
         });
       } catch (err) {
         const backoffMs = backoffErrMs();
@@ -346,6 +355,15 @@ export function createLaTripUpdatesPoller({
         backoffMs: 0,
         lastFetchedAgeMs: 0,
         etagPresent: !!responseEtag,
+        extra: {
+          retentionHours: RT_PARSED_RETENTION_HOURS,
+          parsedTripRowsInserted: Number(parsedWrite?.tripRows || 0),
+          parsedStopRowsInserted: Number(parsedWrite?.stopRows || 0),
+          parsedTripRowsDeletedBySnapshot: Number(parsedWrite?.deletedBySnapshotTripRows || 0),
+          parsedStopRowsDeletedBySnapshot: Number(parsedWrite?.deletedBySnapshotStopRows || 0),
+          parsedTripRowsDeletedByRetention: Number(parsedWrite?.deletedByRetentionTripRows || 0),
+          parsedStopRowsDeletedByRetention: Number(parsedWrite?.deletedByRetentionStopRows || 0),
+        },
       });
       return INTERVAL_MS;
     }
