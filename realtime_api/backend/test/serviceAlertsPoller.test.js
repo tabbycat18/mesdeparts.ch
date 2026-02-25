@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 
 async function loadPollerFactory() {
   process.env.DATABASE_URL ||= "postgres://localhost:5432/mesdeparts_test";
@@ -220,4 +221,60 @@ test("service alerts poller unchanged payload skips parsed write and logs skip_w
     logs.some((entry) => entry?.event === "service_alerts_poller_skip_write_unchanged"),
     true
   );
+});
+
+test("service alerts poller source keeps blob payload UPSERT path disabled", () => {
+  const source = readFileSync(
+    new URL("../scripts/pollLaServiceAlerts.js", import.meta.url),
+    "utf8"
+  );
+
+  assert.equal(source.includes("upsertRtCache"), false);
+  assert.equal(source.includes("INSERT INTO public.rt_cache"), false);
+  assert.equal(source.includes("payload = EXCLUDED.payload"), false);
+});
+
+test("service alerts changed 200 writes parsed snapshot + metadata only", async () => {
+  const createLaServiceAlertsPoller = await loadPollerFactory();
+  const payload = Buffer.from("parsed-alerts-payload");
+  const decodedFeed = { entity: [{ id: "alert-1" }] };
+  let persistArgs = null;
+  let statusArgs = null;
+  let shaWrites = 0;
+
+  const poller = createLaServiceAlertsPoller({
+    token: "test-token",
+    fetchLike: async () => okResponse(payload, "etag-new"),
+    getRtCacheMetaLike: async () => ({
+      fetched_at: new Date(Date.now() - 120_000),
+      etag: "etag-old",
+      last_status: 200,
+      last_error: null,
+    }),
+    getRtCachePayloadShaLike: async () => null,
+    decodeFeedLike: () => decodedFeed,
+    persistParsedServiceAlertsSnapshotLike: async (...args) => {
+      persistArgs = args;
+      return { updated: true, writeSkippedByLock: false, alertRows: 1 };
+    },
+    updateRtCacheStatusLike: async (...args) => {
+      statusArgs = args;
+      return { updated: true, writeSkippedByLock: false };
+    },
+    setRtCachePayloadShaLike: async () => {
+      shaWrites += 1;
+      return { updated: true, writeSkippedByLock: false };
+    },
+    ensureRtCacheMetadataRowLike: async () => ({ inserted: false, writeSkippedByLock: false }),
+    logLike: () => {},
+  });
+
+  const waitMs = await poller.tick();
+  assert.equal(waitMs, 60_000);
+  assert.ok(Array.isArray(persistArgs));
+  assert.equal(persistArgs[0], decodedFeed);
+  assert.ok(Array.isArray(statusArgs));
+  assert.equal(String(statusArgs[0]), "la_servicealerts");
+  assert.equal(Buffer.isBuffer(statusArgs[1]), false);
+  assert.equal(shaWrites, 1);
 });

@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 
 async function loadPollerFactory() {
   process.env.DATABASE_URL ||= "postgres://localhost:5432/mesdeparts_test";
@@ -217,4 +218,60 @@ test("poller unchanged payload skips parsed write and logs skip_write_unchanged 
   assert.equal(parsedWrites, 0);
   assert.equal(metadataUpdates, 1);
   assert.equal(logs.some((entry) => entry?.event === "poller_skip_write_unchanged"), true);
+});
+
+test("poller source keeps blob payload UPSERT path disabled", () => {
+  const source = readFileSync(
+    new URL("../scripts/pollLaTripUpdates.js", import.meta.url),
+    "utf8"
+  );
+
+  assert.equal(source.includes("upsertRtCache"), false);
+  assert.equal(source.includes("INSERT INTO public.rt_cache"), false);
+  assert.equal(source.includes("payload = EXCLUDED.payload"), false);
+});
+
+test("poller changed 200 writes parsed snapshot + metadata only", async () => {
+  const createLaTripUpdatesPoller = await loadPollerFactory();
+  const payload = Buffer.from("parsed-snapshot-payload");
+  const decodedFeed = { entity: [{ id: "ent-1" }] };
+  let persistArgs = null;
+  let statusArgs = null;
+  let shaWrites = 0;
+
+  const poller = createLaTripUpdatesPoller({
+    token: "test-token",
+    fetchLike: async () => okResponse(payload, "etag-new"),
+    getRtCacheMetaLike: async () => ({
+      fetched_at: new Date(Date.now() - 120_000),
+      etag: "etag-old",
+      last_status: 200,
+      last_error: null,
+    }),
+    getRtCachePayloadShaLike: async () => null,
+    decodeFeedLike: () => decodedFeed,
+    persistParsedTripUpdatesSnapshotLike: async (...args) => {
+      persistArgs = args;
+      return { updated: true, writeSkippedByLock: false, tripRows: 1, stopRows: 1 };
+    },
+    updateRtCacheStatusLike: async (...args) => {
+      statusArgs = args;
+      return { updated: true, writeSkippedByLock: false };
+    },
+    setRtCachePayloadShaLike: async () => {
+      shaWrites += 1;
+      return { updated: true, writeSkippedByLock: false };
+    },
+    ensureRtCacheMetadataRowLike: async () => ({ inserted: false, writeSkippedByLock: false }),
+    logLike: () => {},
+  });
+
+  const waitMs = await poller.tick();
+  assert.equal(waitMs, 15_000);
+  assert.ok(Array.isArray(persistArgs));
+  assert.equal(persistArgs[0], decodedFeed);
+  assert.ok(Array.isArray(statusArgs));
+  assert.equal(String(statusArgs[0]), "la_tripupdates");
+  assert.equal(Buffer.isBuffer(statusArgs[1]), false);
+  assert.equal(shaWrites, 1);
 });

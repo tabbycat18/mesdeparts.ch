@@ -63,6 +63,7 @@ STATIONBOARD_BASE_URL=https://api.mesdeparts.ch node scripts/debugStop.js "Lausa
 - `pollLaTripUpdates.js`
   - Polls LA GTFS-RT TripUpdates feed, decodes protobuf, writes parsed snapshots to `rt_trip_updates` + `rt_stop_time_updates`.
   - Writes lightweight feed metadata to `rt_cache` (`fetched_at`, `last_status`, `etag`, `last_error`) and payload SHA-256 to `meta_kv`.
+  - Does not execute `rt_cache.payload` UPSERT writes on poll ticks (blob write path is disabled).
   - Snapshot strategy: each successful parsed write replaces the previous parsed snapshot; retention compaction window is controlled by `RT_PARSED_RETENTION_HOURS` (default `6`).
   - Default interval: `GTFS_RT_POLL_INTERVAL_MS` (default `15000` ms).
   - Has 429/error backoff logic.
@@ -73,6 +74,7 @@ STATIONBOARD_BASE_URL=https://api.mesdeparts.ch node scripts/debugStop.js "Lausa
 - `pollLaServiceAlerts.js`
   - Polls LA GTFS Service Alerts feed, decodes protobuf, writes parsed snapshots to `rt_service_alerts`.
   - Writes lightweight feed metadata to `rt_cache` (`fetched_at`, `last_status`, `etag`, `last_error`) and payload SHA-256 to `meta_kv`.
+  - Does not execute `rt_cache.payload` UPSERT writes on poll ticks (blob write path is disabled).
   - Snapshot strategy: each successful parsed write replaces the previous parsed snapshot; retention compaction window is controlled by `RT_PARSED_RETENTION_HOURS` (default `6`).
   - Default interval: `GTFS_SA_POLL_INTERVAL_MS` (default `60000` ms, min `15000`).
   - Has 429/error backoff logic.
