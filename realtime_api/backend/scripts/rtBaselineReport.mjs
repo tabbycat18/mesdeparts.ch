@@ -11,6 +11,9 @@ const backendRoot = path.resolve(__dirname, "..");
 const DEFAULT_URL = "https://api.mesdeparts.ch";
 const DEFAULT_STOPS = ["Parent8587387", "Parent8501000", "Parent8501120"];
 const DEFAULT_N = 30;
+const DEFAULT_DURATION_MINUTES = 0;
+const DEFAULT_ACCEPT_MAX_PAYLOAD_SELECT_CALLS = 2;
+const DEFAULT_ACCEPT_MAX_PAYLOAD_UPSERT_CALLS = 2;
 
 function asText(value) {
   return String(value || "").trim();
@@ -21,14 +24,28 @@ function asInt(value, fallback) {
   return Number.isFinite(out) ? out : fallback;
 }
 
+function asNumber(value, fallback) {
+  const out = Number(value);
+  return Number.isFinite(out) ? out : fallback;
+}
+
 function parseArgs(argv) {
   let url = DEFAULT_URL;
   let n = DEFAULT_N;
   let stops = [...DEFAULT_STOPS];
+  let durationMinutes = DEFAULT_DURATION_MINUTES;
+  let resetStatements = false;
+  let acceptMaxPayloadSelectCalls = DEFAULT_ACCEPT_MAX_PAYLOAD_SELECT_CALLS;
+  let acceptMaxPayloadUpsertCalls = DEFAULT_ACCEPT_MAX_PAYLOAD_UPSERT_CALLS;
 
   for (let i = 0; i < argv.length; i += 1) {
     const key = argv[i];
     const value = argv[i + 1];
+
+    if (key === "--reset-statements") {
+      resetStatements = true;
+      continue;
+    }
     if (key === "--url" && value) {
       url = asText(value) || DEFAULT_URL;
       i += 1;
@@ -44,13 +61,44 @@ function parseArgs(argv) {
       continue;
     }
     if (key === "--n" && value) {
-      n = Math.max(1, asInt(value, DEFAULT_N));
+      n = Math.max(0, asInt(value, DEFAULT_N));
+      i += 1;
+      continue;
+    }
+    if (key === "--duration-minutes" && value) {
+      durationMinutes = Math.max(0, asNumber(value, DEFAULT_DURATION_MINUTES));
+      i += 1;
+      continue;
+    }
+    if (key === "--accept-max-payload-select-calls" && value) {
+      acceptMaxPayloadSelectCalls = Math.max(
+        0,
+        asInt(value, DEFAULT_ACCEPT_MAX_PAYLOAD_SELECT_CALLS)
+      );
+      i += 1;
+      continue;
+    }
+    if (key === "--accept-max-payload-upsert-calls" && value) {
+      acceptMaxPayloadUpsertCalls = Math.max(
+        0,
+        asInt(value, DEFAULT_ACCEPT_MAX_PAYLOAD_UPSERT_CALLS)
+      );
       i += 1;
       continue;
     }
   }
 
-  return { url, stops, n };
+  return {
+    url,
+    stops,
+    n,
+    durationMinutes,
+    resetStatements,
+    acceptance: {
+      maxPayloadSelectCalls: acceptMaxPayloadSelectCalls,
+      maxPayloadUpsertCalls: acceptMaxPayloadUpsertCalls,
+    },
+  };
 }
 
 function normalizeBaseUrl(raw) {
@@ -103,6 +151,11 @@ function safeError(err, databaseUrl) {
   return raw.split(dbUrl).join("[redacted:DATABASE_URL]");
 }
 
+function sleep(ms) {
+  const timeoutMs = Math.max(0, Number(ms) || 0);
+  return new Promise((resolve) => setTimeout(resolve, timeoutMs));
+}
+
 function loadDotEnvIfNeeded() {
   if (process.env.DATABASE_URL) return;
   const candidates = [
@@ -120,7 +173,7 @@ function loadDotEnvIfNeeded() {
       const key = trimmed.slice(0, idx).trim();
       let value = trimmed.slice(idx + 1).trim();
       if (
-        (value.startsWith("\"") && value.endsWith("\"")) ||
+        (value.startsWith('"') && value.endsWith('"')) ||
         (value.startsWith("'") && value.endsWith("'"))
       ) {
         value = value.slice(1, -1);
@@ -133,7 +186,111 @@ function loadDotEnvIfNeeded() {
   }
 }
 
-async function queryDbBaseline(client) {
+function normalizeStatementRow(row) {
+  return {
+    query: asText(row?.query),
+    calls: Number(row?.calls || 0),
+    rows: Number(row?.rows || 0),
+    totalExecMs: Number(row?.total_exec_time || 0),
+    meanExecMs: Number(row?.mean_exec_time || 0),
+  };
+}
+
+function analyzeRtCacheStatements(rows) {
+  const out = {
+    payloadSelectCalls: 0,
+    payloadUpsertCalls: 0,
+    metadataUpdateCalls: 0,
+    totalRtCacheCalls: 0,
+  };
+
+  for (const row of rows) {
+    const query = asText(row?.query).toLowerCase();
+    const calls = Number(row?.calls || 0);
+    if (!Number.isFinite(calls) || calls <= 0) continue;
+
+    out.totalRtCacheCalls += calls;
+    if (
+      query.includes("select") &&
+      query.includes("payload") &&
+      query.includes("from public.rt_cache")
+    ) {
+      out.payloadSelectCalls += calls;
+    }
+    if (
+      query.includes("insert into public.rt_cache") &&
+      query.includes("do update") &&
+      query.includes("payload")
+    ) {
+      out.payloadUpsertCalls += calls;
+    }
+    if (query.includes("update public.rt_cache") && !query.includes("payload")) {
+      out.metadataUpdateCalls += calls;
+    }
+  }
+
+  return out;
+}
+
+function buildStatementDelta(startRows, endRows) {
+  const byStart = new Map(startRows.map((row) => [row.query, row]));
+  const byEnd = new Map(endRows.map((row) => [row.query, row]));
+  const allQueries = new Set([...byStart.keys(), ...byEnd.keys()]);
+
+  const deltas = [];
+  for (const query of allQueries) {
+    const start = byStart.get(query) || { calls: 0, rows: 0, totalExecMs: 0 };
+    const end = byEnd.get(query) || { calls: 0, rows: 0, totalExecMs: 0 };
+    const deltaCalls = Number(end.calls || 0) - Number(start.calls || 0);
+    const deltaRows = Number(end.rows || 0) - Number(start.rows || 0);
+    const deltaTotalExecMs = Number(end.totalExecMs || 0) - Number(start.totalExecMs || 0);
+    if (deltaCalls === 0 && deltaRows === 0 && deltaTotalExecMs === 0) continue;
+    deltas.push({
+      query,
+      startCalls: Number(start.calls || 0),
+      endCalls: Number(end.calls || 0),
+      deltaCalls,
+      deltaRows,
+      deltaTotalExecMs: roundMaybe(deltaTotalExecMs, 3),
+    });
+  }
+
+  return deltas.sort((a, b) => b.deltaCalls - a.deltaCalls);
+}
+
+async function queryPgStatSnapshot(client, { limit = 200 } = {}) {
+  let rows = [];
+  let error = null;
+  try {
+    const stmtRes = await client.query(
+      `
+      SELECT
+        calls,
+        rows,
+        total_exec_time,
+        mean_exec_time,
+        query
+      FROM pg_stat_statements
+      WHERE query ILIKE '%rt_cache%'
+      ORDER BY calls DESC
+      LIMIT $1
+    `,
+      [limit]
+    );
+    rows = stmtRes.rows.map(normalizeStatementRow);
+  } catch (err) {
+    error = String(err?.message || err || "pg_stat_statements_unavailable");
+  }
+
+  return {
+    capturedAtUtc: new Date().toISOString(),
+    rows,
+    error,
+    counters: analyzeRtCacheStatements(rows),
+  };
+}
+
+async function queryRtCachePayloadSnapshot(client) {
   const payloadRes = await client.query(`
     SELECT
       feed_key,
@@ -143,31 +300,11 @@ async function queryDbBaseline(client) {
     FROM public.rt_cache
     ORDER BY bytes DESC NULLS LAST
   `);
+  return payloadRes.rows;
+}
 
-  let statementsRows = [];
-  let statementsError = null;
-  try {
-    const stmtRes = await client.query(`
-      SELECT
-        calls,
-        rows,
-        total_exec_time,
-        query
-      FROM pg_stat_statements
-      WHERE query ILIKE '%rt_cache%'
-      ORDER BY calls DESC
-      LIMIT 20
-    `);
-    statementsRows = stmtRes.rows;
-  } catch (err) {
-    statementsError = String(err?.message || err || "pg_stat_statements_unavailable");
-  }
-
-  return {
-    rtCachePayloads: payloadRes.rows,
-    rtCacheStatements: statementsRows,
-    rtCacheStatementsError: statementsError,
-  };
+async function resetPgStatStatements(client) {
+  await client.query("SELECT pg_stat_statements_reset();");
 }
 
 async function fetchStationboardSample(baseUrl, stopId, sampleIndex) {
@@ -175,7 +312,6 @@ async function fetchStationboardSample(baseUrl, stopId, sampleIndex) {
   const url = new URL(`${baseUrl}/api/stationboard`);
   url.searchParams.set("stop_id", stopId);
   url.searchParams.set("limit", "8");
-  // Keep each request key unique to avoid edge-cache reuse during baseline sampling.
   url.searchParams.set("_rtb", String(sampleIndex));
 
   let response;
@@ -263,12 +399,43 @@ function summarizeSamples(samples) {
     rtStatusDistribution: statusCounts,
     avgRtCacheAgeMs: roundMaybe(avg(cacheAges), 2),
     medianRtCacheAgeMs: roundMaybe(median(cacheAges), 2),
-    maxRtCacheAgeMs: roundMaybe(
-      cacheAges.length ? Math.max(...cacheAges) : null,
-      2
-    ),
+    maxRtCacheAgeMs: roundMaybe(cacheAges.length ? Math.max(...cacheAges) : null, 2),
     percentRtApplied:
       items.length > 0 ? roundMaybe((appliedCount / items.length) * 100, 2) : null,
+  };
+}
+
+function evaluateAcceptance({ startSnapshot, endSnapshot, thresholds }) {
+  const startCounters = startSnapshot?.counters || {};
+  const endCounters = endSnapshot?.counters || {};
+
+  const payloadSelectCallsDelta =
+    Number(endCounters.payloadSelectCalls || 0) - Number(startCounters.payloadSelectCalls || 0);
+  const payloadUpsertCallsDelta =
+    Number(endCounters.payloadUpsertCalls || 0) - Number(startCounters.payloadUpsertCalls || 0);
+
+  const payloadSelectPass = payloadSelectCallsDelta <= Number(thresholds.maxPayloadSelectCalls || 0);
+  const payloadUpsertPass = payloadUpsertCallsDelta <= Number(thresholds.maxPayloadUpsertCalls || 0);
+
+  return {
+    thresholds,
+    observed: {
+      payloadSelectCallsDelta,
+      payloadUpsertCallsDelta,
+    },
+    checks: {
+      payloadSelectNearZero: {
+        pass: payloadSelectPass,
+        description:
+          "SELECT payload FROM rt_cache should be near-zero on stationboard path",
+      },
+      payloadUpsertNearZero: {
+        pass: payloadUpsertPass,
+        description:
+          "UPSERT rt_cache with payload should be near-zero after parsed poller writes",
+      },
+    },
+    overallPass: payloadSelectPass && payloadUpsertPass,
   };
 }
 
@@ -278,6 +445,10 @@ function buildMarkdownReport({
   stops,
   summary,
   jsonFilename,
+  window,
+  acceptance,
+  startSnapshot,
+  endSnapshot,
 }) {
   const distributionLines = Object.entries(summary.rtStatusDistribution || {})
     .sort(([a], [b]) => a.localeCompare(b))
@@ -290,6 +461,8 @@ function buildMarkdownReport({
 - URL: \`${baseUrl}\`
 - Stops: ${stops.map((s) => `\`${s}\``).join(", ")}
 - Samples: ${summary.requestCount}
+- Window minutes: ${window.durationMinutes}
+- pg_stat_statements reset: ${window.resetStatements ? "yes" : "no"}
 
 | Metric | Value |
 | --- | --- |
@@ -299,6 +472,22 @@ function buildMarkdownReport({
 | median rtCacheAgeMs | ${summary.medianRtCacheAgeMs ?? "n/a"} |
 | max rtCacheAgeMs | ${summary.maxRtCacheAgeMs ?? "n/a"} |
 | % responses rtStatus=applied | ${summary.percentRtApplied ?? "n/a"} |
+
+## Acceptance (10-minute thresholds)
+
+| Check | Threshold | Observed delta | Pass |
+| --- | --- | --- | --- |
+| SELECT payload FROM rt_cache | <= ${acceptance.thresholds.maxPayloadSelectCalls} calls | ${acceptance.observed.payloadSelectCallsDelta} | ${acceptance.checks.payloadSelectNearZero.pass ? "yes" : "no"} |
+| UPSERT rt_cache with payload | <= ${acceptance.thresholds.maxPayloadUpsertCalls} calls | ${acceptance.observed.payloadUpsertCallsDelta} | ${acceptance.checks.payloadUpsertNearZero.pass ? "yes" : "no"} |
+
+Overall acceptance: ${acceptance.overallPass ? "PASS" : "FAIL"}
+
+## pg_stat_statements counters (start -> end)
+
+- payloadSelectCalls: ${startSnapshot?.counters?.payloadSelectCalls ?? 0} -> ${endSnapshot?.counters?.payloadSelectCalls ?? 0}
+- payloadUpsertCalls: ${startSnapshot?.counters?.payloadUpsertCalls ?? 0} -> ${endSnapshot?.counters?.payloadUpsertCalls ?? 0}
+- metadataUpdateCalls: ${startSnapshot?.counters?.metadataUpdateCalls ?? 0} -> ${endSnapshot?.counters?.metadataUpdateCalls ?? 0}
+- totalRtCacheCalls: ${startSnapshot?.counters?.totalRtCacheCalls ?? 0} -> ${endSnapshot?.counters?.totalRtCacheCalls ?? 0}
 
 ## rtStatus distribution
 
@@ -310,9 +499,42 @@ ${distributionLines || "- n/a"}
 `;
 }
 
+async function runWindowSamples({ baseUrl, stops, n, durationMinutes }) {
+  const samples = [];
+  const windowMs = Math.max(0, Number(durationMinutes || 0) * 60 * 1000);
+
+  if (windowMs <= 0 || n <= 0) {
+    for (let i = 0; i < n; i += 1) {
+      const stopId = stops[i % stops.length];
+      const sample = await fetchStationboardSample(baseUrl, stopId, i + 1);
+      samples.push(sample);
+    }
+    return samples;
+  }
+
+  const startMs = Date.now();
+  const intervalMs = Math.max(1, Math.floor(windowMs / n));
+  for (let i = 0; i < n; i += 1) {
+    const stopId = stops[i % stops.length];
+    const sample = await fetchStationboardSample(baseUrl, stopId, i + 1);
+    samples.push(sample);
+
+    const targetMs = startMs + (i + 1) * intervalMs;
+    const waitMs = targetMs - Date.now();
+    if (waitMs > 0) await sleep(waitMs);
+  }
+
+  const remainingMs = startMs + windowMs - Date.now();
+  if (remainingMs > 0) await sleep(remainingMs);
+
+  return samples;
+}
+
 async function main() {
   loadDotEnvIfNeeded();
-  const { url, stops, n } = parseArgs(process.argv.slice(2));
+  const { url, stops, n, durationMinutes, resetStatements, acceptance } = parseArgs(
+    process.argv.slice(2)
+  );
   const baseUrl = normalizeBaseUrl(url);
   const databaseUrl = asText(process.env.DATABASE_URL);
   if (!databaseUrl) {
@@ -330,33 +552,78 @@ async function main() {
     application_name: "md_baseline_report",
   });
 
-  let dbSection;
+  let startSnapshot;
+  let endSnapshot;
+  let rtCachePayloadsStart;
+  let rtCachePayloadsEnd;
+  let resetError = null;
+
   await client.connect();
   try {
-    dbSection = await queryDbBaseline(client);
+    if (resetStatements) {
+      try {
+        await resetPgStatStatements(client);
+      } catch (err) {
+        resetError = String(err?.message || err || "pg_stat_statements_reset_failed");
+      }
+    }
+
+    startSnapshot = await queryPgStatSnapshot(client);
+    rtCachePayloadsStart = await queryRtCachePayloadSnapshot(client);
   } finally {
     await client.end().catch(() => {});
   }
 
-  const samples = [];
-  for (let i = 0; i < n; i += 1) {
-    const stopId = stops[i % stops.length];
-    const sample = await fetchStationboardSample(baseUrl, stopId, i + 1);
-    samples.push(sample);
-  }
+  const windowStartedAtUtc = new Date().toISOString();
+  const samples = await runWindowSamples({ baseUrl, stops, n, durationMinutes });
   const summary = summarizeSamples(samples);
+
+  const clientEnd = new Client({
+    connectionString: databaseUrl,
+    ssl: { require: true, rejectUnauthorized: false },
+    application_name: "md_baseline_report",
+  });
+
+  await clientEnd.connect();
+  try {
+    endSnapshot = await queryPgStatSnapshot(clientEnd);
+    rtCachePayloadsEnd = await queryRtCachePayloadSnapshot(clientEnd);
+  } finally {
+    await clientEnd.end().catch(() => {});
+  }
+
+  const statementDelta = buildStatementDelta(startSnapshot?.rows || [], endSnapshot?.rows || []);
+  const acceptanceResult = evaluateAcceptance({
+    startSnapshot,
+    endSnapshot,
+    thresholds: acceptance,
+  });
 
   const payload = {
     generatedAtUtc: now.toISOString(),
+    window: {
+      startedAtUtc: windowStartedAtUtc,
+      endedAtUtc: new Date().toISOString(),
+      durationMinutes,
+      resetStatements,
+      resetError,
+      sampleCount: n,
+    },
     baseUrl,
     stopIds: stops,
     requestCount: n,
-    db: dbSection,
+    db: {
+      rtCachePayloadsStart,
+      rtCachePayloadsEnd,
+      pgStatStatements: {
+        start: startSnapshot,
+        end: endSnapshot,
+        delta: statementDelta,
+      },
+    },
     stationboardSamples: samples,
     summary,
-    notes: {
-      pgStatStatementsResetPerformed: false,
-    },
+    acceptance: acceptanceResult,
   };
 
   const jsonFilename = `rt-baseline-${slug}.json`;
@@ -369,6 +636,10 @@ async function main() {
     stops,
     summary,
     jsonFilename,
+    window: { durationMinutes, resetStatements },
+    acceptance: acceptanceResult,
+    startSnapshot,
+    endSnapshot,
   });
 
   fs.writeFileSync(jsonPath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
@@ -376,6 +647,13 @@ async function main() {
 
   console.log(`[rt-baseline] wrote ${path.relative(backendRoot, jsonPath)}`);
   console.log(`[rt-baseline] wrote ${path.relative(backendRoot, mdPath)}`);
+  console.log(
+    `[rt-baseline] acceptance payload_select_delta=${acceptanceResult.observed.payloadSelectCallsDelta} threshold=${acceptanceResult.thresholds.maxPayloadSelectCalls}`
+  );
+  console.log(
+    `[rt-baseline] acceptance payload_upsert_delta=${acceptanceResult.observed.payloadUpsertCallsDelta} threshold=${acceptanceResult.thresholds.maxPayloadUpsertCalls}`
+  );
+  console.log(`[rt-baseline] acceptance overall=${acceptanceResult.overallPass ? "PASS" : "FAIL"}`);
 }
 
 main().catch((err) => {

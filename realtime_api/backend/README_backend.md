@@ -218,21 +218,32 @@ node scripts/measureRtCacheChurn.mjs --reset
 
 ### Baseline report script
 
-Capture a timestamped baseline snapshot (DB churn + stationboard RT freshness/latency):
+Capture a timestamped controlled-window snapshot (DB churn + stationboard RT freshness/latency):
 
 ```bash
 cd realtime_api/backend
 node scripts/rtBaselineReport.mjs \
   --url https://api.mesdeparts.ch \
   --stops Parent8587387,Parent8501000,Parent8501120 \
-  --n 30
+  --n 30 \
+  --duration-minutes 10 \
+  --reset-statements
 ```
 
 Outputs:
 - `docs/diagnostics/rt-baseline-<YYYYMMDD-HHMM>.json` (raw samples + DB query snapshots)
 - `docs/diagnostics/rt-baseline-<YYYYMMDD-HHMM>.md` (short human summary)
 
-The script does not reset `pg_stat_statements` and does not print `DATABASE_URL`.
+New script options:
+- `--reset-statements`: calls `pg_stat_statements_reset()` before the start snapshot.
+- `--duration-minutes <N>`: runs a controlled measurement window (samples are spread across this window when `--n > 0`).
+- `--accept-max-payload-select-calls <N>`: threshold for `SELECT payload ... FROM rt_cache` delta (default `2`).
+- `--accept-max-payload-upsert-calls <N>`: threshold for payload-upsert delta in `rt_cache` (default `2`).
+
+Report now includes:
+- `pg_stat_statements` snapshots at start and end
+- statement deltas for the window
+- acceptance summary for payload reads/writes being near-zero in 10 minutes.
 
 ## Stationboard Latency Guard
 
