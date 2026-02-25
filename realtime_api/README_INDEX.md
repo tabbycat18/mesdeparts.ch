@@ -30,8 +30,9 @@ Loader + logic quick links:
 - Logic pipeline entry: `backend/src/logic/buildStationboard.js`
 - Logic compatibility shim: `backend/logic/buildStationboard.js`
 - Feed cache/decode loader: `backend/loaders/loadRealtime.js`
-- Scoped RT loader: `backend/src/rt/loadScopedRtFromCache.js`
-- Alerts loader: `backend/src/rt/loadAlertsFromCache.js`
+- Scoped RT loader (default): `backend/src/rt/loadScopedRtFromParsedTables.js`
+- Alerts loader (default): `backend/src/rt/loadAlertsFromParsedTables.js`
+- Blob/debug loaders: `backend/src/rt/loadScopedRtFromCache.js`, `backend/src/rt/loadAlertsFromCache.js`
 - Deep explanation of these files: [`backend/README_src.md`](./backend/README_src.md) (sections: `src/loaders`, `src/logic`, `src/rt`)
 - TripUpdates debug diagnostics exposure (`rtEnabledForRequest`, `rtMetaReason`, scoped counters):
   `backend/src/logic/buildStationboard.js` + `backend/src/api/stationboard.js`
@@ -69,8 +70,9 @@ Search-improvement references:
 - Stationboard API orchestrator: `realtime_api/backend/src/api/stationboard.js`
 - Stationboard builder (canonical): `realtime_api/backend/src/logic/buildStationboard.js`
 - Stationboard builder compatibility shim: `realtime_api/backend/logic/buildStationboard.js` (re-export only)
-- Scoped RT cache loader: `realtime_api/backend/src/rt/loadScopedRtFromCache.js`
-- Alerts cache loader: `realtime_api/backend/src/rt/loadAlertsFromCache.js`
+- Scoped RT parsed-table loader (default): `realtime_api/backend/src/rt/loadScopedRtFromParsedTables.js`
+- Alerts parsed-table loader (default): `realtime_api/backend/src/rt/loadAlertsFromParsedTables.js`
+- Blob/debug loaders: `realtime_api/backend/src/rt/loadScopedRtFromCache.js`, `realtime_api/backend/src/rt/loadAlertsFromCache.js`
 - Feed cache decode/state module: `realtime_api/backend/loaders/loadRealtime.js`
 - Pollers:
   - combined: `realtime_api/backend/scripts/pollFeeds.js`

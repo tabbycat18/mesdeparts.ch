@@ -165,10 +165,12 @@ To reduce per-request DB pressure and poller write churn:
 - Stationboard TripUpdates source is now parsed RT tables (`rt_trip_updates` + `rt_stop_time_updates`) by default.
 - Blob cache (`rt_cache.payload`) is disabled by default for TripUpdates request path; debug-only mode (`debug_rt=blob`) can force blob diagnostics, and debug/meta expose `rtSource` (`parsed` or `blob`).
 - Stationboard Service Alerts source is now parsed table `rt_service_alerts` by default.
-- Service Alerts blob cache (`rt_cache` / `la_servicealerts`) is fallback-only when parsed alerts are empty/unavailable; debug/meta expose `alertsSource` (`parsed` or `blob_fallback`).
+- Service Alerts blob cache (`rt_cache` / `la_servicealerts`) is disabled by default on request path; debug-only mode (`debug_rt=blob`) can force blob diagnostics, and debug/meta expose `alertsSource` (`parsed` or `blob_fallback`).
 - Blob fallback reads still use short in-process decoded-feed cache (`RT_DECODED_FEED_CACHE_MS`, default `10s`, clamped `10s..15s`) with in-flight read coalescing.
 - Stationboard Service Alerts request-path cache/decode is throttled separately (`STATIONBOARD_ALERTS_REQUEST_CACHE_TTL_MS`, default `60s`, clamped to minimum `60s`).
+- Parsed alerts reads are scoped and bounded (`scopeStopIds`/`route_id`/`trip_id` match in `informed_entities`) with lookback guard `STATIONBOARD_ALERTS_PARSED_LOOKBACK_MS` (default `6h`) and row cap `STATIONBOARD_ALERTS_PARSED_MAX_ROWS` (default `500`).
 - Decoded-feed cache invalidation uses RT content identity per feed (`etag` -> payload SHA -> `fetched_at` fallback) to avoid unnecessary payload re-reads when content is unchanged.
+- When `include_alerts=0`, stationboard skips request-path alerts loading entirely.
 - `debug=1` diagnostics now include:
   - `debug.rt.tripUpdates.rtSource` (`parsed` or `blob`)
   - `debug.rt.alerts.alertsSource` (`parsed` or `blob_fallback`)

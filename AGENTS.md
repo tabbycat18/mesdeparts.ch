@@ -34,8 +34,9 @@ If context is still missing after this order, then inspect code.
 - Stationboard orchestrator: `realtime_api/backend/src/api/stationboard.js`
 - Canonical stationboard builder: `realtime_api/backend/src/logic/buildStationboard.js`
 - Builder compatibility shim: `realtime_api/backend/logic/buildStationboard.js` (re-export only)
-- Scoped RT cache loader: `realtime_api/backend/src/rt/loadScopedRtFromCache.js`
-- Alerts cache loader: `realtime_api/backend/src/rt/loadAlertsFromCache.js`
+- Scoped RT parsed-table loader (default): `realtime_api/backend/src/rt/loadScopedRtFromParsedTables.js`
+- Alerts parsed-table loader (default): `realtime_api/backend/src/rt/loadAlertsFromParsedTables.js`
+- Blob/debug loaders: `realtime_api/backend/src/rt/loadScopedRtFromCache.js`, `realtime_api/backend/src/rt/loadAlertsFromCache.js`
 - Shared feed cache/decode module: `realtime_api/backend/loaders/loadRealtime.js`
 - Pollers:
   - `realtime_api/backend/scripts/pollFeeds.js`
@@ -62,7 +63,7 @@ If context is still missing after this order, then inspect code.
 | Core board SQL + RT merge pipeline | `realtime_api/backend/src/logic/buildStationboard.js` |
 | Stationboard debug RT diagnostics (`rtEnabledForRequest`, `rtMetaReason`, scoped counters) | `realtime_api/backend/src/logic/buildStationboard.js`, `realtime_api/backend/src/api/stationboard.js` |
 | Loader module explanation (feed cache/decode) | `realtime_api/backend/loaders/loadRealtime.js`, docs in `realtime_api/backend/README_src.md` |
-| RT/alerts scoped loader explanation | `realtime_api/backend/src/rt/loadScopedRtFromCache.js`, `realtime_api/backend/src/rt/loadAlertsFromCache.js` |
+| RT/alerts scoped loader explanation | `realtime_api/backend/src/rt/loadScopedRtFromParsedTables.js`, `realtime_api/backend/src/rt/loadAlertsFromParsedTables.js`, `realtime_api/backend/src/rt/loadScopedRtFromCache.js`, `realtime_api/backend/src/rt/loadAlertsFromCache.js` |
 | TripUpdates merge behavior | `realtime_api/backend/src/merge/applyTripUpdates.js` |
 | Swiss platform-vs-parent RT stop-id matching (exact -> `:0` -> numeric root, regex-guarded) | `realtime_api/backend/src/merge/applyTripUpdates.js`, `realtime_api/backend/src/rt/loadScopedRtFromCache.js` |
 | Alerts attachment/synthesis | `realtime_api/backend/src/merge/attachAlerts.js`, `realtime_api/backend/src/merge/synthesizeFromAlerts.js` |

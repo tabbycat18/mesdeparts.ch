@@ -186,12 +186,18 @@ function normalizeScopedAlertsResult(result, alertsSource) {
 export function createRequestScopedAlertsLoaderLike({
   loadParsedLike = loadAlertsFromParsedTables,
   loadBlobLike = loadAlertsFromCache,
-  allowBlobFallback = true,
+  allowBlobFallback = false,
+  forceBlobMode = false,
 } = {}) {
   let inFlight = null;
   return async function requestScopedAlertsLoaderLike(options = {}) {
     if (!inFlight) {
       inFlight = (async () => {
+        if (forceBlobMode) {
+          const blobResult = await Promise.resolve(loadBlobLike(options));
+          return normalizeScopedAlertsResult(blobResult, "blob_fallback");
+        }
+
         const parsedResult = await Promise.resolve(loadParsedLike(options));
         const parsedMeta = parsedResult?.meta && typeof parsedResult.meta === "object"
           ? parsedResult.meta
@@ -1359,7 +1365,10 @@ export async function getStationboard({
       locationId,
     childStops: Array.isArray(resolved?.children) ? resolved.children : [],
   };
-  const requestScopedAlertsLoaderLike = createRequestScopedAlertsLoaderLike();
+  const requestScopedAlertsLoaderLike = createRequestScopedAlertsLoaderLike({
+    allowBlobFallback: rtDebugMode === "blob",
+    forceBlobMode: rtDebugMode === "blob",
+  });
   const alertsScopeStopIds = uniqueStopIds([
     locationId,
     ...(resolvedScope.childStops || []).map((child) => child?.id),

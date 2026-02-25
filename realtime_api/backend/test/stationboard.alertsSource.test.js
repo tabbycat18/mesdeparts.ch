@@ -33,7 +33,7 @@ test("request-scoped alerts loader uses parsed source when parsed alerts are pre
   assert.equal(out.meta.applied, true);
 });
 
-test("request-scoped alerts loader falls back to blob only when parsed is missing", async () => {
+test("request-scoped alerts loader keeps blob fallback disabled by default when parsed is missing", async () => {
   const createRequestScopedAlertsLoaderLike = await loadAlertsFactory();
   let blobCalls = 0;
 
@@ -58,17 +58,18 @@ test("request-scoped alerts loader falls back to blob only when parsed is missin
   });
 
   const out = await loader({ enabled: true });
-  assert.equal(blobCalls, 1);
-  assert.equal(out.meta.alertsSource, "blob_fallback");
-  assert.equal(out.meta.parsedFallbackReason, "missing_cache");
+  assert.equal(blobCalls, 0);
+  assert.equal(out.meta.alertsSource, "parsed");
+  assert.equal(out.meta.reason, "missing_cache");
 });
 
-test("request-scoped alerts loader can disable blob fallback", async () => {
+test("request-scoped alerts loader uses blob source only in explicit debug blob mode", async () => {
   const createRequestScopedAlertsLoaderLike = await loadAlertsFactory();
   let blobCalls = 0;
 
   const loader = createRequestScopedAlertsLoaderLike({
-    allowBlobFallback: false,
+    allowBlobFallback: true,
+    forceBlobMode: true,
     loadParsedLike: async () => ({
       alerts: { entities: [] },
       meta: {
@@ -86,7 +87,7 @@ test("request-scoped alerts loader can disable blob fallback", async () => {
   });
 
   const out = await loader({ enabled: true });
-  assert.equal(blobCalls, 0);
-  assert.equal(out.meta.alertsSource, "parsed");
-  assert.equal(out.meta.reason, "missing_cache");
+  assert.equal(blobCalls, 1);
+  assert.equal(out.meta.alertsSource, "blob_fallback");
+  assert.equal(out.meta.reason, "applied");
 });

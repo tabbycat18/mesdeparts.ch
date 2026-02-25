@@ -12,6 +12,10 @@ const DEFAULT_ALERTS_MAX_ROWS = Math.max(
   50,
   Number(process.env.STATIONBOARD_ALERTS_PARSED_MAX_ROWS || "500")
 );
+const DEFAULT_ALERTS_SCOPE_LOOKBACK_MS = Math.max(
+  60_000,
+  Number(process.env.STATIONBOARD_ALERTS_PARSED_LOOKBACK_MS || "21600000")
+);
 
 const EMPTY_ALERTS = Object.freeze({ entities: [] });
 
@@ -146,6 +150,15 @@ export async function loadAlertsFromParsedTables(options = {}) {
       ? Number(options.maxRows)
       : DEFAULT_ALERTS_MAX_ROWS
   );
+  const scopeLookbackMs = Math.max(
+    60_000,
+    Number.isFinite(Number(options.scopeLookbackMs))
+      ? Number(options.scopeLookbackMs)
+      : DEFAULT_ALERTS_SCOPE_LOOKBACK_MS
+  );
+  const scopeStopIds = uniqueText(options.scopeStopIds);
+  const scopeRouteIds = uniqueText(options.scopeRouteIds);
+  const scopeTripIds = uniqueText(options.scopeTripIds);
   const queryLike = typeof options.queryLike === "function" ? options.queryLike : dbQuery;
 
   const meta = baseMeta(nowMs);
@@ -174,10 +187,27 @@ export async function loadAlertsFromParsedTables(options = {}) {
           informed_entities,
           updated_at
         FROM public.rt_service_alerts
+        WHERE updated_at >= NOW() - ($1::bigint * INTERVAL '1 millisecond')
+          AND (
+            (
+              cardinality($2::text[]) = 0
+              AND cardinality($3::text[]) = 0
+              AND cardinality($4::text[]) = 0
+            )
+            OR jsonb_array_length(COALESCE(informed_entities, '[]'::jsonb)) = 0
+            OR EXISTS (
+              SELECT 1
+              FROM jsonb_array_elements(COALESCE(informed_entities, '[]'::jsonb)) AS informed
+              WHERE
+                (informed ->> 'stop_id') = ANY($2::text[])
+                OR (informed ->> 'route_id') = ANY($3::text[])
+                OR (informed ->> 'trip_id') = ANY($4::text[])
+            )
+          )
         ORDER BY updated_at DESC NULLS LAST
-        LIMIT $1
+        LIMIT $5
       `,
-      [maxRows]
+      [scopeLookbackMs, scopeStopIds, scopeRouteIds, scopeTripIds, maxRows]
     );
     rows = Array.isArray(res?.rows) ? res.rows : [];
   } catch (err) {
@@ -234,9 +264,9 @@ export async function loadAlertsFromParsedTables(options = {}) {
 
   const scopedRows = activeRows.filter((row) =>
     matchesScope(row, {
-      scopeStopIds: options.scopeStopIds,
-      scopeRouteIds: options.scopeRouteIds,
-      scopeTripIds: options.scopeTripIds,
+      scopeStopIds,
+      scopeRouteIds,
+      scopeTripIds,
     })
   );
 

@@ -24,7 +24,7 @@ This file documents the current `realtime_api/backend/src/` tree based on direct
    - `src/rt/loadScopedRtFromParsedTables.js` scopes TripUpdates from parsed RT tables (default).
    - `src/rt/loadScopedRtFromCache.js` scopes TripUpdates from cached payload (fallback).
    - `src/rt/loadAlertsFromParsedTables.js` loads Service Alerts from parsed table (default).
-   - `src/rt/loadAlertsFromCache.js` loads Service Alerts from cached payload (fallback).
+   - `src/rt/loadAlertsFromCache.js` loads Service Alerts from cached payload (debug-only via `debug_rt=blob`).
    - `src/db/rtCache.js` provides RT cache read/write helpers.
 4. Search and resolve
    - `src/search/stopsSearch.js` is the stop-search engine.
@@ -57,10 +57,11 @@ Why this split matters:
 
 Primary responsibilities:
 - Resolve effective station/stop scope (`resolveStop`).
-- Build base board via `buildStationboard(...)` (static SQL first, then RT cache merge).
+- Build base board via `buildStationboard(...)` (static SQL first, then RT merge pipeline).
 - Prepare canonical response payload (`station`, `resolved`, `departures`, `banners`, `rt`, `alerts`).
 - Normalize departures through `src/models/stationboard.js` (`normalizeDeparture`).
-- Attach alerts from cache (`src/rt/loadAlertsFromCache.js`) and merge alert effects (`attachAlerts`, `synthesizeFromAlerts`).
+- Attach alerts from parsed tables (`src/rt/loadAlertsFromParsedTables.js`) and merge alert effects (`attachAlerts`, `synthesizeFromAlerts`).
+- Keep blob-backed alerts loader (`src/rt/loadAlertsFromCache.js`) for explicit debug mode (`debug_rt=blob`) only.
 - Throttle request-path Service Alerts cache reads with an in-process TTL (`STATIONBOARD_ALERTS_REQUEST_CACHE_TTL_MS`, default 60s, clamped to minimum 60s) to avoid repeated alert-cache fetch/decode on frequent board refreshes.
 - Apply optional OTD supplement logic (`supplementFromOtdStationboard`) behind request-path upstream guard.
 - Emit debug payloads/timings when debug mode is enabled.
@@ -295,7 +296,8 @@ Primary responsibilities:
 ### `src/rt/loadAlertsFromParsedTables.js` (Service Alerts parsed-table loader)
 
 Primary responsibilities:
-- Read alerts from `public.rt_service_alerts` with bounded row limits.
+- Read alerts from `public.rt_service_alerts` with scoped SQL predicates and bounded row limits.
+- Scope by `informed_entities` (`stop_id`, `route_id`, `trip_id`) plus an `updated_at` lookback window (`STATIONBOARD_ALERTS_PARSED_LOOKBACK_MS`).
 - Build alert entities compatible with merge/attach pipeline (`id`, `effect`, text fields, `activePeriods`, `informedEntities`).
 - Apply active-period filtering and optional stop/route/trip scope filtering.
 - Expose `meta.alertsSource = "parsed"` and freshness/staleness semantics aligned with request-path alerts behavior.
@@ -333,7 +335,7 @@ Primary responsibilities:
 - `src/merge/`: merge/transformation steps for departures and alerts.
 - `src/models/`: response normalization/canonical shaping.
 - `src/resolve/`: stop/station resolution logic.
-- `src/rt/`: cache-first RT/alerts loaders and thin re-exports.
+- `src/rt/`: parsed-first RT/alerts loaders, blob/debug fallbacks, and thin re-exports.
 - `src/search/`: stop-search normalization/ranking/query behavior.
 - `src/sql/`: stationboard SQL query.
 - `src/time/`: Zurich timezone/service-day utilities.
