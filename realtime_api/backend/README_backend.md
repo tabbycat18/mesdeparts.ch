@@ -202,6 +202,24 @@ node scripts/measureRtCacheChurn.mjs --reset
      - relatively more lightweight metadata updates (`UPDATE public.rt_cache SET fetched_at=..., last_status=..., ...`)
      - stable backend/poller split in `pg_stat_activity` (`md_backend` vs `md_poller`)
 
+### Baseline report script
+
+Capture a timestamped baseline snapshot (DB churn + stationboard RT freshness/latency):
+
+```bash
+cd realtime_api/backend
+node scripts/rtBaselineReport.mjs \
+  --url https://api.mesdeparts.ch \
+  --stops Parent8587387,Parent8501000,Parent8501120 \
+  --n 30
+```
+
+Outputs:
+- `docs/diagnostics/rt-baseline-<YYYYMMDD-HHMM>.json` (raw samples + DB query snapshots)
+- `docs/diagnostics/rt-baseline-<YYYYMMDD-HHMM>.md` (short human summary)
+
+The script does not reset `pg_stat_statements` and does not print `DATABASE_URL`.
+
 ## Stationboard Latency Guard
 
 `getStationboard()` includes a built-in latency guard to avoid chaining optional phases
