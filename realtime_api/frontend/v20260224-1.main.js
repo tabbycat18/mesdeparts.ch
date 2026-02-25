@@ -314,6 +314,20 @@ function getContextChangeFlags(previousKey, nextKey) {
   return { contextChanged, stopChanged, languageChanged };
 }
 
+function setEmbedAwareLoadingHint(isLoading) {
+  const loading = !!isLoading;
+  appState.boardLoadingHint = loading;
+  setBoardLoadingHint(loading);
+  publishEmbedState();
+}
+
+function setEmbedAwareNoticeHint(text, options) {
+  const notice = String(text || "").trim();
+  appState.boardNoticeHint = notice;
+  setBoardNoticeHint(notice, options);
+  publishEmbedState();
+}
+
 function clearBoardForStationChange() {
   // Invalidate old in-flight refreshes and cached rows immediately.
   refreshRequestSeq += 1;
@@ -331,7 +345,7 @@ function clearBoardForStationChange() {
   appState.lastStationboardHttpStatus = null;
   lastForegroundRefreshAt = 0;
   lastUnattendedRescueAt = 0;
-  setBoardNoticeHint("");
+  setEmbedAwareNoticeHint("");
   updateRtDebugOverlay();
 
   // Clear visible rows so we don't briefly show the previous station board.
@@ -763,7 +777,7 @@ async function refreshDepartures({
     tbody.setAttribute("aria-busy", "true");
   }
   if (showLoadingHint) {
-    setBoardLoadingHint(true);
+    setEmbedAwareLoadingHint(true);
   }
 
   try {
@@ -823,7 +837,7 @@ async function refreshDepartures({
             : nowMs,
         reason: String(data?.rt?.reason || "stale_or_unavailable"),
       };
-      setBoardNoticeHint(rtUnavailable ? t("rtTemporarilyUnavailable") : "");
+      setEmbedAwareNoticeHint(rtUnavailable ? t("rtTemporarilyUnavailable") : "");
       refreshSucceeded = true;
       publishEmbedState();
       return;
@@ -854,7 +868,7 @@ async function refreshDepartures({
         reason: String(data?.rt?.reason || "scheduled_only"),
       };
     }
-    setBoardNoticeHint(rtUnavailable ? t("rtTemporarilyUnavailable") : "");
+    setEmbedAwareNoticeHint(rtUnavailable ? t("rtTemporarilyUnavailable") : "");
     // Reset consecutive 204 counter on successful response
     if (consecutive204Count > 0 && DEBUG_RT_CLIENT) {
       // eslint-disable-next-line no-console
@@ -1068,7 +1082,7 @@ async function refreshDepartures({
     // Always clear the visible hint before any early return so no terminal
     // path (queued follow-up, superseded/stale request) can leave it stuck.
     if (showLoadingHint) {
-      setBoardLoadingHint(false);
+      setEmbedAwareLoadingHint(false);
     }
     if (pendingRefreshRequest) {
       const queued = pendingRefreshRequest;

@@ -41,6 +41,14 @@ const RT_PARSED_RETENTION_HOURS = Math.max(
   1,
   Number(process.env.RT_PARSED_RETENTION_HOURS || "6")
 );
+const RT_LOCK_SKIP_WARN_STREAK = Math.max(
+  2,
+  Number(process.env.RT_POLLER_LOCK_SKIP_WARN_STREAK || "6")
+);
+const RT_LOCK_SKIP_WARN_AGE_MS = Math.max(
+  30_000,
+  Number(process.env.RT_POLLER_LOCK_SKIP_STALE_AGE_MS || "90000")
+);
 const FEED_KEY = LA_SERVICEALERTS_FEED_KEY;
 const FEED_WRITE_LOCK_ID = 7_483_922;
 const UPSTREAM_URL =
@@ -146,6 +154,8 @@ export function createLaServiceAlertsPoller({
 
   let consecutive429Count = 0;
   let consecutiveErrCount = 0;
+  let consecutiveWriteLockSkips = 0;
+  let lockSkipWarningEmitted = false;
 
   function logLine(
     event,
@@ -181,6 +191,45 @@ export function createLaServiceAlertsPoller({
   function resetBackoffState() {
     consecutive429Count = 0;
     consecutiveErrCount = 0;
+  }
+
+  function resetWriteLockSkipState() {
+    consecutiveWriteLockSkips = 0;
+    lockSkipWarningEmitted = false;
+  }
+
+  function logWriteLockSkip({ status, lastFetchedAgeMs, etagPresent }) {
+    consecutiveWriteLockSkips += 1;
+    logLine("service_alerts_poller_write_locked_skip", {
+      status,
+      backoffMs: 0,
+      lastFetchedAgeMs,
+      etagPresent,
+      extra: {
+        consecutiveWriteLockSkips,
+        warnStreak: RT_LOCK_SKIP_WARN_STREAK,
+        warnAgeMs: RT_LOCK_SKIP_WARN_AGE_MS,
+      },
+    });
+    if (
+      !lockSkipWarningEmitted &&
+      consecutiveWriteLockSkips >= RT_LOCK_SKIP_WARN_STREAK &&
+      Number.isFinite(lastFetchedAgeMs) &&
+      lastFetchedAgeMs >= RT_LOCK_SKIP_WARN_AGE_MS
+    ) {
+      lockSkipWarningEmitted = true;
+      logLine("service_alerts_poller_write_lock_contention_warning", {
+        status,
+        backoffMs: 0,
+        lastFetchedAgeMs,
+        etagPresent,
+        extra: {
+          consecutiveWriteLockSkips,
+          warnStreak: RT_LOCK_SKIP_WARN_STREAK,
+          warnAgeMs: RT_LOCK_SKIP_WARN_AGE_MS,
+        },
+      });
+    }
   }
 
   async function persistStatusMetadata(cacheMeta, { status, errorText, etag, updateFetchedAt }) {
@@ -253,6 +302,7 @@ export function createLaServiceAlertsPoller({
     } catch (err) {
       const backoffMs = backoffErrMs();
       consecutive429Count = 0;
+      resetWriteLockSkipState();
       await persistStatusMetadata(cacheMeta, {
         status: null,
         errorText: `network_error ${String(err?.message || err)}`,
@@ -289,9 +339,8 @@ export function createLaServiceAlertsPoller({
           });
           if (statusPersisted?.lockSkipped) {
             resetBackoffState();
-            logLine("service_alerts_poller_write_locked_skip", {
+            logWriteLockSkip({
               status: 200,
-              backoffMs: 0,
               lastFetchedAgeMs: currentAgeMs,
               etagPresent: !!responseEtag,
             });
@@ -299,6 +348,7 @@ export function createLaServiceAlertsPoller({
           }
         }
         resetBackoffState();
+        resetWriteLockSkipState();
         logLine("service_alerts_poller_skip_write_unchanged", {
           status: 200,
           backoffMs: 0,
@@ -317,6 +367,7 @@ export function createLaServiceAlertsPoller({
       } catch (err) {
         const backoffMs = backoffErrMs();
         consecutive429Count = 0;
+        resetWriteLockSkipState();
         await persistStatusMetadata(cacheMeta, {
           status: 200,
           errorText: `parse_error ${String(err?.message || err)}`,
@@ -334,9 +385,8 @@ export function createLaServiceAlertsPoller({
 
       if (parsedWrite?.writeSkippedByLock === true) {
         resetBackoffState();
-        logLine("service_alerts_poller_write_locked_skip", {
+        logWriteLockSkip({
           status: 200,
-          backoffMs: 0,
           lastFetchedAgeMs: currentAgeMs,
           etagPresent: !!responseEtag,
         });
@@ -354,6 +404,7 @@ export function createLaServiceAlertsPoller({
         updateFetchedAt: true,
       });
       resetBackoffState();
+      resetWriteLockSkipState();
       logLine("service_alerts_poller_fetch_200", {
         status: 200,
         backoffMs: 0,
@@ -372,6 +423,7 @@ export function createLaServiceAlertsPoller({
     if (response.status === 304) {
       if (Number.isFinite(currentAgeMs) && currentAgeMs < RT_CACHE_MIN_WRITE_INTERVAL_MS) {
         resetBackoffState();
+        resetWriteLockSkipState();
         logLine("service_alerts_poller_fetch_304_skip_write", {
           status: 304,
           backoffMs: 0,
@@ -390,9 +442,8 @@ export function createLaServiceAlertsPoller({
       if (!persisted.updated) {
         if (persisted.lockSkipped) {
           resetBackoffState();
-          logLine("service_alerts_poller_write_locked_skip", {
+          logWriteLockSkip({
             status: 304,
-            backoffMs: 0,
             lastFetchedAgeMs: calcAgeMs(cacheMeta?.fetched_at),
             etagPresent: !!responseEtag,
           });
@@ -409,6 +460,7 @@ export function createLaServiceAlertsPoller({
         return backoffMs;
       }
       resetBackoffState();
+      resetWriteLockSkipState();
       logLine("service_alerts_poller_fetch_304", {
         status: 304,
         backoffMs: 0,
@@ -423,6 +475,7 @@ export function createLaServiceAlertsPoller({
     if (response.status === 429) {
       const backoffMs = backoff429Ms();
       consecutiveErrCount = 0;
+      resetWriteLockSkipState();
       await persistStatusMetadata(cacheMeta, {
         status: 429,
         errorText: toTextOrNull(bodySnippet) || "Rate Limit Exceeded",
@@ -440,6 +493,7 @@ export function createLaServiceAlertsPoller({
 
     const backoffMs = backoffErrMs();
     consecutive429Count = 0;
+    resetWriteLockSkipState();
     await persistStatusMetadata(cacheMeta, {
       status: response.status,
       errorText: toTextOrNull(bodySnippet) || `HTTP ${response.status}`,
@@ -468,6 +522,8 @@ export function createLaServiceAlertsPoller({
     _getStateForTests: () => ({
       consecutive429Count,
       consecutiveErrCount,
+      consecutiveWriteLockSkips,
+      lockSkipWarningEmitted,
     }),
   };
 }

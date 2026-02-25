@@ -183,6 +183,40 @@ test("poller treats advisory-lock parsed write skip as clean no-op", async () =>
   assert.equal(parsedWrites, 1);
 });
 
+test("poller emits lock-contention warning on repeated write-lock skips with stale cache age", async () => {
+  const createLaTripUpdatesPoller = await loadPollerFactory();
+  const payload = Buffer.from("same-payload");
+  const payloadSha = payloadSha256Hex(payload);
+  const logs = [];
+  const poller = createLaTripUpdatesPoller({
+    token: "test-token",
+    fetchLike: async () => okResponse(payload, "etag-same"),
+    getRtCacheMetaLike: async () => ({
+      fetched_at: new Date(Date.now() - 180_000),
+      etag: "etag-same",
+      last_status: 200,
+      last_error: null,
+    }),
+    getRtCachePayloadShaLike: async () => payloadSha,
+    updateRtCacheStatusLike: async () => ({ updated: false, writeSkippedByLock: true }),
+    ensureRtCacheMetadataRowLike: async () => ({ inserted: false, writeSkippedByLock: false }),
+    persistParsedTripUpdatesSnapshotLike: async () => ({ updated: true, writeSkippedByLock: false }),
+    decodeFeedLike: () => ({ entity: [] }),
+    logLike: (entry) => logs.push(entry),
+  });
+
+  for (let i = 0; i < 6; i += 1) {
+    const waitMs = await poller.tick();
+    assert.equal(waitMs, 15_000);
+  }
+
+  const warnings = logs.filter((entry) => entry?.event === "poller_write_lock_contention_warning");
+  assert.equal(warnings.length, 1);
+  assert.ok(Number(warnings[0]?.consecutiveWriteLockSkips) >= 6);
+  const state = poller._getStateForTests();
+  assert.equal(state.lockSkipWarningEmitted, true);
+});
+
 test("poller unchanged payload skips parsed write and logs skip_write_unchanged when cache is old", async () => {
   const createLaTripUpdatesPoller = await loadPollerFactory();
   const payload = Buffer.from("same-payload");

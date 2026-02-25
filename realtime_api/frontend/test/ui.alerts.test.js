@@ -2,10 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  hasPositiveDelayForAlertColumn,
   journeyModalStateReducer,
   normalizeDepartureAlerts,
   openDepartureAlertsPopover,
+  resolveRenderableInlineAlertsForLineAlertButton,
   resolveDepartureAlertsForLineBadge,
+  shouldShowBusLineAlertColumn,
   shouldIgnoreJourneyError,
 } from "../v20260224-1.ui.js";
 
@@ -214,6 +217,89 @@ test("resolveDepartureAlertsForLineBadge falls back when all alerts duplicate ba
   const alerts = resolveDepartureAlertsForLineBadge(dep, banners);
   assert.equal(alerts.length, 1);
   assert.equal(alerts[0].id, "b-1");
+});
+
+test("resolveRenderableInlineAlertsForLineAlertButton keeps renderable text (including banner-duplicate fallback)", () => {
+  const dep = {
+    alerts: [
+      {
+        id: "c-1",
+        severity: "warning",
+        header: "Line 7 deviation",
+        description: "Stop moved",
+      },
+      {
+        id: "c-2",
+        severity: "warning",
+        header: "  ",
+        description: "",
+      },
+    ],
+  };
+  const banners = [
+    {
+      severity: "warning",
+      header: "Line 7 deviation",
+      description: "Stop moved",
+    },
+  ];
+
+  const inlineAlerts = resolveRenderableInlineAlertsForLineAlertButton(dep, banners);
+  assert.equal(Array.isArray(inlineAlerts), true);
+  assert.equal(inlineAlerts.length, 1);
+  assert.equal(inlineAlerts[0].id, "c-1");
+});
+
+test("hasPositiveDelayForAlertColumn accepts status/delay/displayedDelay signals", () => {
+  assert.equal(
+    hasPositiveDelayForAlertColumn({ mode: "bus", status: "delay", displayedDelayMin: 0, delayMin: 0 }),
+    true
+  );
+  assert.equal(
+    hasPositiveDelayForAlertColumn({ mode: "bus", status: null, displayedDelayMin: 2, delayMin: 0 }),
+    true
+  );
+  assert.equal(
+    hasPositiveDelayForAlertColumn({ mode: "bus", status: null, displayedDelayMin: 0, delayMin: 3 }),
+    true
+  );
+  assert.equal(
+    hasPositiveDelayForAlertColumn({ mode: "bus", status: null, displayedDelayMin: 0, delayMin: 0 }),
+    false
+  );
+});
+
+test("shouldShowBusLineAlertColumn requires delayed bus + renderable inline alert button", () => {
+  const delayedBusNoAlerts = [{ mode: "bus", status: "delay", delayMin: 2, displayedDelayMin: 2, alerts: [] }];
+  const alertBusNoDelay = [
+    {
+      mode: "bus",
+      status: null,
+      delayMin: 0,
+      displayedDelayMin: 0,
+      alerts: [{ id: "a-1", header: "Line 1 diversion", description: "Stop moved" }],
+    },
+  ];
+  const mixedRows = [
+    {
+      mode: "bus",
+      status: null,
+      delayMin: 3,
+      displayedDelayMin: 3,
+      alerts: [],
+    },
+    {
+      mode: "bus",
+      status: null,
+      delayMin: 0,
+      displayedDelayMin: 0,
+      alerts: [{ id: "a-2", header: "Line 2 disruption", description: "Stop skipped" }],
+    },
+  ];
+
+  assert.equal(shouldShowBusLineAlertColumn(delayedBusNoAlerts, []), false);
+  assert.equal(shouldShowBusLineAlertColumn(alertBusNoDelay, []), false);
+  assert.equal(shouldShowBusLineAlertColumn(mixedRows, []), true);
 });
 
 test("openDepartureAlertsPopover creates a visible panel with alert content", () => {

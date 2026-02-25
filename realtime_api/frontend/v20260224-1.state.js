@@ -104,4 +104,6 @@ export const appState = {
     staleSinceMs: null,
     reason: null,
   },
+  boardLoadingHint: false,
+  boardNoticeHint: "",
 };

@@ -69,6 +69,7 @@ STATIONBOARD_BASE_URL=https://api.mesdeparts.ch node scripts/debugStop.js "Lausa
   - Has 429/error backoff logic.
   - Skips parsed snapshot rewrites when payload SHA-256 is unchanged (`poller_skip_write_unchanged`); may apply metadata-only status updates.
   - Uses advisory xact lock on parsed+metadata writes to avoid concurrent writer churn across duplicate pollers (`poller_write_locked_skip`).
+  - Emits contention guardrail warning (`poller_write_lock_contention_warning`) when write-lock skips repeat beyond `RT_POLLER_LOCK_SKIP_WARN_STREAK` (default `6`) and cache age exceeds `RT_POLLER_LOCK_SKIP_STALE_AGE_MS` (default `90000` ms).
   - `poller_fetch_200` logs include parsed compaction metrics (`parsedTripRowsInserted`, `parsedStopRowsInserted`, snapshot/retention delete counts).
 
 - `pollLaServiceAlerts.js`
@@ -80,6 +81,7 @@ STATIONBOARD_BASE_URL=https://api.mesdeparts.ch node scripts/debugStop.js "Lausa
   - Has 429/error backoff logic.
   - Skips parsed snapshot rewrites when payload SHA-256 is unchanged (`service_alerts_poller_skip_write_unchanged`); may apply metadata-only status updates.
   - Uses advisory xact lock on parsed+metadata writes to avoid concurrent writer churn across duplicate pollers (`service_alerts_poller_write_locked_skip`).
+  - Emits contention guardrail warning (`service_alerts_poller_write_lock_contention_warning`) when write-lock skips repeat beyond `RT_POLLER_LOCK_SKIP_WARN_STREAK` (default `6`) and cache age exceeds `RT_POLLER_LOCK_SKIP_STALE_AGE_MS` (default `90000` ms).
   - `service_alerts_poller_fetch_200` logs include parsed compaction metrics (`parsedAlertRowsInserted`, snapshot/retention delete counts).
 
 ### Static GTFS refresh / import

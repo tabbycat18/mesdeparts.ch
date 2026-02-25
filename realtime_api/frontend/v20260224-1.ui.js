@@ -36,7 +36,6 @@ const SERVICE_BANNER_MAX_PAGES = 3;
 let serviceBannerTimers = [];
 const serviceBannerCycleAnchors = new Map();
 let lastRenderedServiceBanners = [];
-const ALERTS_SHEET_BREAKPOINT_PX = 640;
 let departureAlertsLayer = null;
 let departureAlertsPanel = null;
 let departureAlertsTitle = null;
@@ -608,13 +607,56 @@ export function resolveDepartureAlertsForLineBadge(dep, banners = []) {
   });
 }
 
-function isAlertSheetMode() {
-  return typeof window !== "undefined" && window.innerWidth <= ALERTS_SHEET_BREAKPOINT_PX;
+function hasRenderableInlineAlert(alerts) {
+  if (!Array.isArray(alerts) || alerts.length === 0) return false;
+  return alerts.some((alert) => {
+    const header = normalizedText(alert?.header || alert?.headerText);
+    const description = normalizedText(alert?.description || alert?.descriptionText);
+    return !!(header || description);
+  });
+}
+
+export function resolveRenderableInlineAlertsForLineAlertButton(dep, banners = []) {
+  const inlineOnly = resolveDepartureAlertsForLineBadge(dep, banners);
+  return inlineOnly.filter((alert) => {
+    const header = normalizedText(alert?.header || alert?.headerText);
+    const description = normalizedText(alert?.description || alert?.descriptionText);
+    return !!(header || description);
+  });
+}
+
+export function hasPositiveDelayForAlertColumn(dep) {
+  const status = String(dep?.status || "").toLowerCase();
+  if (status === "delay") return true;
+  const displayedDelay = Number(dep?.displayedDelayMin);
+  if (Number.isFinite(displayedDelay) && displayedDelay > 0) return true;
+  const delayMin = Number(dep?.delayMin);
+  return Number.isFinite(delayMin) && delayMin > 0;
+}
+
+export function shouldShowBusLineAlertColumn(rows, banners = []) {
+  if (!Array.isArray(rows) || rows.length === 0) return false;
+  let hasAnyDelayedBusDeparture = false;
+  let hasRenderableAlertButton = false;
+  for (const dep of rows) {
+    if (!dep || dep.mode !== "bus") continue;
+    if (!hasAnyDelayedBusDeparture && hasPositiveDelayForAlertColumn(dep)) {
+      hasAnyDelayedBusDeparture = true;
+    }
+    if (!hasRenderableAlertButton) {
+      const inlineAlerts = resolveRenderableInlineAlertsForLineAlertButton(dep, banners);
+      if (hasRenderableInlineAlert(inlineAlerts)) {
+        hasRenderableAlertButton = true;
+      }
+    }
+    if (hasAnyDelayedBusDeparture && hasRenderableAlertButton) return true;
+  }
+  return false;
 }
 
 function closeDepartureAlertsPopover({ restoreFocus = false } = {}) {
   if (!departureAlertsLayer || !departureAlertsPanel) return;
-  departureAlertsLayer.classList.remove("is-visible", "is-sheet");
+  departureAlertsLayer.classList.remove("is-visible");
   departureAlertsPanel.style.removeProperty("top");
   departureAlertsPanel.style.removeProperty("left");
   departureAlertsPanel.style.removeProperty("right");
@@ -767,7 +809,7 @@ function appendAlertTextWithLinks(container, rawText, linkClassName = "departure
   }
 }
 
-function renderDepartureAlertsList(alerts, container) {
+function renderDepartureAlertsList(alerts, container, { singleTitleInBanner = false } = {}) {
   if (!container) return;
   container.innerHTML = "";
   if (!Array.isArray(alerts) || alerts.length === 0) {
@@ -781,16 +823,20 @@ function renderDepartureAlertsList(alerts, container) {
   for (const alert of alerts) {
     const item = document.createElement("article");
     item.className = `departure-alerts-item departure-alerts-item--${alert.severity || "unknown"}`;
-    if (alert.header) {
+    const hideItemTitle = singleTitleInBanner && alerts.length === 1;
+    if (alert.header && !hideItemTitle) {
       const title = document.createElement("h4");
       title.className = "departure-alerts-item-title";
       title.textContent = alert.header;
       item.appendChild(title);
     }
-    if (alert.description) {
+    const bodyText = hideItemTitle
+      ? normalizedText(alert?.description || alert?.descriptionText || alert?.header || alert?.headerText)
+      : normalizedText(alert?.description || alert?.descriptionText);
+    if (bodyText) {
       const body = document.createElement("p");
       body.className = "departure-alerts-item-text";
-      appendAlertTextWithLinks(body, alert.description);
+      appendAlertTextWithLinks(body, bodyText);
       item.appendChild(body);
     }
     container.appendChild(item);
@@ -807,47 +853,48 @@ export function openDepartureAlertsPopover(dep, anchorEl) {
   const layer = ensureDepartureAlertsLayer();
   const panel = departureAlertsPanel;
   const lineLabel = normalizeLineId(dep) || dep?.line || dep?.number || "";
-  const lineSuffix = lineLabel ? ` ${lineLabel}` : "";
-  departureAlertsTitle.textContent = `${t("alertsForLine")}${lineSuffix}`;
+  const linePrefix = lineLabel
+    ? `${t("columnLine")} ${lineLabel}`
+    : t("columnLine");
+  const singleAlertHeader =
+    alerts.length === 1
+      ? normalizedText(alerts[0]?.header || alerts[0]?.headerText)
+      : "";
+  const useSingleHeaderInBanner = alerts.length === 1 && !!singleAlertHeader;
+  departureAlertsTitle.textContent = useSingleHeaderInBanner
+    ? `${linePrefix} – ${singleAlertHeader}`
+    : linePrefix;
   departureAlertsCloseBtn.setAttribute("aria-label", t("alertsClose"));
-  renderDepartureAlertsList(alerts, departureAlertsList);
+  renderDepartureAlertsList(alerts, departureAlertsList, {
+    singleTitleInBanner: useSingleHeaderInBanner,
+  });
 
-  const sheet = isAlertSheetMode();
   layer.classList.add("is-visible");
-  layer.classList.toggle("is-sheet", sheet);
   activeDepartureAlertsTrigger = anchorEl;
   activeDepartureAlertsDep = dep;
-
-  if (sheet) {
-    panel.style.removeProperty("top");
-    panel.style.removeProperty("left");
-    panel.style.removeProperty("right");
-    panel.style.removeProperty("max-width");
-    panel.style.removeProperty("max-height");
-    return;
-  }
 
   const rect = anchorEl.getBoundingClientRect();
   const viewportWidth = Math.max(window.innerWidth || 0, document.documentElement?.clientWidth || 0);
   const viewportHeight = Math.max(window.innerHeight || 0, document.documentElement?.clientHeight || 0);
-  const panelWidth = Math.min(360, Math.max(260, viewportWidth - 24));
+  const panelWidth = Math.min(420, Math.max(260, viewportWidth - 20));
   panel.style.maxWidth = `${panelWidth}px`;
-  panel.style.left = "8px";
-  panel.style.top = `${Math.max(8, rect.bottom + 8)}px`;
+  panel.style.left = "10px";
+  panel.style.top = `${Math.max(10, rect.bottom + 10)}px`;
   panel.style.right = "auto";
-  panel.style.maxHeight = `${Math.max(180, viewportHeight - 40)}px`;
+  panel.style.maxHeight = `${Math.max(180, viewportHeight - 24)}px`;
 
   const panelRect = panel.getBoundingClientRect();
+  const anchorCenterX = rect.left + rect.width / 2;
   const desiredLeft = Math.min(
-    Math.max(8, rect.right - panelRect.width),
-    Math.max(8, viewportWidth - panelRect.width - 8)
+    Math.max(10, anchorCenterX - panelRect.width / 2),
+    Math.max(10, viewportWidth - panelRect.width - 10)
   );
-  let desiredTop = rect.bottom + 8;
-  if (desiredTop + panelRect.height > viewportHeight - 8) {
-    desiredTop = Math.max(8, rect.top - panelRect.height - 8);
+  let desiredTop = rect.bottom + 10;
+  if (desiredTop + panelRect.height > viewportHeight - 10) {
+    desiredTop = Math.max(10, rect.top - panelRect.height - 10);
   }
-  panel.style.left = `${Math.max(8, desiredLeft)}px`;
-  panel.style.top = `${Math.max(8, desiredTop)}px`;
+  panel.style.left = `${Math.max(10, desiredLeft)}px`;
+  panel.style.top = `${Math.max(10, desiredTop)}px`;
 }
 
 export function renderServiceBanners(banners) {
@@ -1593,6 +1640,8 @@ export function publishEmbedState() {
       : appState.viewMode || VIEW_MODE_TIME,
     hideDeparture: !!appState.hideBusDeparture,
     favoritesOnly: !!appState.favoritesOnly,
+    boardLoading: !!appState.boardLoadingHint,
+    boardNotice: String(appState.boardNoticeHint || ""),
     timestamp: Date.now(),
   };
 
@@ -3154,11 +3203,44 @@ function syncDestinationColumnWidth() {
   document.documentElement.style.setProperty("--dest-col-width", `${width}px`);
 }
 
-function appendDestinationWithBreaks(target, dest) {
+function appendDestinationWithBreaks(target, dest, { emphasizeSuffix = false } = {}) {
   if (!target) return;
   target.textContent = "";
   const text = String(dest || "");
   if (!text) return;
+  const normalizedText = text.trim();
+  const firstCommaIndex = text.indexOf(",");
+  const shouldEmphasizeSuffix = emphasizeSuffix && firstCommaIndex >= 0;
+  if (shouldEmphasizeSuffix) {
+    const prefix = text.slice(0, firstCommaIndex).trimEnd();
+    const suffix = text.slice(firstCommaIndex + 1).trim();
+    const split = document.createElement("span");
+    split.className = "dest-split-lines";
+
+    const firstLine = document.createElement("strong");
+    firstLine.className = "dest-suffix-strong";
+    firstLine.textContent = `${prefix},`;
+    split.appendChild(firstLine);
+
+    if (suffix) {
+      const secondLine = document.createElement("span");
+      secondLine.className = "dest-second-line";
+      secondLine.textContent = suffix;
+      split.appendChild(secondLine);
+    }
+
+    target.appendChild(split);
+    return;
+  }
+
+  if (emphasizeSuffix && normalizedText && firstCommaIndex < 0) {
+    const strong = document.createElement("strong");
+    strong.className = "dest-suffix-strong";
+    strong.textContent = normalizedText;
+    target.appendChild(strong);
+    return;
+  }
+
   const parts = text.split(/([,\\/\\-–—])/);
   for (const part of parts) {
     if (!part) continue;
@@ -3251,7 +3333,10 @@ export function renderDepartures(rows) {
   const hideDeparture = !!appState.hideBusDeparture && !appState.lastBoardIsTrain;
   setDepartureColumnVisibility(hideDeparture);
   const departuresTable = document.querySelector("table.departures");
-  if (departuresTable) departuresTable.classList.toggle("is-train-board", !!appState.lastBoardIsTrain);
+  if (departuresTable) {
+    departuresTable.classList.toggle("is-train-board", !!appState.lastBoardIsTrain);
+    departuresTable.classList.toggle("has-line-alert-column", false);
+  }
   lastRenderedState.boardIsTrain = appState.lastBoardIsTrain;
   lastRenderedState.hideDeparture = hideDeparture;
   lastRenderedState.rowKeys = [];
@@ -3284,6 +3369,7 @@ export function renderDepartures(rows) {
   if (!rows || rows.length === 0) {
     lastRenderedState.rowKeys = [];
     lastRenderedState.rows = [];
+    if (departuresTable) departuresTable.classList.toggle("has-line-alert-column", false);
     const tr = document.createElement("tr");
     tr.className = "empty-row";
     const td = document.createElement("td");
@@ -3302,6 +3388,30 @@ export function renderDepartures(rows) {
 
   // Determine wide vs narrow remark format once per render (stable, no per-row flicker).
   const narrowRemark = isNarrowRemarkLayout();
+  const inlineAlertsByDeparture = new Map();
+  const shouldRenderAlertButtonByDeparture = new Map();
+  let hasAnyDelayedBusDeparture = false;
+  let hasRenderableAlertButton = false;
+  for (const dep of rows || []) {
+    if (!dep || dep.mode !== "bus") continue;
+    const inlineAlerts = resolveRenderableInlineAlertsForLineAlertButton(
+      dep,
+      lastRenderedServiceBanners
+    );
+    inlineAlertsByDeparture.set(dep, inlineAlerts);
+    const shouldRenderAlertButton = hasRenderableInlineAlert(inlineAlerts);
+    if (!hasAnyDelayedBusDeparture && hasPositiveDelayForAlertColumn(dep)) {
+      hasAnyDelayedBusDeparture = true;
+    }
+    if (!hasRenderableAlertButton && shouldRenderAlertButton) {
+      hasRenderableAlertButton = true;
+    }
+    shouldRenderAlertButtonByDeparture.set(dep, shouldRenderAlertButton);
+  }
+  const showLineAlertColumn = hasAnyDelayedBusDeparture && hasRenderableAlertButton;
+  if (departuresTable) {
+    departuresTable.classList.toggle("has-line-alert-column", showLineAlertColumn);
+  }
 
   for (const dep of rows || []) {
     const tr = document.createElement("tr");
@@ -3375,8 +3485,9 @@ export function renderDepartures(rows) {
     }
     tdLine.appendChild(badge);
 
-    const inlineAlerts = resolveDepartureAlertsForLineBadge(dep, lastRenderedServiceBanners);
-    if (dep.mode === "bus" && inlineAlerts.length > 0) {
+    const inlineAlerts = inlineAlertsByDeparture.get(dep) || [];
+    const shouldRenderAlertButton = shouldRenderAlertButtonByDeparture.get(dep) === true;
+    if (dep.mode === "bus" && showLineAlertColumn && shouldRenderAlertButton) {
       const alertBtn = document.createElement("button");
       alertBtn.type = "button";
       alertBtn.className = "line-alert-btn";
@@ -3423,7 +3534,7 @@ export function renderDepartures(rows) {
     // Destination
     const tdTo = document.createElement("td");
     tdTo.className = "col-to-cell";
-    appendDestinationWithBreaks(tdTo, dep.dest || "");
+    appendDestinationWithBreaks(tdTo, dep.dest || "", { emphasizeSuffix: dep.mode !== "train" });
 
     // Time
     const tdTime = document.createElement("td");

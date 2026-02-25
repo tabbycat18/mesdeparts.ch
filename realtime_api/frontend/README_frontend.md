@@ -33,6 +33,9 @@ Static, dependency-free front-end for mesdeparts.ch. Everything in this folder i
 - `refreshDepartures` calls `/api/stationboard` (limit tuned to UI), rebuilds grouped rows (3 h horizon, train/bus split, line/platform filters, favorites-only mode, train service filters) and renders. Countdown column updates every 5 s from cached data.
 - Backend stationboard responses now carry additive top-level `meta` (Model A): `serverTime`, `responseMode`, `requestId`, `totalBackendMs`, `skippedSteps`, `rtStatus`, `rtAppliedCount`, `rtFetchedAt`, `rtCacheAgeMs`, `alertsStatus`, `alertsFetchedAt`, `alertsCacheAgeMs`. `logic.v*.js` normalizes/persists it as `data.meta` and `appState.lastStationboardMeta` for diagnostics only (no polling or rendering cadence changes).
 - RT availability notice is driven by backend status, not HTTP code: show `rtTemporarilyUnavailable` whenever `meta.rtStatus !== "applied"` (fallback for legacy payloads: show unless `rt.applied=true` or `rt.reason="fresh"`).
+- Bus line alert-column rendering is deterministic: show the extra line-column space only when at least one bus row has a positive delay signal (`status==="delay"` or `displayedDelayMin>0` or `delayMin>0`) and at least one bus row has renderable inline alert text; otherwise the line column stays collapsed.
+- Line-alert popovers are anchored near the clicked row on all viewport sizes (no bottom sheet mode on mobile) and use a single-surface content layout with simple row separators.
+- For single-alert departures, the popover header combines line + alert headline (`Line <id> – <headline>`), while the body shows the alert description text only.
 - Refresh scheduling is timer-based (`REFRESH_DEPARTURES`) with Page Visibility/focus hooks: when the page returns to foreground, the app triggers an immediate refresh and performs drift catch-up if the scheduled timer slipped while backgrounded/throttled.
 - Refresh requests are coalesced client-side: if a refresh is already in flight, new foreground/focus/manual refresh intents are queued and collapsed into a single follow-up fetch instead of launching parallel requests. See **Loading-hint state machine** below for the ownership rules.
 - Incremental `since_rt` polling is context-guarded: the client sends `since_rt` only when a board is already applied for the same stop/language context, and includes `if_board=1` to allow backend `204` short-circuit only in that safe state.
@@ -42,6 +45,7 @@ Static, dependency-free front-end for mesdeparts.ch. Everything in this folder i
 - Trip-details modal (`Détail du trajet`) uses abortable/time-bounded fetches and always exits loading state; non-OK/timeout failures show an error plus a retry button instead of indefinite loading.
 - Station search uses `/api/stops/search` and geolocation helper via `/api/stops/nearby`.
 - Embeds: pages add a `dual-embed` class when framed; `publishEmbedState` exposes current board state to the parent.
+- Dual board consumes embedded `boardLoading`/`boardNotice` state so each pane can surface live status in the top banner (localized “Refreshing…” and “Realtime data currently unavailable” when RT is degraded).
 
 ## Running locally
 - Static server only; no bundler needed:

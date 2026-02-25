@@ -175,13 +175,72 @@
       const swapBtn = document.getElementById("swapBtn");
       const resetBtn = document.getElementById("resetBtn");
       const languageSelect = document.getElementById("language-select-global");
+      const liveBoardState = {
+        left: { loading: false, notice: "", station: "" },
+        right: { loading: false, notice: "", station: "" },
+      };
+      const manualStatus = { text: "", state: "info" };
 
       const sideLabel = (side) => (side === "right" ? t("dualSideRight") : t("dualSideLeft"));
 
-      function setStatus(msg, state = "info") {
+      function compactSideLabels(sides) {
+        return sides.map((side) => sideLabel(side)).join(", ");
+      }
+
+      function composeLiveBoardStatus() {
+        const loadingSides = ["left", "right"].filter((side) => liveBoardState[side]?.loading === true);
+        if (loadingSides.length === 1) {
+          return {
+            text: `${sideLabel(loadingSides[0])}: ${t("loadingDepartures")}`,
+            state: "info",
+          };
+        }
+        if (loadingSides.length > 1) {
+          return {
+            text: `${t("loadingDepartures")} (${compactSideLabels(loadingSides)})`,
+            state: "info",
+          };
+        }
+
+        const noticeEntries = ["left", "right"]
+          .map((side) => ({
+            side,
+            notice: String(liveBoardState[side]?.notice || "").trim(),
+          }))
+          .filter((entry) => entry.notice);
+        if (!noticeEntries.length) return null;
+
+        const uniqueNotices = Array.from(new Set(noticeEntries.map((entry) => entry.notice)));
+        if (uniqueNotices.length === 1) {
+          return {
+            text: `${uniqueNotices[0]} (${compactSideLabels(noticeEntries.map((entry) => entry.side))})`,
+            state: "error",
+          };
+        }
+
+        return {
+          text: noticeEntries
+            .map((entry) => `${sideLabel(entry.side)}: ${entry.notice}`)
+            .join(" • "),
+          state: "error",
+        };
+      }
+
+      function renderStatus() {
         if (!statusEl) return;
-        statusEl.textContent = msg || "";
-        statusEl.dataset.state = state;
+        const live = composeLiveBoardStatus();
+        const manual = manualStatus.text
+          ? { text: manualStatus.text, state: manualStatus.state || "info" }
+          : null;
+        const chosen = live || manual || { text: "", state: "info" };
+        statusEl.textContent = chosen.text || "";
+        statusEl.dataset.state = chosen.state || "info";
+      }
+
+      function setStatus(msg, state = "info") {
+        manualStatus.text = msg || "";
+        manualStatus.state = state || "info";
+        renderStatus();
       }
 
       function populateLanguageSelect() {
@@ -287,6 +346,7 @@
         rightPicker?.refreshLanguageUi();
         updateControlsVisibility(controls?.classList.contains("is-collapsed"));
         syncFullscreenLabel();
+        renderStatus();
         if (reloadFrames) {
           applyFrames({ updateQuery: true, showStatus: true });
         }
@@ -554,10 +614,19 @@
         if (leftChanged) {
           leftFrame.src = leftUrl;
           lastAppliedLeftUrl = leftUrl;
+          liveBoardState.left.loading = true;
+          liveBoardState.left.notice = "";
+          liveBoardState.left.station = String(leftPicker.getSerializableState()?.stationName || "").trim();
         }
         if (rightChanged) {
           rightFrame.src = rightUrl;
           lastAppliedRightUrl = rightUrl;
+          liveBoardState.right.loading = true;
+          liveBoardState.right.notice = "";
+          liveBoardState.right.station = String(rightPicker.getSerializableState()?.stationName || "").trim();
+        }
+        if (leftChanged || rightChanged) {
+          renderStatus();
         }
 
         if (updateQuery && (leftChanged || rightChanged)) {
@@ -603,6 +672,12 @@
         if (!side) return;
         const picker = side === "left" ? leftPicker : rightPicker;
         picker.setBoardType(data.isTrain, data.view, data.hideDeparture, { silent: true });
+        liveBoardState[side].loading = data.boardLoading === true;
+        liveBoardState[side].notice = String(data.boardNotice || "").trim();
+        if (typeof data.station === "string" && data.station.trim()) {
+          liveBoardState[side].station = data.station.trim();
+        }
+        renderStatus();
       }
 
       window.addEventListener("message", handleBoardStateMessage);

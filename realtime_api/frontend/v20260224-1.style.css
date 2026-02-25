@@ -482,11 +482,13 @@ body {
 /* Grid column templates for deterministic layout */
 :root {
   /* WIDE mode (desktop/board): single-line destination */
-  --cols-wide: 4.8rem minmax(16ch, 1fr) 4.8rem 3.2rem 2.9rem minmax(9rem, 16rem);
+  --cols-wide: fit-content(3.95rem) minmax(16ch, 1fr) 4.8rem 3.2rem 2.9rem minmax(9rem, 16rem);
+  --cols-wide-alert: 5.1rem minmax(15ch, 1fr) 4.8rem 3.2rem 2.9rem minmax(9rem, 16rem);
   /* Line | Destination | Départ | Voie | min | Remarque */
 
   /* WIDE mode (no Départ column) */
-  --cols-wide-hide: 4.8rem minmax(18ch, 1fr) 3.2rem 2.9rem minmax(9rem, 16rem);
+  --cols-wide-hide: fit-content(3.95rem) minmax(18ch, 1fr) 3.2rem 2.9rem minmax(9rem, 16rem);
+  --cols-wide-hide-alert: 5.1rem minmax(17ch, 1fr) 3.2rem 2.9rem minmax(9rem, 16rem);
   /* Line | Destination | Voie | min | Remarque */
 
   /* WIDE mode (train board: no min column) */
@@ -494,11 +496,13 @@ body {
   /* Line | Destination | Départ | Voie | Remarque */
 
   /* PHONE mode: compact layout, Time right next to Destination */
-  --cols-phone: 4.6rem minmax(10ch, 1fr) 3.6rem 2.5rem 2.3rem minmax(4.5rem, 6rem);
+  --cols-phone: fit-content(3.8rem) minmax(10ch, 1fr) 3.6rem 2.5rem 2.3rem minmax(4.5rem, 6rem);
+  --cols-phone-alert: 4.85rem minmax(9ch, 1fr) 3.6rem 2.5rem 2.3rem minmax(4.5rem, 6rem);
   /* Line | Destination | Départ | Voie | min | Remarque */
 
   /* PHONE mode (no Départ column) */
-  --cols-phone-hide: 4.6rem minmax(12ch, 1fr) 2.5rem 2.3rem minmax(4.5rem, 6rem);
+  --cols-phone-hide: fit-content(3.8rem) minmax(12ch, 1fr) 2.5rem 2.3rem minmax(4.5rem, 6rem);
+  --cols-phone-hide-alert: 4.85rem minmax(11ch, 1fr) 2.5rem 2.3rem minmax(4.5rem, 6rem);
   /* Line | Destination | Voie | min | Remarque */
 
   /* PHONE mode (train board: no min column) */
@@ -646,40 +650,28 @@ body {
   z-index: 83;
   display: none;
   pointer-events: none;
+  background: rgba(2, 11, 52, 0.2);
+  backdrop-filter: blur(1.5px);
 }
 
 .departure-alerts-layer.is-visible {
   display: block;
+  pointer-events: auto;
 }
 
 .departure-alerts-panel {
   position: fixed;
-  width: min(360px, calc(100vw - 16px));
-  border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.28);
+  width: min(420px, calc(100vw - 20px));
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
   background:
-    radial-gradient(120% 170% at 100% 0%, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0) 58%),
-    linear-gradient(170deg, rgba(255, 56, 50, 0.98) 0%, rgba(224, 24, 24, 0.98) 55%, rgba(189, 16, 16, 0.98) 100%);
-  box-shadow: 0 24px 52px rgba(0, 0, 0, 0.46);
-  padding: 12px 12px 13px;
+    radial-gradient(130% 170% at 100% 0%, rgba(255, 255, 255, 0.09) 0%, rgba(255, 255, 255, 0) 58%),
+    linear-gradient(180deg, rgba(7, 31, 118, 0.98) 0%, rgba(5, 25, 99, 0.98) 100%);
+  box-shadow: 0 22px 46px rgba(0, 0, 0, 0.42);
+  padding: 0;
   pointer-events: auto;
-  max-height: min(62vh, 440px);
+  max-height: min(68vh, 500px);
   overflow: auto;
-}
-
-.departure-alerts-layer.is-sheet {
-  background: rgba(0, 10, 40, 0.45);
-  pointer-events: auto;
-}
-
-.departure-alerts-layer.is-sheet .departure-alerts-panel {
-  position: absolute;
-  left: 10px;
-  right: 10px;
-  bottom: calc(10px + env(safe-area-inset-bottom, 0px));
-  top: auto;
-  width: auto;
-  max-height: min(66vh, 480px);
 }
 
 .departure-alerts-header {
@@ -687,21 +679,26 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  margin-bottom: 10px;
+  margin: 0;
+  padding: 10px 12px;
+  background:
+    radial-gradient(180% 210% at 0% 0%, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0) 62%),
+    linear-gradient(165deg, rgba(245, 43, 34, 0.98) 0%, rgba(210, 28, 24, 0.98) 100%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.18);
 }
 
 .departure-alerts-title {
-  font-size: 0.92rem;
-  font-weight: 700;
+  font-size: 0.9rem;
+  font-weight: 760;
   letter-spacing: 0.01em;
 }
 
 .departure-alerts-close {
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  background: rgba(255, 255, 255, 0.16);
   color: #ffffff;
   font-size: 1rem;
   line-height: 1;
@@ -712,40 +709,43 @@ body {
   display: flex;
   flex-direction: column;
   gap: 0;
+  padding: 8px 12px 12px;
 }
 
 .departure-alerts-item {
-  border-radius: 10px;
-  padding: 9px 9px 9px 11px;
-  border-top: 0;
-  border-left: 3px solid rgba(255, 255, 255, 0.45);
-  background: rgba(129, 0, 0, 0.14);
-  margin-top: 7px;
-}
-
-.departure-alerts-item:first-child {
+  border-radius: 0;
+  padding: 9px 0;
+  border: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
+  background: transparent;
   margin-top: 0;
 }
 
+.departure-alerts-item:first-child {
+  border-top: 0;
+  padding-top: 6px;
+}
+
 .departure-alerts-item--warning {
-  border-left-color: rgba(255, 227, 121, 0.96);
+  color: rgba(255, 255, 255, 0.96);
 }
 
 .departure-alerts-item--severe {
-  border-left-color: rgba(255, 255, 255, 0.96);
+  color: #ffffff;
 }
 
 .departure-alerts-item-title {
   margin: 0;
-  font-size: 0.84rem;
-  font-weight: 760;
+  font-size: 0.86rem;
+  font-weight: 740;
   line-height: 1.26;
 }
 
 .departure-alerts-item-text {
-  margin: 4px 0 0;
+  margin: 5px 0 0;
   font-size: 0.82rem;
   line-height: 1.36;
+  opacity: 0.98;
 }
 
 .departure-alerts-link {
@@ -1078,10 +1078,31 @@ body {
   padding-left: 4px;
 }
 
+.dest-suffix-strong {
+  font-weight: 800;
+  letter-spacing: 0.015em;
+}
+
+.dest-split-lines {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1.1;
+}
+
+.dest-second-line {
+  font-weight: 500;
+}
+
 /* Train boards: small left padding for visual separation from line badge */
 .departures.is-train-board .col-to-cell,
 .departures.is-train-board .col-dest-cell {
   padding-left: 4px;
+  font-weight: 700;
+}
+
+.departures.is-train-board .dest-second-line {
+  font-weight: 700;
 }
 
 .col-time-cell {
@@ -1123,6 +1144,14 @@ body {
   /* Line | Destination (wider) | Voie | min | Remarque */
 }
 
+.departures.has-line-alert-column {
+  --cols: var(--cols-wide-alert);
+}
+
+.departures.is-hide-departure.has-line-alert-column {
+  --cols: var(--cols-wide-hide-alert);
+}
+
 .departures.is-train-board {
   --cols: var(--cols-wide-train);
 }
@@ -1156,6 +1185,14 @@ body {
 
   .departures.is-hide-departure {
     --cols: var(--cols-phone-hide);
+  }
+
+  .departures.has-line-alert-column {
+    --cols: var(--cols-phone-alert);
+  }
+
+  .departures.is-hide-departure.has-line-alert-column {
+    --cols: var(--cols-phone-hide-alert);
   }
 
   .departures.is-train-board {
