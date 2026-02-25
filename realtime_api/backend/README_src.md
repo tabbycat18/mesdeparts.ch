@@ -21,7 +21,8 @@ This file documents the current `realtime_api/backend/src/` tree based on direct
    - `src/logic/buildStationboard.js` performs SQL base board + RT merge pipeline.
    - `src/merge/*` applies TripUpdates, added trips, alerts, dedupe rules.
 3. Realtime data access
-   - `src/rt/loadScopedRtFromCache.js` scopes TripUpdates from cached payload.
+   - `src/rt/loadScopedRtFromParsedTables.js` scopes TripUpdates from parsed RT tables (default).
+   - `src/rt/loadScopedRtFromCache.js` scopes TripUpdates from cached payload (fallback).
    - `src/rt/loadAlertsFromCache.js` loads Service Alerts from cached payload.
    - `src/db/rtCache.js` provides RT cache read/write helpers.
 4. Search and resolve
@@ -244,6 +245,14 @@ Primary responsibilities:
 
 ## RT deep dive (`src/rt`)
 
+### `src/rt/loadScopedRtFromParsedTables.js` (TripUpdates parsed-table scope loader)
+
+Primary responsibilities:
+- Read scoped RT rows from parsed tables (`rt_stop_time_updates`, `rt_trip_updates`) using indexed predicates (`trip_id = ANY(...)` and stop-id fallback).
+- Build the in-memory merge structures consumed by `applyTripUpdates` (`byKey`, cancellations, stop status, trip flags, trip fallback, `addedTripStopUpdates`).
+- Enforce freshness threshold (`STATIONBOARD_RT_FRESH_MAX_AGE_MS`, default 45s) using parsed-table `updated_at`.
+- Return `meta.rtSource = "parsed"` so stationboard can expose source selection in debug/top-level meta.
+
 ### `src/rt/loadScopedRtFromCache.js` (TripUpdates cache scope loader)
 
 Primary responsibilities:
@@ -299,7 +308,8 @@ Primary responsibilities:
 | Synthetic departures from alert time text | `src/merge/synthesizeFromAlerts.js` |
 | OTD replacement supplement behavior | `src/merge/supplementFromOtdStationboard.js` |
 | Dedupe preference between competing departure rows | `src/merge/pickPreferredDeparture.js` |
-| Scoped TripUpdates cache loading + guard limits | `src/rt/loadScopedRtFromCache.js` |
+| Scoped TripUpdates parsed-table loading (default request path) | `src/rt/loadScopedRtFromParsedTables.js` |
+| Scoped TripUpdates cache loading + guard limits (fallback path) | `src/rt/loadScopedRtFromCache.js` |
 | Service-alert cache loading + freshness/grace | `src/rt/loadAlertsFromCache.js` |
 
 ## Folder summary

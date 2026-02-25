@@ -4,7 +4,7 @@ import { applyTripUpdates } from "../merge/applyTripUpdates.js";
 import { applyAddedTrips } from "../merge/applyAddedTrips.js";
 import { pickPreferredMergedDeparture } from "../merge/pickPreferredDeparture.js";
 import { createCancellationTracer } from "../debug/cancellationTrace.js";
-import { loadScopedRtFromCache } from "../rt/loadScopedRtFromCache.js";
+import { loadScopedRtFromParsedTables } from "../rt/loadScopedRtFromParsedTables.js";
 import {
   addDaysToYmdInt,
   dateFromZurichServiceDateAndSeconds,
@@ -276,6 +276,7 @@ export async function buildStationboard(locationId, options = {}) {
     resolvedScope = null,
     scopeQueryMode = "mixed",
     rtDebugMode = "",
+    loadScopedRtLike = null,
     readRtCacheLike = null,
   } = options;
   const requestedLimit = Math.max(1, Number(limit) || 100);
@@ -968,7 +969,11 @@ export async function buildStationboard(locationId, options = {}) {
         },
       }
     : await withTimeout(
-        loadScopedRtFromCache({
+        (
+          typeof loadScopedRtLike === "function"
+            ? loadScopedRtLike
+            : loadScopedRtFromParsedTables
+        )({
           enabled: rtEnabledForRequest,
           nowMs: now.getTime(),
           windowStartEpochSec: rtWindowStartEpochSec,

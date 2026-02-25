@@ -21,6 +21,8 @@ import { guardStationboardRequestPathUpstream } from "../util/upstreamRequestGua
 import { LA_SERVICEALERTS_FEED_KEY, LA_TRIPUPDATES_FEED_KEY } from "../db/rtCache.js";
 import { loadAlertsFromCache } from "../rt/loadAlertsFromCache.js";
 import { readTripUpdatesFeedFromCache } from "../../loaders/loadRealtime.js";
+import { loadScopedRtFromParsedTables } from "../rt/loadScopedRtFromParsedTables.js";
+import { loadScopedRtFromCache } from "../rt/loadScopedRtFromCache.js";
 
 const OTD_STATIONBOARD_URL = "https://transport.opendata.ch/v1/stationboard";
 const OTD_STATIONBOARD_FETCH_TIMEOUT_MS = Math.max(
@@ -94,6 +96,63 @@ function createRequestScopedTripUpdatesReadCacheLike() {
       inFlight = Promise.resolve(readTripUpdatesFeedFromCache(options)).catch((err) => {
         inFlight = null;
         throw err;
+      });
+    }
+    return inFlight;
+  };
+}
+
+function normalizeScopedRtResult(result, rtSource) {
+  const tripUpdates =
+    result?.tripUpdates && typeof result.tripUpdates === "object"
+      ? result.tripUpdates
+      : { entities: [], entity: [] };
+  const meta = result?.meta && typeof result.meta === "object" ? result.meta : {};
+  return {
+    tripUpdates,
+    meta: {
+      ...meta,
+      rtSource: String(rtSource || meta.rtSource || "parsed"),
+    },
+  };
+}
+
+export function createRequestScopedTripUpdatesLoaderLike({
+  loadParsedLike = loadScopedRtFromParsedTables,
+  loadBlobLike = loadScopedRtFromCache,
+  readBlobCacheLike = createRequestScopedTripUpdatesReadCacheLike(),
+  allowBlobFallback = true,
+} = {}) {
+  let inFlight = null;
+
+  async function loadWithFallback(options = {}) {
+    const parsedResult = await Promise.resolve(loadParsedLike(options));
+    const parsedMeta = parsedResult?.meta && typeof parsedResult.meta === "object"
+      ? parsedResult.meta
+      : {};
+    const parsedReason = String(parsedMeta.reason || "").trim().toLowerCase();
+    const shouldFallback =
+      allowBlobFallback &&
+      (parsedReason === "missing_cache" || parsedReason === "parsed_unavailable");
+    if (!shouldFallback) {
+      return normalizeScopedRtResult(parsedResult, "parsed");
+    }
+
+    const blobResult = await Promise.resolve(
+      loadBlobLike({
+        ...options,
+        readCacheLike: readBlobCacheLike,
+      })
+    );
+    const normalized = normalizeScopedRtResult(blobResult, "blob_fallback");
+    normalized.meta.parsedFallbackReason = parsedReason || "missing_cache";
+    return normalized;
+  }
+
+  return async function requestScopedTripUpdatesLoaderLike(options = {}) {
+    if (!inFlight) {
+      inFlight = Promise.resolve(loadWithFallback(options)).finally(() => {
+        inFlight = null;
       });
     }
     return inFlight;
@@ -709,6 +768,10 @@ function toRtTripUpdatesDebug(rtMeta, departureAuditRows) {
       base.rtReadSource === "memory" || base.rtReadSource === "db"
         ? base.rtReadSource
         : null,
+    rtSource:
+      base.rtSource === "parsed" || base.rtSource === "blob_fallback"
+        ? base.rtSource
+        : null,
     rtCacheHit: base.rtCacheHit === true,
     rtPayloadBytes: Number.isFinite(base.rtPayloadBytes)
       ? Number(base.rtPayloadBytes)
@@ -808,6 +871,10 @@ function buildRtResponseMeta(rtMetaRaw) {
     freshnessThresholdMs,
     freshnessMaxAgeSeconds: Math.round(freshnessThresholdMs / 1000),
     cacheStatus: String(rtMeta.cacheStatus || "MISS"),
+    rtSource:
+      rtMeta.rtSource === "parsed" || rtMeta.rtSource === "blob_fallback"
+        ? rtMeta.rtSource
+        : "parsed",
     status: Number.isFinite(rtMeta.status)
       ? Number(rtMeta.status)
       : Number.isFinite(rtMeta.lastStatus)
@@ -1237,7 +1304,7 @@ export async function getStationboard({
     requestBudgetMs: totalBudgetMs,
     requestLowBudgetThresholdMs: minRemainingForRtApplyMs,
     resolvedScope,
-    readRtCacheLike: createRequestScopedTripUpdatesReadCacheLike(),
+    loadScopedRtLike: createRequestScopedTripUpdatesLoaderLike(),
     debugLog: (event, payload) => {
       debugLog(event, payload);
     },
@@ -1483,6 +1550,10 @@ export async function getStationboard({
       skippedSteps,
       rtStatus,
       rtAppliedCount: countRtAppliedDepartures(safeResponse.departures),
+      rtSource:
+        rtMeta.rtSource === "parsed" || rtMeta.rtSource === "blob_fallback"
+          ? rtMeta.rtSource
+          : "parsed",
       rtFetchedAt,
       rtCacheAgeMs,
       alertsStatus,

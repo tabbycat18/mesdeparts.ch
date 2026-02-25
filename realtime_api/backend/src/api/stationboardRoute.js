@@ -191,6 +191,12 @@ function ensureRtMeta(raw) {
     lastStatus: toFiniteNumberOrNull(src.lastStatus),
     lastError: text(src.lastError) || null,
     payloadBytes: toFiniteNumberOrNull(src.payloadBytes),
+    rtSource:
+      text(src.rtSource) === "blob_fallback"
+        ? "blob_fallback"
+        : text(src.rtSource) === "parsed"
+          ? "parsed"
+          : "parsed",
     instance: routeInstanceMeta(src.instance),
   };
 }
@@ -326,6 +332,9 @@ function ensureTopLevelMeta(payload, { requestId, responseMode, totalBackendMs }
     rtStatus: text(metaRaw.rtStatus) || deriveRtStatus(normalized, skippedSteps),
     rtAppliedCount:
       toFiniteNumberOrNull(metaRaw.rtAppliedCount) ?? countRtAppliedDepartures(normalized.departures),
+    rtSource:
+      text(metaRaw.rtSource) ||
+      (text(normalized?.rt?.rtSource) === "blob_fallback" ? "blob_fallback" : "parsed"),
     rtFetchedAt,
     rtCacheAgeMs,
     alertsStatus: text(metaRaw.alertsStatus) || deriveAlertsStatus(normalized, skippedSteps),

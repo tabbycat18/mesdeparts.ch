@@ -21,6 +21,20 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_gtfs_stop_times_stop_depsec_trip_seq
 ON public.gtfs_stop_times (stop_id, departure_time_seconds, trip_id, stop_sequence)
 WHERE departure_time_seconds IS NOT NULL;
 
+-- Parsed RT stationboard predicates:
+-- 1) scope by static board trip_ids
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_rt_stop_time_updates_trip_id_updated_at
+ON public.rt_stop_time_updates (trip_id, updated_at DESC);
+
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_rt_trip_updates_trip_id_updated_at
+ON public.rt_trip_updates (trip_id, updated_at DESC);
+
+-- 2) fallback scope by stop_ids when trip_ids are sparse/unavailable
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_rt_stop_time_updates_stop_id_updated_at
+ON public.rt_stop_time_updates (stop_id, updated_at DESC);
+
 ANALYZE public.gtfs_stops;
 ANALYZE public.app_stop_aliases;
 ANALYZE public.gtfs_stop_times;
+ANALYZE public.rt_trip_updates;
+ANALYZE public.rt_stop_time_updates;
