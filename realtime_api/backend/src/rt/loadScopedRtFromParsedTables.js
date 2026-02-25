@@ -14,6 +14,10 @@ const DEFAULT_RT_SCOPE_MAX_SCANNED_ROWS = Math.max(
   100,
   Number(process.env.STATIONBOARD_RT_SCOPE_MAX_SCANNED_ENTITIES || "35000")
 );
+const DEFAULT_RT_PARSED_STOP_SCOPE_LOOKBACK_MS = Math.max(
+  60_000,
+  Number(process.env.STATIONBOARD_RT_PARSED_STOP_SCOPE_LOOKBACK_MS || "3600000")
+);
 
 const EMPTY_PARSED_RT = Object.freeze({
   byKey: Object.freeze({}),
@@ -296,8 +300,9 @@ const SQL_STOP_UPDATES_BY_STOP_IDS = `
   FROM public.rt_stop_time_updates stu
   LEFT JOIN public.rt_trip_updates tu ON tu.trip_id = stu.trip_id
   WHERE stu.stop_id = ANY($1::text[])
+    AND stu.updated_at >= NOW() - ($2::bigint * INTERVAL '1 millisecond')
   ORDER BY stu.updated_at DESC NULLS LAST
-  LIMIT $2
+  LIMIT $3
 `;
 
 const SQL_TRIP_ROWS_BY_TRIP_IDS = `
@@ -327,6 +332,10 @@ export async function loadScopedRtFromParsedTables(options = {}) {
   const maxScannedRows = Math.max(
     100,
     Number(options.maxScannedRows || DEFAULT_RT_SCOPE_MAX_SCANNED_ROWS)
+  );
+  const stopScopeLookbackMs = Math.max(
+    60_000,
+    Number(options.stopScopeLookbackMs || DEFAULT_RT_PARSED_STOP_SCOPE_LOOKBACK_MS)
   );
   const queryLike = typeof options.queryLike === "function" ? options.queryLike : dbQuery;
   const scopeTripIds = uniqueValues(options.scopeTripIds || []);
@@ -376,9 +385,13 @@ export async function loadScopedRtFromParsedTables(options = {}) {
 
     if (scopeStopIds.length > 0 && stopRowsMap.size < maxScannedRows) {
       const remaining = Math.max(1, maxScannedRows - stopRowsMap.size);
-      const stopRes = await queryLike(SQL_STOP_UPDATES_BY_STOP_IDS, [scopeStopIds, remaining], {
-        queryTimeoutMs: Math.max(120, maxProcessMs + 200),
-      });
+      const stopRes = await queryLike(
+        SQL_STOP_UPDATES_BY_STOP_IDS,
+        [scopeStopIds, stopScopeLookbackMs, remaining],
+        {
+          queryTimeoutMs: Math.max(120, maxProcessMs + 200),
+        }
+      );
       const rows = Array.isArray(stopRes?.rows) ? stopRes.rows : [];
       for (const row of rows) {
         scannedRows += 1;

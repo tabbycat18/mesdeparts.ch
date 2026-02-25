@@ -122,11 +122,22 @@ export function createRequestScopedTripUpdatesLoaderLike({
   loadParsedLike = loadScopedRtFromParsedTables,
   loadBlobLike = loadScopedRtFromCache,
   readBlobCacheLike = createRequestScopedTripUpdatesReadCacheLike(),
-  allowBlobFallback = true,
+  allowBlobFallback = false,
+  forceBlobMode = false,
 } = {}) {
   let inFlight = null;
 
   async function loadWithFallback(options = {}) {
+    if (forceBlobMode) {
+      const blobResult = await Promise.resolve(
+        loadBlobLike({
+          ...options,
+          readCacheLike: readBlobCacheLike,
+        })
+      );
+      return normalizeScopedRtResult(blobResult, "blob");
+    }
+
     const parsedResult = await Promise.resolve(loadParsedLike(options));
     const parsedMeta = parsedResult?.meta && typeof parsedResult.meta === "object"
       ? parsedResult.meta
@@ -145,7 +156,7 @@ export function createRequestScopedTripUpdatesLoaderLike({
         readCacheLike: readBlobCacheLike,
       })
     );
-    const normalized = normalizeScopedRtResult(blobResult, "blob_fallback");
+    const normalized = normalizeScopedRtResult(blobResult, "blob");
     normalized.meta.parsedFallbackReason = parsedReason || "missing_cache";
     return normalized;
   }
@@ -820,7 +831,7 @@ function toRtTripUpdatesDebug(rtMeta, departureAuditRows) {
         ? base.rtReadSource
         : null,
     rtSource:
-      base.rtSource === "parsed" || base.rtSource === "blob_fallback"
+      base.rtSource === "parsed" || base.rtSource === "blob"
         ? base.rtSource
         : null,
     rtCacheHit: base.rtCacheHit === true,
@@ -927,7 +938,7 @@ function buildRtResponseMeta(rtMetaRaw) {
     freshnessMaxAgeSeconds: Math.round(freshnessThresholdMs / 1000),
     cacheStatus: String(rtMeta.cacheStatus || "MISS"),
     rtSource:
-      rtMeta.rtSource === "parsed" || rtMeta.rtSource === "blob_fallback"
+      rtMeta.rtSource === "parsed" || rtMeta.rtSource === "blob"
         ? rtMeta.rtSource
         : "parsed",
     status: Number.isFinite(rtMeta.status)
@@ -1370,7 +1381,10 @@ export async function getStationboard({
     requestBudgetMs: totalBudgetMs,
     requestLowBudgetThresholdMs: minRemainingForRtApplyMs,
     resolvedScope,
-    loadScopedRtLike: createRequestScopedTripUpdatesLoaderLike(),
+    loadScopedRtLike: createRequestScopedTripUpdatesLoaderLike({
+      allowBlobFallback: rtDebugMode === "blob",
+      forceBlobMode: rtDebugMode === "blob",
+    }),
     debugLog: (event, payload) => {
       debugLog(event, payload);
     },
@@ -1617,7 +1631,7 @@ export async function getStationboard({
       rtStatus,
       rtAppliedCount: countRtAppliedDepartures(safeResponse.departures),
       rtSource:
-        rtMeta.rtSource === "parsed" || rtMeta.rtSource === "blob_fallback"
+        rtMeta.rtSource === "parsed" || rtMeta.rtSource === "blob"
           ? rtMeta.rtSource
           : "parsed",
       rtFetchedAt,

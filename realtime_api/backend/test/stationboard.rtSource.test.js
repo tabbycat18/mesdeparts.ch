@@ -48,7 +48,7 @@ test("stationboard scoped RT loader uses parsed source and avoids blob fallback 
   assert.equal(out.meta.applied, true);
 });
 
-test("stationboard scoped RT loader falls back to blob source only when parsed is missing", async () => {
+test("stationboard scoped RT loader keeps blob fallback disabled by default when parsed is missing", async () => {
   const createRequestScopedTripUpdatesLoaderLike = await createScopedLoaderFactory();
   let blobCalled = false;
 
@@ -77,7 +77,43 @@ test("stationboard scoped RT loader falls back to blob source only when parsed i
     scopeTripIds: ["trip-2"],
   });
 
+  assert.equal(blobCalled, false);
+  assert.equal(out.meta.rtSource, "parsed");
+  assert.equal(out.meta.reason, "missing_cache");
+});
+
+test("stationboard scoped RT loader uses blob source only in explicit debug blob mode", async () => {
+  const createRequestScopedTripUpdatesLoaderLike = await createScopedLoaderFactory();
+  let blobCalled = false;
+
+  const loader = createRequestScopedTripUpdatesLoaderLike({
+    forceBlobMode: true,
+    allowBlobFallback: true,
+    loadParsedLike: async () => ({
+      tripUpdates: { byKey: {} },
+      meta: {
+        applied: false,
+        reason: "missing_cache",
+      },
+    }),
+    loadBlobLike: async () => {
+      blobCalled = true;
+      return {
+        tripUpdates: { entities: [] },
+        meta: {
+          applied: false,
+          reason: "stale_cache",
+        },
+      };
+    },
+  });
+
+  const out = await loader({
+    enabled: true,
+    scopeTripIds: ["trip-blob-1"],
+  });
+
   assert.equal(blobCalled, true);
-  assert.equal(out.meta.rtSource, "blob_fallback");
-  assert.equal(out.meta.parsedFallbackReason, "missing_cache");
+  assert.equal(out.meta.rtSource, "blob");
+  assert.equal(out.meta.reason, "stale_cache");
 });

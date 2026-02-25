@@ -139,3 +139,60 @@ test("loadScopedRtFromParsedTables returns stale_cache when parsed rows are too 
   assert.equal(out.meta.cacheStatus, "STALE");
   assert.equal(out.meta.rtSource, "parsed");
 });
+
+test("loadScopedRtFromParsedTables stop-scope query stays on parsed tables and applies updated_at lookback", async () => {
+  const loadScopedRtFromParsedTables = await loadScopedRtFromParsedTablesFn();
+  const seenQueries = [];
+  const nowMs = Date.now();
+
+  const out = await loadScopedRtFromParsedTables({
+    enabled: true,
+    nowMs,
+    scopeTripIds: [],
+    scopeStopIds: ["8503000:0:1"],
+    stopScopeLookbackMs: 30 * 60 * 1000,
+    queryLike: async (sql, params) => {
+      const query = String(sql || "");
+      seenQueries.push(query);
+      if (query.includes("FROM public.rt_stop_time_updates") && query.includes("stu.stop_id = ANY")) {
+        assert.equal(query.includes("stu.updated_at >="), true);
+        assert.equal(Number(params?.[1]), 30 * 60 * 1000);
+        return {
+          rows: [
+            {
+              trip_id: "trip-stop-scope-1",
+              stop_id: "8503000:0:1",
+              stop_sequence: 4,
+              departure_delay: 60,
+              departure_time_rt: Math.floor((nowMs + 60_000) / 1000),
+              stop_schedule_relationship: "SCHEDULED",
+              stop_updated_at: new Date(nowMs - 500).toISOString(),
+              start_date: "20260225",
+              route_id: "R1",
+              trip_schedule_relationship: "SCHEDULED",
+              trip_updated_at: new Date(nowMs - 500).toISOString(),
+            },
+          ],
+        };
+      }
+      if (query.includes("FROM public.rt_trip_updates")) {
+        return {
+          rows: [
+            {
+              trip_id: "trip-stop-scope-1",
+              route_id: "R1",
+              start_date: "20260225",
+              trip_schedule_relationship: "SCHEDULED",
+              trip_updated_at: new Date(nowMs - 500).toISOString(),
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    },
+  });
+
+  assert.equal(out.meta.applied, true);
+  assert.equal(out.meta.rtSource, "parsed");
+  assert.equal(seenQueries.some((query) => query.toLowerCase().includes("from public.rt_cache")), false);
+});
