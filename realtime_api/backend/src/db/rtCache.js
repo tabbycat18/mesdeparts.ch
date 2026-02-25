@@ -176,6 +176,76 @@ export async function upsertRtCache(
   return rowToCacheRecord(result.rows[0] || null);
 }
 
+export async function ensureRtCacheMetadataRow(feed_key, options = {}) {
+  const feedKey = normalizeFeedKey(feed_key);
+  const fetchedAtDate = normalizeFetchedAt(options?.fetchedAt || new Date());
+  const writeLockId = Number(options?.writeLockId);
+  const hasWriteLockId = Number.isFinite(writeLockId);
+  const etag = toNullableText(options?.etag);
+  const status = toNullableInt(options?.last_status);
+  const error = toNullableText(options?.last_error);
+  const values = [feedKey, fetchedAtDate, etag, status, error];
+  const result = await query(
+    hasWriteLockId
+      ? `
+          WITH lock_state AS (
+            SELECT pg_try_advisory_xact_lock($6::bigint) AS acquired
+          ),
+          inserted AS (
+            INSERT INTO public.rt_cache (
+              feed_key,
+              fetched_at,
+              payload,
+              etag,
+              last_status,
+              last_error
+            )
+            SELECT $1, $2, NULL::bytea, $3, $4, $5
+            FROM lock_state
+            WHERE acquired
+            ON CONFLICT (feed_key) DO NOTHING
+            RETURNING 1 AS touched
+          )
+          SELECT
+            (SELECT EXISTS (SELECT 1 FROM inserted)) AS inserted,
+            false AS write_skipped_by_lock
+          FROM lock_state
+          WHERE acquired
+          UNION ALL
+          SELECT
+            false AS inserted,
+            true AS write_skipped_by_lock
+          FROM lock_state
+          WHERE NOT acquired
+          LIMIT 1
+        `
+      : `
+          WITH inserted AS (
+            INSERT INTO public.rt_cache (
+              feed_key,
+              fetched_at,
+              payload,
+              etag,
+              last_status,
+              last_error
+            )
+            VALUES ($1, $2, NULL::bytea, $3, $4, $5)
+            ON CONFLICT (feed_key) DO NOTHING
+            RETURNING 1 AS touched
+          )
+          SELECT
+            EXISTS (SELECT 1 FROM inserted) AS inserted,
+            false AS write_skipped_by_lock
+        `,
+    hasWriteLockId ? [...values, Math.trunc(writeLockId)] : values
+  );
+  const row = result.rows[0] || {};
+  return {
+    inserted: row.inserted === true,
+    writeSkippedByLock: row.write_skipped_by_lock === true,
+  };
+}
+
 export async function updateRtCacheStatus(
   feed_key,
   fetchedAt,

@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
+import GtfsRealtimeBindings from "gtfs-realtime-bindings";
 
 import {
   LA_GTFS_RT_SERVICE_ALERTS_URL,
@@ -9,12 +10,13 @@ import {
 } from "../src/loaders/fetchServiceAlerts.js";
 import {
   LA_SERVICEALERTS_FEED_KEY,
-  getRtCache,
+  ensureRtCacheMetadataRow,
+  getRtCacheMeta,
   getRtCachePayloadSha,
   setRtCachePayloadSha,
   updateRtCacheStatus,
-  upsertRtCache,
 } from "../src/db/rtCache.js";
+import { persistParsedServiceAlertsSnapshot } from "../src/rt/persistParsedArtifacts.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -107,27 +109,26 @@ function payloadSha256Hex(payloadBytes) {
   return createHash("sha256").update(payloadBuffer).digest("hex");
 }
 
-function shouldSkipUnchangedPayloadWrite(cacheRow, payloadBytes, currentAgeMs) {
-  if (!cacheRow?.payloadBytes) return false;
-  const incomingHash = payloadSha256Hex(payloadBytes);
-  const existingHash = payloadSha256Hex(cacheRow.payloadBytes);
-  if (!incomingHash || !existingHash) return false;
-  return incomingHash === existingHash;
-}
-
 function sleep(ms) {
   const timeoutMs = Math.max(0, Number(ms) || 0);
   return new Promise((resolve) => setTimeout(resolve, timeoutMs));
 }
 
+function decodeServiceAlertsFeed(payloadBytes) {
+  const buffer = Buffer.isBuffer(payloadBytes) ? payloadBytes : Buffer.from(payloadBytes || []);
+  return GtfsRealtimeBindings.transit_realtime.FeedMessage.decode(buffer);
+}
+
 export function createLaServiceAlertsPoller({
   token,
   fetchLike = fetch,
-  getRtCacheLike = getRtCache,
+  getRtCacheMetaLike = getRtCacheMeta,
+  ensureRtCacheMetadataRowLike = ensureRtCacheMetadataRow,
   getRtCachePayloadShaLike = getRtCachePayloadSha,
   setRtCachePayloadShaLike = setRtCachePayloadSha,
   updateRtCacheStatusLike = updateRtCacheStatus,
-  upsertRtCacheLike = upsertRtCache,
+  persistParsedServiceAlertsSnapshotLike = persistParsedServiceAlertsSnapshot,
+  decodeFeedLike = decodeServiceAlertsFeed,
   sleepLike = sleep,
   nowLike = () => Date.now(),
   feedKey = FEED_KEY,
@@ -174,12 +175,24 @@ export function createLaServiceAlertsPoller({
     consecutiveErrCount = 0;
   }
 
-  async function persistStatusKeepingPayload(cacheRow, { status, errorText, etag, updateFetchedAt }) {
-    if (!cacheRow?.payloadBytes) return { updated: false, lockSkipped: false };
+  async function persistStatusMetadata(cacheMeta, { status, errorText, etag, updateFetchedAt }) {
+    const fetchedAtValue = updateFetchedAt ? new Date(nowLike()) : cacheMeta?.fetched_at || new Date(nowLike());
+    if (!cacheMeta) {
+      const ensured = await ensureRtCacheMetadataRowLike(feedKey, {
+        fetchedAt: fetchedAtValue,
+        etag: toTextOrNull(etag),
+        last_status: status == null ? null : Number(status),
+        last_error: toTextOrNull(errorText),
+        writeLockId: FEED_WRITE_LOCK_ID,
+      });
+      if (ensured?.writeSkippedByLock === true) {
+        return { updated: false, lockSkipped: true };
+      }
+    }
     const writeResult = await updateRtCacheStatusLike(
       feedKey,
-      updateFetchedAt ? new Date(nowLike()) : cacheRow.fetched_at,
-      toTextOrNull(etag) || toTextOrNull(cacheRow.etag),
+      fetchedAtValue,
+      toTextOrNull(etag) || toTextOrNull(cacheMeta?.etag),
       status == null ? null : Number(status),
       toTextOrNull(errorText),
       { writeLockId: FEED_WRITE_LOCK_ID }
@@ -214,13 +227,13 @@ export function createLaServiceAlertsPoller({
   }
 
   async function tick() {
-    const cacheRow = await getRtCacheLike(feedKey);
+    const cacheMeta = await getRtCacheMetaLike(feedKey);
     const storedPayloadSha = await getRtCachePayloadShaLike(feedKey).catch(() => null);
-    const currentAgeMs = calcAgeMs(cacheRow?.fetched_at);
-    const currentEtag = toTextOrNull(cacheRow?.etag);
+    const currentAgeMs = calcAgeMs(cacheMeta?.fetched_at);
+    const currentEtag = toTextOrNull(cacheMeta?.etag);
 
     logLine("service_alerts_poller_tick", {
-      status: cacheRow?.last_status ?? null,
+      status: cacheMeta?.last_status ?? null,
       backoffMs: 0,
       lastFetchedAgeMs: currentAgeMs,
       etagPresent: !!currentEtag,
@@ -232,7 +245,7 @@ export function createLaServiceAlertsPoller({
     } catch (err) {
       const backoffMs = backoffErrMs();
       consecutive429Count = 0;
-      await persistStatusKeepingPayload(cacheRow, {
+      await persistStatusMetadata(cacheMeta, {
         status: null,
         errorText: `network_error ${String(err?.message || err)}`,
         etag: currentEtag,
@@ -241,7 +254,7 @@ export function createLaServiceAlertsPoller({
       logLine("service_alerts_poller_error_backoff", {
         status: null,
         backoffMs,
-        lastFetchedAgeMs: calcAgeMs(cacheRow?.fetched_at),
+        lastFetchedAgeMs: calcAgeMs(cacheMeta?.fetched_at),
         etagPresent: !!currentEtag,
       });
       return backoffMs;
@@ -252,24 +265,21 @@ export function createLaServiceAlertsPoller({
     if (response.status === 200) {
       const payloadBytes = Buffer.from(await response.arrayBuffer());
       const incomingPayloadSha = payloadSha256Hex(payloadBytes);
-      const existingPayloadSha =
-        toTextOrNull(storedPayloadSha) || payloadSha256Hex(cacheRow?.payloadBytes);
+      const existingPayloadSha = toTextOrNull(storedPayloadSha);
       const payloadUnchanged =
         !!incomingPayloadSha &&
         !!existingPayloadSha &&
         incomingPayloadSha === existingPayloadSha;
 
-      if (payloadUnchanged || shouldSkipUnchangedPayloadWrite(cacheRow, payloadBytes, currentAgeMs)) {
+      if (payloadUnchanged) {
         if (Number.isFinite(currentAgeMs) && currentAgeMs >= RT_CACHE_MIN_WRITE_INTERVAL_MS) {
-          const statusUpdate = await updateRtCacheStatusLike(
-            feedKey,
-            new Date(nowLike()),
-            responseEtag,
-            200,
-            null,
-            { writeLockId: FEED_WRITE_LOCK_ID }
-          );
-          if (statusUpdate?.writeSkippedByLock === true) {
+          const statusPersisted = await persistStatusMetadata(cacheMeta, {
+            status: 200,
+            errorText: null,
+            etag: responseEtag,
+            updateFetchedAt: true,
+          });
+          if (statusPersisted?.lockSkipped) {
             resetBackoffState();
             logLine("service_alerts_poller_write_locked_skip", {
               status: 200,
@@ -289,16 +299,31 @@ export function createLaServiceAlertsPoller({
         });
         return INTERVAL_MS;
       }
-      const writeResult = await upsertRtCacheLike(
-        feedKey,
-        payloadBytes,
-        new Date(nowLike()),
-        responseEtag,
-        200,
-        null,
-        { writeLockId: FEED_WRITE_LOCK_ID }
-      );
-      if (writeResult?.writeSkippedByLock === true) {
+      let parsedWrite;
+      try {
+        const decodedFeed = decodeFeedLike(payloadBytes);
+        parsedWrite = await persistParsedServiceAlertsSnapshotLike(decodedFeed, {
+          writeLockId: FEED_WRITE_LOCK_ID,
+        });
+      } catch (err) {
+        const backoffMs = backoffErrMs();
+        consecutive429Count = 0;
+        await persistStatusMetadata(cacheMeta, {
+          status: 200,
+          errorText: `parse_error ${String(err?.message || err)}`,
+          etag: responseEtag,
+          updateFetchedAt: false,
+        });
+        logLine("service_alerts_poller_error_backoff", {
+          status: 200,
+          backoffMs,
+          lastFetchedAgeMs: calcAgeMs(cacheMeta?.fetched_at),
+          etagPresent: !!responseEtag,
+        });
+        return backoffMs;
+      }
+
+      if (parsedWrite?.writeSkippedByLock === true) {
         resetBackoffState();
         logLine("service_alerts_poller_write_locked_skip", {
           status: 200,
@@ -313,6 +338,12 @@ export function createLaServiceAlertsPoller({
           writeLockId: FEED_WRITE_LOCK_ID,
         }).catch(() => {});
       }
+      await persistStatusMetadata(cacheMeta, {
+        status: 200,
+        errorText: null,
+        etag: responseEtag,
+        updateFetchedAt: true,
+      });
       resetBackoffState();
       logLine("service_alerts_poller_fetch_200", {
         status: 200,
@@ -335,7 +366,7 @@ export function createLaServiceAlertsPoller({
         return INTERVAL_MS;
       }
 
-      const persisted = await persistStatusKeepingPayload(cacheRow, {
+      const persisted = await persistStatusMetadata(cacheMeta, {
         status: 304,
         errorText: null,
         etag: responseEtag,
@@ -347,7 +378,7 @@ export function createLaServiceAlertsPoller({
           logLine("service_alerts_poller_write_locked_skip", {
             status: 304,
             backoffMs: 0,
-            lastFetchedAgeMs: calcAgeMs(cacheRow?.fetched_at),
+            lastFetchedAgeMs: calcAgeMs(cacheMeta?.fetched_at),
             etagPresent: !!responseEtag,
           });
           return INTERVAL_MS;
@@ -357,7 +388,7 @@ export function createLaServiceAlertsPoller({
         logLine("service_alerts_poller_error_backoff", {
           status: 304,
           backoffMs,
-          lastFetchedAgeMs: calcAgeMs(cacheRow?.fetched_at),
+          lastFetchedAgeMs: calcAgeMs(cacheMeta?.fetched_at),
           etagPresent: !!responseEtag,
         });
         return backoffMs;
@@ -377,7 +408,7 @@ export function createLaServiceAlertsPoller({
     if (response.status === 429) {
       const backoffMs = backoff429Ms();
       consecutiveErrCount = 0;
-      await persistStatusKeepingPayload(cacheRow, {
+      await persistStatusMetadata(cacheMeta, {
         status: 429,
         errorText: toTextOrNull(bodySnippet) || "Rate Limit Exceeded",
         etag: responseEtag,
@@ -386,7 +417,7 @@ export function createLaServiceAlertsPoller({
       logLine("service_alerts_poller_fetch_429_backoff", {
         status: 429,
         backoffMs,
-        lastFetchedAgeMs: calcAgeMs(cacheRow?.fetched_at),
+        lastFetchedAgeMs: calcAgeMs(cacheMeta?.fetched_at),
         etagPresent: !!responseEtag,
       });
       return backoffMs;
@@ -394,7 +425,7 @@ export function createLaServiceAlertsPoller({
 
     const backoffMs = backoffErrMs();
     consecutive429Count = 0;
-    await persistStatusKeepingPayload(cacheRow, {
+    await persistStatusMetadata(cacheMeta, {
       status: response.status,
       errorText: toTextOrNull(bodySnippet) || `HTTP ${response.status}`,
       etag: responseEtag,
@@ -403,7 +434,7 @@ export function createLaServiceAlertsPoller({
     logLine("service_alerts_poller_error_backoff", {
       status: response.status,
       backoffMs,
-      lastFetchedAgeMs: calcAgeMs(cacheRow?.fetched_at),
+      lastFetchedAgeMs: calcAgeMs(cacheMeta?.fetched_at),
       etagPresent: !!responseEtag,
     });
     return backoffMs;

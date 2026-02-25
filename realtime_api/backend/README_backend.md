@@ -180,9 +180,11 @@ To reduce per-request DB pressure and poller write churn:
   - `debug.rt.alerts.alertsPayloadFetchCountThisRequest` (`1` only when this request executed alerts payload `SELECT`, else `0`)
   - `debug.rt.tripUpdates.instanceId` / `debug.rt.alerts.instanceId` (instance attribution in multi-machine deployments)
 - Pollers avoid redundant writes:
-  - unchanged `200` payloads are skipped when fetched recently (`RT_CACHE_MIN_WRITE_INTERVAL_MS`, default `30000`)
+  - pollers persist decoded protobuf snapshots into parsed RT tables (`rt_trip_updates`, `rt_stop_time_updates`, `rt_service_alerts`)
+  - `rt_cache` now stores lightweight metadata only (`fetched_at`, `last_status`, `etag`, `last_error`); payload SHA-256 is tracked in `meta_kv`
+  - unchanged `200` payloads skip parsed snapshot rewrites when SHA-256 matches (`RT_CACHE_MIN_WRITE_INTERVAL_MS`, default `30000`)
   - frequent `304` status writes are throttled by the same interval
-  - payload/status upserts use advisory xact lock per feed to avoid concurrent writer churn across poller replicas.
+  - parsed snapshot + metadata writes use advisory xact lock per feed to avoid concurrent writer churn across poller replicas.
 
 ### Measurement checklist (network-bleed acceptance)
 

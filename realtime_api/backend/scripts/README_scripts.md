@@ -61,18 +61,20 @@ STATIONBOARD_BASE_URL=https://api.mesdeparts.ch node scripts/debugStop.js "Lausa
   - Used by `npm run poller`.
 
 - `pollLaTripUpdates.js`
-  - Polls LA GTFS-RT TripUpdates feed and writes snapshots/metadata to `rt_cache`.
+  - Polls LA GTFS-RT TripUpdates feed, decodes protobuf, writes parsed snapshots to `rt_trip_updates` + `rt_stop_time_updates`.
+  - Writes lightweight feed metadata to `rt_cache` (`fetched_at`, `last_status`, `etag`, `last_error`) and payload SHA-256 to `meta_kv`.
   - Default interval: `GTFS_RT_POLL_INTERVAL_MS` (default `15000` ms).
   - Has 429/error backoff logic.
-  - Skips payload upserts when SHA-256 is unchanged (`poller_skip_write_unchanged`); may apply metadata-only status updates.
-  - Uses advisory xact lock on writes to avoid concurrent writer churn across duplicate pollers (`poller_write_locked_skip`).
+  - Skips parsed snapshot rewrites when payload SHA-256 is unchanged (`poller_skip_write_unchanged`); may apply metadata-only status updates.
+  - Uses advisory xact lock on parsed+metadata writes to avoid concurrent writer churn across duplicate pollers (`poller_write_locked_skip`).
 
 - `pollLaServiceAlerts.js`
-  - Polls LA GTFS Service Alerts feed and writes snapshots/metadata to `rt_cache`.
+  - Polls LA GTFS Service Alerts feed, decodes protobuf, writes parsed snapshots to `rt_service_alerts`.
+  - Writes lightweight feed metadata to `rt_cache` (`fetched_at`, `last_status`, `etag`, `last_error`) and payload SHA-256 to `meta_kv`.
   - Default interval: `GTFS_SA_POLL_INTERVAL_MS` (default `60000` ms, min `15000`).
   - Has 429/error backoff logic.
-  - Skips payload upserts when SHA-256 is unchanged (`service_alerts_poller_skip_write_unchanged`); may apply metadata-only status updates.
-  - Uses advisory xact lock on writes to avoid concurrent writer churn across duplicate pollers (`service_alerts_poller_write_locked_skip`).
+  - Skips parsed snapshot rewrites when payload SHA-256 is unchanged (`service_alerts_poller_skip_write_unchanged`); may apply metadata-only status updates.
+  - Uses advisory xact lock on parsed+metadata writes to avoid concurrent writer churn across duplicate pollers (`service_alerts_poller_write_locked_skip`).
 
 ### Static GTFS refresh / import
 
@@ -205,8 +207,8 @@ Extra guardrail before changing ranking/SQL:
 | `scripts/importGtfsToStage.sh` | Imports cleaned GTFS CSVs into stage tables. | called by refresh/import ops |
 | `scripts/lib/fetchGtfsFeedMeta.js` | Shared helper for GTFS feed metadata fetch (auth `GET` + protobuf decode, then returns `feedVersion`/`headerTimestamp`). | imported by metadata scripts |
 | `scripts/pollFeeds.js` | Starts both TripUpdates + Service Alerts pollers in one process. | `npm run poller` |
-| `scripts/pollLaServiceAlerts.js` | Service Alerts poller (upstream -> `rt_cache`). | `npm run poller:alerts` |
-| `scripts/pollLaTripUpdates.js` | TripUpdates poller (upstream -> `rt_cache`). | `npm run poller:trip` |
+| `scripts/pollLaServiceAlerts.js` | Service Alerts poller (upstream -> parsed `rt_service_alerts` + metadata-only `rt_cache`/`meta_kv`). | `npm run poller:alerts` |
+| `scripts/pollLaTripUpdates.js` | TripUpdates poller (upstream -> parsed `rt_trip_updates`/`rt_stop_time_updates` + metadata-only `rt_cache`/`meta_kv`). | `npm run poller:trip` |
 | `scripts/probeStationboardRt.js` | Calls stationboard repeatedly and prints RT/apply headers. | incident diagnostics |
 | `scripts/refreshGtfsIfNeeded.js` | Full static refresh orchestrator (download, clean, import, swap, setup). | CI/manual refresh |
 | `scripts/reproStopSearchRegression.js` | Repro suite for known stop-search regressions. | `npm run search:repro-regression` |

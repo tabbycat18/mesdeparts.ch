@@ -1,10 +1,18 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 
 async function loadPollerFactory() {
   process.env.DATABASE_URL ||= "postgres://localhost:5432/mesdeparts_test";
   const mod = await import("../scripts/pollLaTripUpdates.js");
   return mod.createLaTripUpdatesPoller;
+}
+
+function payloadSha256Hex(payloadBytes) {
+  const payloadBuffer = Buffer.isBuffer(payloadBytes)
+    ? payloadBytes
+    : Buffer.from(payloadBytes || []);
+  return createHash("sha256").update(payloadBuffer).digest("hex");
 }
 
 function rateLimitResponse() {
@@ -32,8 +40,7 @@ test("poller tick calls upstream once and returns >=60s backoff on 429", async (
       fetchCalls += 1;
       return rateLimitResponse();
     },
-    getRtCacheLike: async () => ({
-      payloadBytes: Buffer.from("cached"),
+    getRtCacheMetaLike: async () => ({
       fetched_at: new Date(Date.now() - 30_000),
       etag: null,
       last_status: 200,
@@ -41,7 +48,9 @@ test("poller tick calls upstream once and returns >=60s backoff on 429", async (
     }),
     getRtCachePayloadShaLike: async () => null,
     updateRtCacheStatusLike: async () => ({ updated: true, writeSkippedByLock: false }),
-    upsertRtCacheLike: async () => null,
+    ensureRtCacheMetadataRowLike: async () => ({ inserted: false, writeSkippedByLock: false }),
+    persistParsedTripUpdatesSnapshotLike: async () => ({ updated: true, writeSkippedByLock: false }),
+    decodeFeedLike: () => ({ entity: [] }),
     logLike: () => {},
   });
 
@@ -62,8 +71,7 @@ test("poller run loop sleeps backoff before any next upstream fetch", async () =
       fetchCalls += 1;
       return rateLimitResponse();
     },
-    getRtCacheLike: async () => ({
-      payloadBytes: Buffer.from("cached"),
+    getRtCacheMetaLike: async () => ({
       fetched_at: new Date(Date.now() - 30_000),
       etag: null,
       last_status: 200,
@@ -71,7 +79,9 @@ test("poller run loop sleeps backoff before any next upstream fetch", async () =
     }),
     getRtCachePayloadShaLike: async () => null,
     updateRtCacheStatusLike: async () => ({ updated: true, writeSkippedByLock: false }),
-    upsertRtCacheLike: async () => null,
+    ensureRtCacheMetadataRowLike: async () => ({ inserted: false, writeSkippedByLock: false }),
+    persistParsedTripUpdatesSnapshotLike: async () => ({ updated: true, writeSkippedByLock: false }),
+    decodeFeedLike: () => ({ entity: [] }),
     sleepLike: async (ms) => {
       sleptMs = ms;
       throw stop;
@@ -84,42 +94,14 @@ test("poller run loop sleeps backoff before any next upstream fetch", async () =
   assert.ok(Number.isFinite(sleptMs) && sleptMs >= 60_000);
 });
 
-test("poller skips payload upsert on unchanged 200 payload within write interval", async () => {
+test("poller writes parsed trip updates on changed 200 payload", async () => {
   const createLaTripUpdatesPoller = await loadPollerFactory();
-  const payload = Buffer.from("same-payload");
-  const upsertCalls = [];
+  const payload = Buffer.from("new-payload");
+  let parsedWrites = 0;
   const poller = createLaTripUpdatesPoller({
     token: "test-token",
-    fetchLike: async () => okResponse(payload, "etag-same"),
-    getRtCacheLike: async () => ({
-      payloadBytes: payload,
-      fetched_at: new Date(Date.now() - 2_000),
-      etag: "etag-same",
-      last_status: 200,
-      last_error: null,
-    }),
-    getRtCachePayloadShaLike: async () => null,
-    updateRtCacheStatusLike: async () => ({ updated: true, writeSkippedByLock: false }),
-    upsertRtCacheLike: async (...args) => {
-      upsertCalls.push(args);
-      return null;
-    },
-    logLike: () => {},
-  });
-
-  const waitMs = await poller.tick();
-  assert.equal(waitMs, 15_000);
-  assert.equal(upsertCalls.length, 0);
-});
-
-test("poller treats advisory-lock write skip as clean no-op", async () => {
-  const createLaTripUpdatesPoller = await loadPollerFactory();
-  let upsertCalls = 0;
-  const poller = createLaTripUpdatesPoller({
-    token: "test-token",
-    fetchLike: async () => okResponse(Buffer.from("new-payload"), "etag-new"),
-    getRtCacheLike: async () => ({
-      payloadBytes: Buffer.from("old-payload"),
+    fetchLike: async () => okResponse(payload, "etag-new"),
+    getRtCacheMetaLike: async () => ({
       fetched_at: new Date(Date.now() - 120_000),
       etag: "etag-old",
       last_status: 200,
@@ -127,49 +109,112 @@ test("poller treats advisory-lock write skip as clean no-op", async () => {
     }),
     getRtCachePayloadShaLike: async () => null,
     updateRtCacheStatusLike: async () => ({ updated: true, writeSkippedByLock: false }),
-    upsertRtCacheLike: async () => {
-      upsertCalls += 1;
-      return { writeSkippedByLock: true };
+    ensureRtCacheMetadataRowLike: async () => ({ inserted: false, writeSkippedByLock: false }),
+    setRtCachePayloadShaLike: async () => ({ updated: true, writeSkippedByLock: false }),
+    persistParsedTripUpdatesSnapshotLike: async () => {
+      parsedWrites += 1;
+      return { updated: true, writeSkippedByLock: false };
     },
+    decodeFeedLike: () => ({ entity: [] }),
     logLike: () => {},
   });
 
   const waitMs = await poller.tick();
   assert.equal(waitMs, 15_000);
-  assert.equal(upsertCalls, 1);
+  assert.equal(parsedWrites, 1);
 });
 
-test("poller unchanged payload skips payload upsert and logs skip_write_unchanged even when cache is old", async () => {
+test("poller skips parsed write on unchanged 200 payload within write interval", async () => {
   const createLaTripUpdatesPoller = await loadPollerFactory();
   const payload = Buffer.from("same-payload");
+  const payloadSha = payloadSha256Hex(payload);
+  let parsedWrites = 0;
+  const poller = createLaTripUpdatesPoller({
+    token: "test-token",
+    fetchLike: async () => okResponse(payload, "etag-same"),
+    getRtCacheMetaLike: async () => ({
+      fetched_at: new Date(Date.now() - 2_000),
+      etag: "etag-same",
+      last_status: 200,
+      last_error: null,
+    }),
+    getRtCachePayloadShaLike: async () => payloadSha,
+    updateRtCacheStatusLike: async () => ({ updated: true, writeSkippedByLock: false }),
+    ensureRtCacheMetadataRowLike: async () => ({ inserted: false, writeSkippedByLock: false }),
+    persistParsedTripUpdatesSnapshotLike: async () => {
+      parsedWrites += 1;
+      return { updated: true, writeSkippedByLock: false };
+    },
+    decodeFeedLike: () => ({ entity: [] }),
+    logLike: () => {},
+  });
+
+  const waitMs = await poller.tick();
+  assert.equal(waitMs, 15_000);
+  assert.equal(parsedWrites, 0);
+});
+
+test("poller treats advisory-lock parsed write skip as clean no-op", async () => {
+  const createLaTripUpdatesPoller = await loadPollerFactory();
+  let parsedWrites = 0;
+  const poller = createLaTripUpdatesPoller({
+    token: "test-token",
+    fetchLike: async () => okResponse(Buffer.from("new-payload"), "etag-new"),
+    getRtCacheMetaLike: async () => ({
+      fetched_at: new Date(Date.now() - 120_000),
+      etag: "etag-old",
+      last_status: 200,
+      last_error: null,
+    }),
+    getRtCachePayloadShaLike: async () => null,
+    updateRtCacheStatusLike: async () => ({ updated: true, writeSkippedByLock: false }),
+    ensureRtCacheMetadataRowLike: async () => ({ inserted: false, writeSkippedByLock: false }),
+    persistParsedTripUpdatesSnapshotLike: async () => {
+      parsedWrites += 1;
+      return { updated: false, writeSkippedByLock: true };
+    },
+    decodeFeedLike: () => ({ entity: [] }),
+    logLike: () => {},
+  });
+
+  const waitMs = await poller.tick();
+  assert.equal(waitMs, 15_000);
+  assert.equal(parsedWrites, 1);
+});
+
+test("poller unchanged payload skips parsed write and logs skip_write_unchanged when cache is old", async () => {
+  const createLaTripUpdatesPoller = await loadPollerFactory();
+  const payload = Buffer.from("same-payload");
+  const payloadSha = payloadSha256Hex(payload);
   const logs = [];
-  let payloadUpserts = 0;
+  let parsedWrites = 0;
   let metadataUpdates = 0;
   const poller = createLaTripUpdatesPoller({
     token: "test-token",
     fetchLike: async () => okResponse(payload, "etag-same"),
-    getRtCacheLike: async () => ({
-      payloadBytes: payload,
+    getRtCacheMetaLike: async () => ({
       fetched_at: new Date(Date.now() - 120_000),
       etag: "etag-same",
       last_status: 200,
       last_error: null,
     }),
-    getRtCachePayloadShaLike: async () => null,
+    getRtCachePayloadShaLike: async () => payloadSha,
     updateRtCacheStatusLike: async () => {
       metadataUpdates += 1;
       return { updated: true, writeSkippedByLock: false };
     },
-    upsertRtCacheLike: async () => {
-      payloadUpserts += 1;
-      return null;
+    ensureRtCacheMetadataRowLike: async () => ({ inserted: false, writeSkippedByLock: false }),
+    persistParsedTripUpdatesSnapshotLike: async () => {
+      parsedWrites += 1;
+      return { updated: true, writeSkippedByLock: false };
     },
+    decodeFeedLike: () => ({ entity: [] }),
     logLike: (entry) => logs.push(entry),
   });
 
   const waitMs = await poller.tick();
   assert.equal(waitMs, 15_000);
-  assert.equal(payloadUpserts, 0);
+  assert.equal(parsedWrites, 0);
   assert.equal(metadataUpdates, 1);
   assert.equal(logs.some((entry) => entry?.event === "poller_skip_write_unchanged"), true);
 });
