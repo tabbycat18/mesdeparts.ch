@@ -1,27 +1,19 @@
-# fly.toml app configuration file generated for mesdeparts-ch on 2026-02-23T01:21:13Z
+# fly.toml app configuration file generated for mesdeparts-rt-poller on 2026-02-25T19:42:01Z
 #
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
 
-app = 'mesdeparts-ch'
-primary_region = 'ams'
+app = 'mesdeparts-rt-poller'
+primary_region = 'iad'
 
 [build]
-
-[env]
-  # Model A threshold tuning: keep static-first while allowing RT apply under normal latency.
-  STATIONBOARD_MIN_REMAINING_SPARSE_RETRY_MS = "900"
-  STATIONBOARD_MIN_REMAINING_SCOPE_FALLBACK_MS = "800"
-  STATIONBOARD_MIN_REMAINING_RT_APPLY_MS = "500"
-  STATIONBOARD_MIN_REMAINING_ALERTS_MS = "700"
-  STATIONBOARD_MIN_REMAINING_SUPPLEMENT_MS = "950"
 
 [http_service]
   internal_port = 8080
   force_https = true
   auto_stop_machines = 'stop'
   auto_start_machines = true
-  min_machines_running = 1
+  min_machines_running = 0
   processes = ['app']
 
 [[vm]]
