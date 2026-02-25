@@ -19,6 +19,7 @@ import {
 
 import {
   detectNetworkFromStation,
+  initNetworkMapConfig,
   resolveStationId,
   fetchStationboardRaw,
   buildDeparturesGrouped,
@@ -1214,11 +1215,16 @@ function installDebugHardRefreshShortcut() {
 // Boot
 // --------------------------------------------------------
 
-(function boot() {
+(async function boot() {
   const bootStart = DEBUG_PERF ? performance.now() : 0;
   markEmbedIfNeeded();
   const lang = initI18n();
   appState.language = lang;
+  const networkMapConfig = await initNetworkMapConfig();
+  appState.networkPaletteRules =
+    networkMapConfig && typeof networkMapConfig.paletteRules === "object"
+      ? networkMapConfig.paletteRules
+      : {};
 
   initHeaderControls2({
     mountEl: document.getElementById("header-controls2-mount"),
@@ -1333,4 +1339,6 @@ function installDebugHardRefreshShortcut() {
   window.addEventListener("pageshow", (e) => {
     if (e.persisted) location.reload();
   });
-})();
+})().catch((err) => {
+  console.error("[MesDeparts] boot failed", err);
+});

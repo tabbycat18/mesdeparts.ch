@@ -1485,13 +1485,39 @@ body {
   box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.35);
 }
 
-/* fallback: mimic onboard LED signs when no specific line color exists */
-.line-badge[class*="line-generic-"],
-.line-badge.line-generic {
-  background: #2f2f2f;
-  color: var(--accent);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+/* deterministic fallback palette for unknown/missing bus line colors */
+.line-generic {
+  background: #2f6fed;
+  color: #ffffff;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.22),
+    0 1px 2px rgba(0, 0, 0, 0.28);
 }
+
+.line-generic-tone-0 { background: #1f6feb; }
+.line-generic-tone-1 { background: #b42318; }
+.line-generic-tone-2 { background: #0b7a75; }
+.line-generic-tone-3 { background: #7a3db8; }
+.line-generic-tone-4 { background: #a85e00; }
+.line-generic-tone-5 { background: #005f99; }
+.line-generic-tone-6 { background: #2e7d32; }
+.line-generic-tone-7 { background: #8a2c5f; }
+.line-generic-tone-8 { background: #c0392b; }
+.line-generic-tone-9 { background: #00796b; }
+.line-generic-tone-10 { background: #5d4037; }
+.line-generic-tone-11 { background: #3949ab; }
+.line-generic-tone-12 { background: #9c27b0; }
+.line-generic-tone-13 { background: #2f855a; }
+.line-generic-tone-14 { background: #1565c0; }
+.line-generic-tone-15 { background: #ad1457; }
+.line-generic-tone-16 { background: #c75a00; }
+.line-generic-tone-17 { background: #6a1b9a; }
+.line-generic-tone-18 { background: #00695c; }
+.line-generic-tone-19 { background: #8d6e00; }
+.line-generic-tone-20 { background: #37474f; }
+.line-generic-tone-21 { background: #c2185b; }
+.line-generic-tone-22 { background: #0277bd; }
+.line-generic-tone-23 { background: #558b2f; }
 
 /* Train badge = rectangle SBB-ish */
 .line-train {
@@ -1566,7 +1592,7 @@ body {
 /* -------------------------------------------------------------- */
 
 /* Baseline for any night line (optional helper class from UI) */
-.line-night {
+.line-badge.line-night {
   background: #000000;
   color: #ffd600;
 }
@@ -1686,11 +1712,6 @@ body {
 .line-postbus {
   background: #f6d13a;
   color: #111111;
-  border-radius: 6px;
-  min-width: 48px;
-  padding: 3px 10px;
-  font-weight: 800;
-  letter-spacing: 0.04em;
 }
 
 /* TPG rail replacement buses (EV) */

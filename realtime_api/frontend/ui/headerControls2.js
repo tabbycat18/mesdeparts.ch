@@ -1684,9 +1684,105 @@ function sortedLineOptions() {
     });
 }
 
+const LINE_CLASS_STYLE_CACHE = new Map();
+let lineStyleProbeEl = null;
+const FALLBACK_PALETTE_NETWORKS = Object.freeze(["tpg", "tl", "zvv", "tpn", "mbc", "vmcv"]);
+
+function normalizeNetworkToken(value) {
+  const net = String(value || "").trim().toLowerCase();
+  if (!net) return "";
+  if (net === "vbz") return "zvv";
+  return net;
+}
+
+function buildLineClassForNetwork(network, idForClass) {
+  const net = normalizeNetworkToken(network);
+  if (!net || net === "generic" || net === "postauto") return "";
+  const paletteRule = appState.networkPaletteRules?.[net];
+  const classPrefixRaw =
+    typeof paletteRule?.classPrefix === "string" && paletteRule.classPrefix.trim()
+      ? paletteRule.classPrefix.trim()
+      : `line-${net}-`;
+  const classPrefix = /-$/.test(classPrefixRaw) ? classPrefixRaw : `${classPrefixRaw}-`;
+  return `${classPrefix}${idForClass}`;
+}
+
+function getLineStyleProbeElement() {
+  if (typeof document === "undefined") return null;
+  const body = document.body;
+  if (!body) return null;
+  if (lineStyleProbeEl && lineStyleProbeEl.isConnected) return lineStyleProbeEl;
+  const el = document.createElement("span");
+  el.setAttribute("aria-hidden", "true");
+  el.style.position = "absolute";
+  el.style.left = "-9999px";
+  el.style.top = "-9999px";
+  el.style.visibility = "hidden";
+  el.style.pointerEvents = "none";
+  el.className = "line-badge";
+  body.appendChild(el);
+  lineStyleProbeEl = el;
+  return lineStyleProbeEl;
+}
+
+function hasStyledLineClass(className) {
+  if (!className) return false;
+  if (LINE_CLASS_STYLE_CACHE.has(className)) return LINE_CLASS_STYLE_CACHE.get(className) === true;
+  const probe = getLineStyleProbeElement();
+  if (!probe || typeof window === "undefined" || typeof window.getComputedStyle !== "function") {
+    LINE_CLASS_STYLE_CACHE.set(className, false);
+    return false;
+  }
+  const prev = probe.className;
+  probe.className = `line-badge ${className}`;
+  const bg = String(window.getComputedStyle(probe).backgroundColor || "").trim();
+  probe.className = prev;
+  const hasBackground = !!bg && bg !== "rgba(0, 0, 0, 0)" && bg !== "transparent";
+  LINE_CLASS_STYLE_CACHE.set(className, hasBackground);
+  return hasBackground;
+}
+
+function inferStyledNetworkForLine(idForClass, preferredNetworks) {
+  const preferred = Array.from(
+    new Set(
+      (Array.isArray(preferredNetworks) ? preferredNetworks : [])
+        .map((value) => normalizeNetworkToken(value))
+        .filter((value) => value && value !== "generic" && value !== "postauto")
+    )
+  );
+
+  for (const net of preferred) {
+    const cls = buildLineClassForNetwork(net, idForClass);
+    if (hasStyledLineClass(cls)) return { network: net, className: cls };
+  }
+
+  const configured = Array.from(
+    new Set([
+      ...Object.keys(appState.networkPaletteRules || {}),
+      ...FALLBACK_PALETTE_NETWORKS,
+    ])
+  )
+    .map((value) => normalizeNetworkToken(value))
+    .filter((value) => value && value !== "generic" && value !== "postauto");
+
+  const matches = [];
+  for (const net of configured) {
+    const cls = buildLineClassForNetwork(net, idForClass);
+    if (hasStyledLineClass(cls)) matches.push({ network: net, className: cls });
+  }
+  if (matches.length === 1) return matches[0];
+
+  for (const pref of preferred) {
+    const match = matches.find((entry) => entry.network === pref);
+    if (match) return match;
+  }
+
+  return null;
+}
+
 function servedLineBadgeClass(lineId) {
   const raw = String(lineId || "").trim();
-  if (!raw) return "line-badge line-generic";
+  if (!raw) return "line-badge line-generic line-generic-tone-0";
 
   const id = raw.toUpperCase();
   const idForClass = id.replace(/\+/g, "PLUS");
@@ -1698,7 +1794,14 @@ function servedLineBadgeClass(lineId) {
     appState.lastBoardNetwork ||
     appState.currentNetwork ||
     "";
-  const net = String(network || "").toLowerCase();
+  const net = normalizeNetworkToken(network);
+  const preferredNetworks = [
+    networkMap[raw],
+    networkMap[id],
+    networkMap[raw.toLowerCase()],
+    appState.lastBoardNetwork,
+    appState.currentNetwork,
+  ];
 
   if (net === "postauto") {
     return "line-badge line-postbus";
@@ -1706,9 +1809,35 @@ function servedLineBadgeClass(lineId) {
 
   const classes = ["line-badge"];
   if (id.startsWith("N")) classes.push("line-night");
-  if (net) classes.push(`line-${net}-${idForClass}`);
-  else classes.push(`line-generic-${idForClass}`);
+
+  let hasColorClass = false;
+  const styledMatch = inferStyledNetworkForLine(idForClass, preferredNetworks);
+  if (styledMatch?.className) {
+    classes.push(styledMatch.className);
+    hasColorClass = true;
+  } else if (net && net !== "generic") {
+    const cls = buildLineClassForNetwork(net, idForClass);
+    if (cls && hasStyledLineClass(cls)) {
+      classes.push(cls);
+      hasColorClass = true;
+    }
+  }
+
+  if (!hasColorClass) {
+    const genericTone = genericBusLineTone(id);
+    classes.push("line-generic", `line-generic-tone-${genericTone}`, `line-generic-${idForClass}`);
+  }
   return classes.join(" ");
+}
+
+function genericBusLineTone(simpleLineId) {
+  const id = String(simpleLineId || "").trim().toUpperCase();
+  if (!id) return 0;
+  let hash = 0;
+  for (let i = 0; i < id.length; i += 1) {
+    hash = (hash * 33 + id.charCodeAt(i)) >>> 0;
+  }
+  return hash % 24;
 }
 
 function selectionFromAppState(value, allowed) {

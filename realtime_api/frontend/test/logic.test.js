@@ -152,6 +152,143 @@ assert.equal(detectNetworkFromStation("Lausanne, gare"), "tl");
 assert.equal(detectNetworkFromStation("Genève, Cornavin"), "tpg");
 assert.equal(detectNetworkFromStation("Zurich HB"), "vbz");
 
+// network detection should use agency/operator fields when operator is missing
+{
+  const previous = {
+    station: appState.STATION,
+    stationId: appState.stationId,
+    trainFilter: appState.trainServiceFilter,
+    platformFilter: appState.platformFilter,
+    lineFilter: appState.lineFilter,
+    favoritesOnly: appState.favoritesOnly,
+    lastPlatforms: appState.lastPlatforms,
+    lineNetworks: appState.lineNetworks,
+  };
+  try {
+    appState.STATION = "Founex, village";
+    appState.stationId = "Parent0001111";
+    appState.trainServiceFilter = "train_all";
+    appState.platformFilter = null;
+    appState.lineFilter = null;
+    appState.favoritesOnly = false;
+    appState.lastPlatforms = {};
+
+    const departAt = new Date(Date.now() + 8 * 60 * 1000).toISOString();
+    const rows = buildDeparturesGrouped(
+      {
+        stationboard: [
+          {
+            category: "B",
+            number: "811",
+            name: "811",
+            operator: null,
+            agency: "Transports publics de la région nyonnaise (TPN)",
+            to: "Nyon, gare",
+            source: "scheduled",
+            tags: [],
+            stop: {
+              departure: departAt,
+              platform: "A",
+              delay: 0,
+              prognosis: {
+                departure: departAt,
+                delay: 0,
+                status: "ON_TIME",
+                cancelled: false,
+              },
+              cancelled: false,
+            },
+            cancelled: false,
+          },
+        ],
+      },
+      VIEW_MODE_TIME
+    );
+
+    assert.equal(rows.some((row) => row.simpleLineId === "811" && row.network === "tpn"), true);
+    assert.equal(appState.lineNetworks?.["811"], "tpn");
+  } finally {
+    appState.STATION = previous.station;
+    appState.stationId = previous.stationId;
+    appState.trainServiceFilter = previous.trainFilter;
+    appState.platformFilter = previous.platformFilter;
+    appState.lineFilter = previous.lineFilter;
+    appState.favoritesOnly = previous.favoritesOnly;
+    appState.lastPlatforms = previous.lastPlatforms;
+    appState.lineNetworks = previous.lineNetworks;
+  }
+}
+
+// postbus detection should fallback to route_id when operator text is missing
+{
+  const previous = {
+    station: appState.STATION,
+    stationId: appState.stationId,
+    trainFilter: appState.trainServiceFilter,
+    platformFilter: appState.platformFilter,
+    lineFilter: appState.lineFilter,
+    favoritesOnly: appState.favoritesOnly,
+    lastPlatforms: appState.lastPlatforms,
+    lineNetworks: appState.lineNetworks,
+  };
+  try {
+    appState.STATION = "Nyon, gare";
+    appState.stationId = "Parent8570000";
+    appState.trainServiceFilter = "train_all";
+    appState.platformFilter = null;
+    appState.lineFilter = null;
+    appState.favoritesOnly = false;
+    appState.lastPlatforms = {};
+
+    const departAt = new Date(Date.now() + 8 * 60 * 1000).toISOString();
+    const rows = buildDeparturesGrouped(
+      {
+        stationboard: [
+          {
+            category: "B",
+            number: "820",
+            name: "820",
+            operator: null,
+            route_id: "96-11-j26-1",
+            to: "Burtigny, Les Oches",
+            source: "scheduled",
+            tags: [],
+            stop: {
+              departure: departAt,
+              platform: "A",
+              delay: 0,
+              prognosis: {
+                departure: departAt,
+                delay: 0,
+                status: "ON_TIME",
+                cancelled: false,
+              },
+              cancelled: false,
+            },
+            cancelled: false,
+          },
+        ],
+      },
+      VIEW_MODE_TIME
+    );
+
+    const row = rows.find((r) => r.simpleLineId === "820");
+    assert.ok(row);
+    assert.equal(row.network, "postauto");
+    assert.equal(row.isPostBus, true);
+    assert.equal(appState.lineNetworks?.["820"], "postauto");
+  } finally {
+    appState.STATION = previous.station;
+    appState.stationId = previous.stationId;
+    appState.trainServiceFilter = previous.trainFilter;
+    appState.platformFilter = previous.platformFilter;
+    appState.lineFilter = previous.lineFilter;
+    appState.favoritesOnly = previous.favoritesOnly;
+    appState.lastPlatforms = previous.lastPlatforms;
+    appState.lineNetworks = previous.lineNetworks;
+  }
+}
+
 // Anti-flicker guard: keep previous RT view briefly on transient non-applied responses.
 assert.equal(
   shouldHoldRtDowngrade({

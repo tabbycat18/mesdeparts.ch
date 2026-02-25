@@ -26,6 +26,8 @@ Static, dependency-free front-end for mesdeparts.ch. Everything in this folder i
 - `infoBTN.v*.js`: info/help/realtime/credits overlay shown from the “i” button.
 - `style.v*.css`: board + dual layout styles, network color tokens, popovers.
 - `clock/`: self-hosted SBB clock assets (Apache 2.0); cached by the service worker for offline/instant loads.
+- `config/network-map.json`: central network detection config (`operatorPatterns` primary, `stationPatterns` fallback, plus palette metadata).
+- `scripts/networkMapUnknownOperators.mjs`: scans stationboard payloads and reports operators not matched by `network-map.json`.
 
 ## Data & refresh flow
 - Default station is `Lausanne, motte`; query params or stored values override it. Deep links use `?stationName=...&stationId=...`.
@@ -34,6 +36,7 @@ Static, dependency-free front-end for mesdeparts.ch. Everything in this folder i
 - Backend stationboard responses now carry additive top-level `meta` (Model A): `serverTime`, `responseMode`, `requestId`, `totalBackendMs`, `skippedSteps`, `rtStatus`, `rtAppliedCount`, `rtFetchedAt`, `rtCacheAgeMs`, `alertsStatus`, `alertsFetchedAt`, `alertsCacheAgeMs`. `logic.v*.js` normalizes/persists it as `data.meta` and `appState.lastStationboardMeta` for diagnostics only (no polling or rendering cadence changes).
 - RT availability notice is driven by backend status, not HTTP code: show `rtTemporarilyUnavailable` whenever `meta.rtStatus !== "applied"` (fallback for legacy payloads: show unless `rt.applied=true` or `rt.reason="fresh"`).
 - Bus line alert-column rendering is deterministic: show the extra line-column space only when at least one bus row has a positive delay signal (`status==="delay"` or `displayedDelayMin>0` or `delayMin>0`) and at least one bus row has renderable inline alert text; otherwise the line column stays collapsed.
+- Bus line badges now apply a deterministic vivid fallback palette when network/operator line colors are missing, so unknown lines remain distinct without the legacy black/yellow default look.
 - Line-alert popovers are anchored near the clicked row on all viewport sizes (no bottom sheet mode on mobile) and use a single-surface content layout with simple row separators.
 - For single-alert departures, the popover header combines line + alert headline (`Line <id> – <headline>`), while the body shows the alert description text only.
 - Refresh scheduling is timer-based (`REFRESH_DEPARTURES`) with Page Visibility/focus hooks: when the page returns to foreground, the app triggers an immediate refresh and performs drift catch-up if the scheduled timer slipped while backgrounded/throttled.
@@ -46,6 +49,8 @@ Static, dependency-free front-end for mesdeparts.ch. Everything in this folder i
 - Station search uses `/api/stops/search` and geolocation helper via `/api/stops/nearby`.
 - Embeds: pages add a `dual-embed` class when framed; `publishEmbedState` exposes current board state to the parent.
 - Dual board consumes embedded `boardLoading`/`boardNotice` state so each pane can surface live status in the top banner (localized “Refreshing…” and “Realtime data currently unavailable” when RT is degraded).
+- Network detection is config-driven: operator/agency matching is primary, route-id matching is secondary fallback, and station-name matching is last fallback when operator/route context is missing.
+- When network detection is unresolved or line-specific classes are missing, both row badges and “Served by lines” chips probe available CSS line classes across known network palettes before falling back to deterministic generic tones.
 
 ## Running locally
 - Static server only; no bundler needed:
@@ -55,6 +60,11 @@ Static, dependency-free front-end for mesdeparts.ch. Everything in this folder i
   ```
   Then open http://localhost:8000.
 - Tests (Node built-in): `npm test` from `realtime_api/frontend/` (checks key helpers in `logic.*.js`). `package.json` has no deps.
+- Unknown operator audit:
+  ```sh
+  cd realtime_api/frontend
+  npm run network-map:unknown-operators -- --base http://localhost:3001 --stops Parent8501120,Parent8576391
+  ```
 
 ## Versioning & deploy notes
 - JS/CSS filenames carry a version tag (`*.vYYYY-MM-DD-N.*`). When you bump assets, update references in `index.html`, `dual-board.html`, and the `CORE_ASSETS`/`LAZY_ASSETS` lists inside `service-worker.js`, plus the visible version tags in the HTML headers.

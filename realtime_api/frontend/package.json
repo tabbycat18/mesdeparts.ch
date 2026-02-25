@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test"
+    "test": "node --test",
+    "network-map:unknown-operators": "node scripts/networkMapUnknownOperators.mjs"
   }
 }

@@ -81,6 +81,7 @@ export const appState = {
   lastBoardHasBusPlatform: false,
   lastBoardNetwork: "generic",
   lineNetworks: {}, // map lineId -> network for chips colors
+  networkPaletteRules: {}, // map network -> { classPrefix, fallbackClass }
 
   // Options detected on latest board (bus only)
   platformOptions: [],

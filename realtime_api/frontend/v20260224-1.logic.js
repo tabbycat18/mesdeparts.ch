@@ -92,9 +92,178 @@ function getApiBase() {
 const apiUrl = (pathAndQuery) => `${getApiBase()}${pathAndQuery}`;
 const SUPPORTED_QUERY_LANGS = new Set(["fr", "de", "it", "en"]);
 export const RT_HARD_CAP_MS = 5 * 60 * 1000;
+const NETWORK_MAP_CONFIG_URL = new URL("./config/network-map.json", import.meta.url);
+const NETWORK_MAP_DEBUG =
+  (() => {
+    if (typeof window === "undefined") return false;
+    try {
+      return new URLSearchParams(window.location.search || "").get("debugNetworkMap") === "1";
+    } catch {
+      return false;
+    }
+  })();
 
 // Keep stationboard requests bounded to what the UI can display
 const STATIONBOARD_LIMIT = Math.max(MAX_TRAIN_ROWS * 2, MIN_ROWS * 3, 60);
+
+const EMPTY_NETWORK_MAP = Object.freeze({
+  source: "empty",
+  loadedAt: null,
+  operatorMatchers: [],
+  routeIdMatchers: [],
+  stationMatchers: [],
+  paletteRules: {},
+  defaultNetwork: "generic",
+});
+
+let compiledNetworkMap = EMPTY_NETWORK_MAP;
+let networkMapInitPromise = null;
+
+function collectEntryOperatorCandidates(entry) {
+  const seen = new Set();
+  const out = [];
+  const push = (value) => {
+    const text = String(value || "").trim();
+    if (!text) return;
+    const key = text.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(text);
+  };
+
+  const operator = entry?.operator;
+  if (operator && typeof operator === "object") {
+    push(operator.name);
+    push(operator.display);
+    push(operator.shortName);
+    push(operator.longName);
+    push(operator.id);
+    push(operator.agency);
+  } else {
+    push(operator);
+  }
+
+  push(entry?.agency);
+  push(entry?.agency_name);
+  push(entry?.agencyName);
+  push(entry?.operator_name);
+  push(entry?.operatorName);
+  push(entry?.company);
+
+  return out;
+}
+
+function compilePatternList(list) {
+  return (Array.isArray(list) ? list : [])
+    .map((entry) => {
+      if (typeof entry === "string") {
+        const pattern = entry.trim();
+        if (!pattern) return null;
+        return { pattern, flags: "i" };
+      }
+      if (entry && typeof entry === "object") {
+        const pattern = String(entry.pattern || "").trim();
+        if (!pattern) return null;
+        const flags = String(entry.flags || "i").replace(/[^gimsuy]/g, "") || "i";
+        return { pattern, flags };
+      }
+      return null;
+    })
+    .filter(Boolean)
+    .map(({ pattern, flags }) => {
+      try {
+        return new RegExp(pattern, flags);
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean);
+}
+
+function compileNetworkMap(rawConfig, source = "unknown") {
+  const networks = rawConfig && typeof rawConfig === "object" ? rawConfig.networks : null;
+  const entries = networks && typeof networks === "object" ? Object.entries(networks) : [];
+  const operatorMatchers = [];
+  const routeIdMatchers = [];
+  const stationMatchers = [];
+  const paletteRules = {};
+
+  for (const [networkIdRaw, cfg] of entries) {
+    const networkId = String(networkIdRaw || "").trim().toLowerCase();
+    if (!networkId) continue;
+    const operatorRegexes = compilePatternList(cfg?.operatorPatterns);
+    const routeIdRegexes = compilePatternList(cfg?.routeIdPatterns);
+    const stationRegexes = compilePatternList(cfg?.stationPatterns);
+    operatorRegexes.forEach((regex) => operatorMatchers.push({ network: networkId, regex }));
+    routeIdRegexes.forEach((regex) => routeIdMatchers.push({ network: networkId, regex }));
+    stationRegexes.forEach((regex) => stationMatchers.push({ network: networkId, regex }));
+    if (cfg?.palette && typeof cfg.palette === "object") {
+      paletteRules[networkId] = {
+        classPrefix: String(cfg.palette.classPrefix || "").trim() || `line-${networkId}-`,
+        fallbackClass: String(cfg.palette.fallbackClass || "line-generic").trim(),
+      };
+    }
+  }
+
+  return {
+    source,
+    loadedAt: Date.now(),
+    operatorMatchers,
+    routeIdMatchers,
+    stationMatchers,
+    paletteRules,
+    defaultNetwork:
+      String(rawConfig?.defaultNetwork || "generic")
+        .trim()
+        .toLowerCase() || "generic",
+  };
+}
+
+function matchNetwork(value, matchers) {
+  const input = String(value || "").trim();
+  if (!input) return "";
+  for (const matcher of matchers) {
+    try {
+      if (matcher.regex.test(input)) return matcher.network;
+    } catch {
+      // ignore invalid runtime regex edge cases
+    }
+  }
+  return "";
+}
+
+export async function initNetworkMapConfig({ forceReload = false } = {}) {
+  if (typeof window === "undefined") {
+    compiledNetworkMap = compiledNetworkMap || EMPTY_NETWORK_MAP;
+    return compiledNetworkMap;
+  }
+
+  if (!forceReload && networkMapInitPromise) return networkMapInitPromise;
+
+  networkMapInitPromise = (async () => {
+    try {
+      const res = await fetch(NETWORK_MAP_CONFIG_URL, { cache: "no-store" });
+      if (!res.ok) throw new Error(`network_map_http_${res.status}`);
+      const raw = await res.json();
+      compiledNetworkMap = compileNetworkMap(raw, "config/network-map.json");
+      if (NETWORK_MAP_DEBUG) {
+        console.debug("[MesDeparts][network-map] loaded", {
+          operatorPatterns: compiledNetworkMap.operatorMatchers.length,
+          routeIdPatterns: compiledNetworkMap.routeIdMatchers.length,
+          stationPatterns: compiledNetworkMap.stationMatchers.length,
+          source: compiledNetworkMap.source,
+        });
+      }
+      return compiledNetworkMap;
+    } catch (err) {
+      compiledNetworkMap = compileNetworkMap({}, "empty-fallback");
+      console.warn("[MesDeparts][network-map] failed to load config, using empty fallback", err);
+      return compiledNetworkMap;
+    }
+  })();
+
+  return networkMapInitPromise;
+}
 
 function isDeltaDiagnosticsEnabled() {
   if (DEBUG_EARLY) return true;
@@ -158,58 +327,77 @@ export function passesMotteFilter(lineNo, dest, night) {
   return false;
 }
 
+function legacyDetectNetworkFromStation(name) {
+  const n = String(name || "").toLowerCase();
+
+  if (/lausanne|renens|pully|epalinges|ecublens|crissier|prilly|\btl\b/.test(n)) return "tl";
+  if (
+    /gen[eè]ve|geneve|versoix|thonex|th[ôo]nex|lancy|carouge|meyrin|onex|bernex|a[iï]re|plan-les-ouates|pregny|ch[êe]ne-bourg|ch[êe]ne-bougeries|grand[- ]saconnex/.test(
+      n
+    )
+  ) return "tpg";
+  if (/z[üu]rich|oerlikon|altstetten|hardbr[üu]cke|\bvbz\b|\bzvv\b/.test(n)) return "vbz";
+  if (/nyon|rolle|gland|st-cergue|prangins|coppet|c[ée]ligny|\btpn\b/.test(n)) return "tpn";
+  if (/morges|cossonay|bi[eè]re|\bmbc\b/.test(n)) return "mbc";
+  if (/vevey|montreux|clarens|villeneuve|rennaz|blonay|\bvmcv\b/.test(n)) return "vmcv";
+  return "";
+}
+
+function legacyDetectNetworkFromOperator(operatorName) {
+  const op = String(operatorName || "").toLowerCase();
+  if (/transports publics genevois|\btpg\b/.test(op)) return "tpg";
+  if (/\btl\b|transports publics de la r[ée]gion lausannoise/.test(op)) return "tl";
+  if (/vbz|z[üu]rcher verkehrsbetriebe|zuercher verkehrsbetriebe|\bzvv\b/.test(op)) return "zvv";
+  if (/postauto|carpostal|autopostale/.test(op)) return "postauto";
+  if (
+    /\btpn\b|transports publics nyonnais|transports publics de la r[ée]gion nyonnaise|nyonnaise/.test(
+      op
+    )
+  ) return "tpn";
+  if (/\bmbc\b|morges-bi[eè]re|cossonay/.test(op)) return "mbc";
+  if (/\bvmcv\b|vevey-montreux/.test(op)) return "vmcv";
+  return "";
+}
+
+function legacyDetectNetworkFromRouteId(routeId) {
+  const rid = String(routeId || "").trim().toLowerCase();
+  if (!rid) return "";
+  if (/^96-/.test(rid)) return "postauto";
+  if (/^92-/.test(rid)) return "tpn";
+  return "";
+}
+
 export function detectNetworkFromStation(name) {
-  const n = (name || "").toLowerCase();
-
-  // Lausanne / TL (approximate list around Lausanne)
-  const isLausanne =
-    /lausanne|renens|pully|epalinges|ecublens|crissier|prilly|tl\b/.test(n);
-  if (isLausanne) return "tl";
-
-  // Geneva / TPG – Versoix, Genève, Thônex, Aïre, Grand-Saconnex, etc.
-  const isGeneva =
-    /genève|geneve|versoix|thonex|thônex|lancy|carouge|meyrin|onex|bernex|aire|aïre|plan-les-ouates|pregny|chêne-bourg|chene-bourg|chêne-bougeries|chene-bougeries|grand-saconnex|grand saconnex/.test(n);
-  if (isGeneva) return "tpg";
-
-  // Zürich / VBZ
-  const isZurich =
-    /zürich|zurich|oerlikon|altstetten|hardbrücke|hardbrucke|vbz/.test(n);
-  if (isZurich) return "vbz";
-
-  // Nyon / TPN
-  const isNyon = /nyon|rolle|gland|st-cergue|prangins|tpn\b|céligny|celigny/.test(n);
-  if (isNyon) return "tpn";
-
-  // Morges / MBC
-  const isMorges = /morges|cossonay|bi[eè]re|mbc\b/.test(n);
-  if (isMorges) return "mbc";
-
-  // Riviera / VMCV
-  const isRiviera =
-    /vevey|montreux|clarens|villeneuve|rennaz|blonay|vmcv\b/.test(n);
-  if (isRiviera) return "vmcv";
-
-  return "generic";
+  const n = String(name || "").toLowerCase();
+  return (
+    matchNetwork(n, compiledNetworkMap.stationMatchers) ||
+    legacyDetectNetworkFromStation(n) ||
+    compiledNetworkMap.defaultNetwork ||
+    "generic"
+  );
 }
 
 // Detect transport network from a stationboard entry (operator-based, not station-based)
 function detectNetworkFromEntry(entry) {
-  const op = String(
-    entry?.operator?.name ||
-    entry?.operator?.display ||
-    entry?.operator ||
-    ""
-  ).toLowerCase();
+  const directNetwork = String(entry?.network || entry?.lineNetwork || entry?.operatorNetwork || "")
+    .trim()
+    .toLowerCase();
+  if (directNetwork) return directNetwork === "vbz" ? "zvv" : directNetwork;
 
-  if (/transports publics genevois|\btpg\b/.test(op)) return "tpg";
-  if (/\btl\b|transports publics de la région lausannoise|lausanne/.test(op)) return "tl";
-  if (/vbz|zürcher verkehrsbetriebe|zuercher verkehrsbetriebe/.test(op)) return "zvv";
-  if (/postauto|carpostal|autopostale/.test(op)) return "postauto";
-  if (
-    /\btpn\b|transports publics nyonnais|transports publics de la r[ée]gion nyonnaise|nyonnaise/.test(op)
-  ) return "tpn";
-  if (/\bmbc\b|morges-bière|morges-biere|cossonay/.test(op)) return "mbc";
-  if (/\bvmcv\b|vevey-montreux/.test(op)) return "vmcv";
+  const candidates = collectEntryOperatorCandidates(entry);
+  for (const candidate of candidates) {
+    const op = String(candidate || "").toLowerCase();
+    const mapped =
+      matchNetwork(op, compiledNetworkMap.operatorMatchers) ||
+      legacyDetectNetworkFromOperator(op);
+    if (mapped) return mapped;
+  }
+
+  const routeId = String(entry?.route_id || entry?.routeId || entry?.route?.id || "").trim();
+  const routeMapped =
+    matchNetwork(routeId, compiledNetworkMap.routeIdMatchers) ||
+    legacyDetectNetworkFromRouteId(routeId);
+  if (routeMapped) return routeMapped;
 
   return "";
 }
@@ -811,6 +999,7 @@ function normalizeBackendStationboard(data) {
       number: String(dep?.number || ""),
       name: String(dep?.name || dep?.line || ""),
       operator: dep?.operator || "",
+      route_id: String(dep?.route_id || dep?.routeId || ""),
       to: String(dep?.destination || ""),
       source: String(dep?.source || ""),
       tags: Array.isArray(dep?.tags) ? dep.tags : [],
@@ -1369,13 +1558,12 @@ export function buildDeparturesGrouped(data, viewMode = VIEW_MODE_TIME) {
     const tags = Array.isArray(entry?.tags) ? entry.tags : [];
 
     // Operator can be a string or an object
-    const rawOperator =
-      (entry.operator &&
-        (entry.operator.name || entry.operator.display || entry.operator)) ||
-      entry.operator ||
-      "";
-
-    const isPostBus = /PAG|postauto|carpostal|autopostale/i.test(String(rawOperator));
+    const operatorCandidates = collectEntryOperatorCandidates(entry);
+    const rawOperator = operatorCandidates[0] || "";
+    const operatorProbe = operatorCandidates.join(" ");
+    const isPostBusByOperator = /PAG|postauto|carpostal|autopostale|postbus|car\s*postal|post\s*auto/i.test(
+      operatorProbe
+    );
 
     // Debug: inspect operator string and PostAuto detection in console
     if (DEBUG_EARLY && rawOperator) {
@@ -1384,7 +1572,7 @@ export function buildDeparturesGrouped(data, viewMode = VIEW_MODE_TIME) {
         line: `${rawCategory}${rawNumber}`.trim(),
         dest: entry.to || "",
         rawOperator,
-        isPostBus,
+        isPostBus: isPostBusByOperator,
       });
     }
 
@@ -1488,11 +1676,12 @@ export function buildDeparturesGrouped(data, viewMode = VIEW_MODE_TIME) {
 
     const simpleLineId = normalizeSimpleLineId(rawNumber, rawCategory);
     const entryNetwork = detectNetworkFromEntry(entry);
+    const isPostBus = isPostBusByOperator || entryNetwork === "postauto";
     if (mode === "bus") {
       if (simpleLineId) uniqueBusLinesBeforeUiFilters.add(simpleLineId);
       busLines.add(simpleLineId);
       if (simpleLineId && !lineNetworkMap.has(simpleLineId)) {
-        lineNetworkMap.set(simpleLineId, entryNetwork || appState.currentNetwork || "generic");
+        lineNetworkMap.set(simpleLineId, entryNetwork || "");
       }
     }
 
