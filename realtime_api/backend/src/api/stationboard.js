@@ -20,6 +20,7 @@ import {
 import { guardStationboardRequestPathUpstream } from "../util/upstreamRequestGuard.js";
 import { LA_SERVICEALERTS_FEED_KEY, LA_TRIPUPDATES_FEED_KEY } from "../db/rtCache.js";
 import { loadAlertsFromCache } from "../rt/loadAlertsFromCache.js";
+import { readTripUpdatesFeedFromCache } from "../../loaders/loadRealtime.js";
 
 const OTD_STATIONBOARD_URL = "https://transport.opendata.ch/v1/stationboard";
 const OTD_STATIONBOARD_FETCH_TIMEOUT_MS = Math.max(
@@ -64,9 +65,12 @@ const DEFAULT_STATIONBOARD_WINDOW_MINUTES = Math.max(
     720
   )
 );
+const rawAlertsRequestCacheTtlMs = Number(
+  process.env.STATIONBOARD_ALERTS_REQUEST_CACHE_TTL_MS || "60000"
+);
 const STATIONBOARD_ALERTS_REQUEST_CACHE_TTL_MS = Math.max(
-  1_000,
-  Number(process.env.STATIONBOARD_ALERTS_REQUEST_CACHE_TTL_MS || "60000")
+  60_000,
+  Number.isFinite(rawAlertsRequestCacheTtlMs) ? rawAlertsRequestCacheTtlMs : 60_000
 );
 
 const otdSupplementCache = new Map();
@@ -83,6 +87,19 @@ function cloneAlertsData(alerts) {
   return { entities };
 }
 
+function createRequestScopedTripUpdatesReadCacheLike() {
+  let inFlight = null;
+  return async function requestScopedTripUpdatesReadCacheLike(options = {}) {
+    if (!inFlight) {
+      inFlight = Promise.resolve(readTripUpdatesFeedFromCache(options)).catch((err) => {
+        inFlight = null;
+        throw err;
+      });
+    }
+    return inFlight;
+  };
+}
+
 async function loadAlertsFromCacheThrottled({ nowMs } = {}) {
   const currentNowMs = Number.isFinite(Number(nowMs)) ? Number(nowMs) : Date.now();
 
@@ -95,11 +112,14 @@ async function loadAlertsFromCacheThrottled({ nowMs } = {}) {
         requestCacheFetchedAt:
           String(alertsRequestCacheValue.fetchedAtIso || "").trim() || null,
         requestCacheTtlMs: STATIONBOARD_ALERTS_REQUEST_CACHE_TTL_MS,
+        alertsPayloadFetchCountThisRequest: 0,
       },
     };
   }
 
+  let startedRefresh = false;
   if (!alertsRequestCacheInFlight) {
+    startedRefresh = true;
     alertsRequestCacheInFlight = (async () => {
       const loaded = (await loadAlertsFromCache({ enabled: true, nowMs: currentNowMs })) || {
         alerts: { entities: [] },
@@ -127,6 +147,9 @@ async function loadAlertsFromCacheThrottled({ nowMs } = {}) {
       requestCacheStatus: "MISS",
       requestCacheFetchedAt: new Date(currentNowMs).toISOString(),
       requestCacheTtlMs: STATIONBOARD_ALERTS_REQUEST_CACHE_TTL_MS,
+      alertsPayloadFetchCountThisRequest: startedRefresh
+        ? Number(loaded?.meta?.alertsPayloadFetchCountThisRequest || 0)
+        : 0,
     },
   };
 }
@@ -651,6 +674,12 @@ function toRtTripUpdatesDebug(rtMeta, departureAuditRows) {
   );
 
   const normalizedReason = normalizeRtReason(base.reason, base.applied === true);
+  const instanceId =
+    typeof base.instance === "string"
+      ? String(base.instance || "").trim() || RT_INSTANCE_META.id
+      : base.instance && typeof base.instance === "object"
+        ? String(base.instance.id || RT_INSTANCE_META.id)
+        : RT_INSTANCE_META.id;
   return {
     rtEnabledForRequest: base.rtEnabledForRequest === true,
     rtMetaReason:
@@ -686,7 +715,13 @@ function toRtTripUpdatesDebug(rtMeta, departureAuditRows) {
       : Number.isFinite(base.payloadBytes)
         ? Number(base.payloadBytes)
         : null,
+    rtPayloadFetchCountThisRequest: Number.isFinite(
+      Number(base.rtPayloadFetchCountThisRequest)
+    )
+      ? Math.max(0, Number(base.rtPayloadFetchCountThisRequest))
+      : 0,
     rtDecodeMs: Number.isFinite(base.rtDecodeMs) ? Number(base.rtDecodeMs) : null,
+    instanceId,
     entityCount: Number.isFinite(base.entityCount) ? Number(base.entityCount) : null,
     scopedEntities: Number.isFinite(base.scopedEntities) ? Number(base.scopedEntities) : null,
     scopedTripCount: Number.isFinite(base.scopedTripCount) ? Number(base.scopedTripCount) : null,
@@ -697,6 +732,18 @@ function toRtTripUpdatesDebug(rtMeta, departureAuditRows) {
     applied: base.applied === true,
     reason: normalizedReason,
     appliedToDeparturesCount,
+  };
+}
+
+function toRtAlertsDebug(alertsMetaRaw) {
+  const base = alertsMetaRaw && typeof alertsMetaRaw === "object" ? alertsMetaRaw : {};
+  return {
+    alertsPayloadFetchCountThisRequest: Number.isFinite(
+      Number(base.alertsPayloadFetchCountThisRequest)
+    )
+      ? Math.max(0, Number(base.alertsPayloadFetchCountThisRequest))
+      : 0,
+    instanceId: RT_INSTANCE_META.id,
   };
 }
 
@@ -818,6 +865,11 @@ function buildAlertsResponseMeta({
       ? Number(source.payloadBytes)
       : null,
     cacheStatus: String(source.cacheStatus || "").trim() || null,
+    alertsPayloadFetchCountThisRequest: Number.isFinite(
+      Number(source.alertsPayloadFetchCountThisRequest)
+    )
+      ? Math.max(0, Number(source.alertsPayloadFetchCountThisRequest))
+      : 0,
   };
 }
 
@@ -1185,6 +1237,7 @@ export async function getStationboard({
     requestBudgetMs: totalBudgetMs,
     requestLowBudgetThresholdMs: minRemainingForRtApplyMs,
     resolvedScope,
+    readRtCacheLike: createRequestScopedTripUpdatesReadCacheLike(),
     debugLog: (event, payload) => {
       debugLog(event, payload);
     },
@@ -1465,6 +1518,7 @@ export async function getStationboard({
         alertsFeatureEnabled,
         rt: {
           tripUpdates: toRtTripUpdatesDebug(debugState.rtTripUpdates, departureAudit),
+          alerts: toRtAlertsDebug(alertsResponseMeta),
         },
         departureAudit,
         latencySafe: buildLatencySafeDebug({
@@ -1540,6 +1594,7 @@ export async function getStationboard({
         alertsFeatureEnabled,
         rt: {
           tripUpdates: toRtTripUpdatesDebug(debugState.rtTripUpdates, departureAudit),
+          alerts: toRtAlertsDebug(alertsResponseMeta),
         },
         departureAudit,
         latencySafe: buildLatencySafeDebug({
@@ -1596,6 +1651,11 @@ export async function getStationboard({
           Number(alertsLoadResult?.meta?.requestCacheTtlMs || STATIONBOARD_ALERTS_REQUEST_CACHE_TTL_MS)
         ) / 1000
       ),
+      alertsPayloadFetchCountThisRequest: Number.isFinite(
+        Number(alertsLoadResult?.meta?.alertsPayloadFetchCountThisRequest)
+      )
+        ? Math.max(0, Number(alertsLoadResult.meta.alertsPayloadFetchCountThisRequest))
+        : 0,
     };
     alertsResponseMeta = buildAlertsResponseMeta({
       includeAlertsRequested,
@@ -1746,6 +1806,7 @@ export async function getStationboard({
         alertsFeatureEnabled,
         rt: {
           tripUpdates: toRtTripUpdatesDebug(debugState.rtTripUpdates, departureAudit),
+          alerts: toRtAlertsDebug(alertsResponseMeta),
         },
         alertsCache: debugState.alertsCache,
         departureAudit,
@@ -1820,6 +1881,7 @@ export async function getStationboard({
         alertsFeatureEnabled,
         rt: {
           tripUpdates: toRtTripUpdatesDebug(debugState.rtTripUpdates, departureAudit),
+          alerts: toRtAlertsDebug(alertsResponseMeta),
         },
         alertsCache: debugState.alertsCache,
         departureAudit,

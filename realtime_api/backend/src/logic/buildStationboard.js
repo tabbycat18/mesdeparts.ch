@@ -276,6 +276,7 @@ export async function buildStationboard(locationId, options = {}) {
     resolvedScope = null,
     scopeQueryMode = "mixed",
     rtDebugMode = "",
+    readRtCacheLike = null,
   } = options;
   const requestedLimit = Math.max(1, Number(limit) || 100);
   const debugEnabled = debug === true;
@@ -975,6 +976,7 @@ export async function buildStationboard(locationId, options = {}) {
           scopeTripIds: tripIds,
           scopeStopIds: queryStopIds,
           maxProcessMs: rtLoadTimeoutMs,
+          ...(typeof readRtCacheLike === "function" ? { readCacheLike: readRtCacheLike } : {}),
         }),
         rtLoadTimeoutMs + 150,
         "rt_load_timeout"

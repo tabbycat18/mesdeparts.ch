@@ -168,6 +168,7 @@ function baseMeta(nowMs) {
     scopedStopUpdates: 0,
     rtReadSource: null,
     rtCacheHit: false,
+    rtPayloadFetchCountThisRequest: 0,
     rtDecodeMs: null,
     processingMs: 0,
     nowIso: new Date(nowMs).toISOString(),
@@ -270,6 +271,11 @@ export async function loadScopedRtFromCache(options = {}) {
       ? cache.rtReadSource
       : null;
   meta.rtCacheHit = cache?.rtCacheHit === true;
+  meta.rtPayloadFetchCountThisRequest = Number.isFinite(
+    Number(cache?.rtPayloadFetchCountThisRequest)
+  )
+    ? Math.max(0, Number(cache.rtPayloadFetchCountThisRequest))
+    : 0;
   meta.rtDecodeMs = Number.isFinite(Number(cache?.rtDecodeMs)) ? Number(cache.rtDecodeMs) : null;
   meta.entityCount = getEntityCount(cache?.feed);
   if (Number.isFinite(fetchedAtMs) && fetchedAtMs > 0 && fetchedAtMs !== lastObservedFetchedAtMs) {

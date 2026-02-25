@@ -54,6 +54,7 @@ function baseMeta(nowMs) {
     lastError: null,
     payloadBytes: null,
     cacheStatus: "MISS",
+    alertsPayloadFetchCountThisRequest: 0,
     nowIso: new Date(nowMs).toISOString(),
   };
 }
@@ -85,6 +86,7 @@ export async function loadAlertsFromCache(options = {}) {
 
   let cacheRow = null;
   try {
+    meta.alertsPayloadFetchCountThisRequest = 1;
     cacheRow = await readCacheLike(feedKey);
   } catch (err) {
     meta.reason = "decode_failed";

@@ -48,6 +48,7 @@ test("loadScopedRtFromCache returns disabled reason when RT is disabled", async 
 
   assert.equal(out.meta.applied, false);
   assert.equal(out.meta.reason, "disabled");
+  assert.equal(out.meta.rtPayloadFetchCountThisRequest, 0);
   assert.equal(out.meta.feedKey, "la_tripupdates");
   assert.equal(typeof out.meta.freshnessThresholdMs, "number");
   assert.equal(Array.isArray(out.tripUpdates.entities), true);
@@ -254,6 +255,7 @@ test("loadScopedRtFromCache applies scoped filtering by trip/stop/window", async
   assert.equal(out.meta.feedKey, "la_tripupdates");
   assert.equal(out.meta.rtReadSource, "db");
   assert.equal(out.meta.rtCacheHit, false);
+  assert.equal(out.meta.rtPayloadFetchCountThisRequest, 0);
   assert.equal(Number.isFinite(out.meta.rtDecodeMs), true);
   assert.equal(out.meta.rtPayloadBytes, 8192);
   assert.equal(typeof out.meta.instance, "string");

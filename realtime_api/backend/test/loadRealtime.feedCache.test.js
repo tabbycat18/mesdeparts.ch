@@ -59,9 +59,11 @@ test("readTripUpdatesFeedFromCache uses one payload SELECT within TTL", async ()
 
   assert.equal(reads, 1);
   assert.equal(first.rtReadSource, "db");
+  assert.equal(first.rtPayloadFetchCountThisRequest, 1);
   assert.equal(Number.isFinite(first.rtDecodeMs), true);
   assert.ok(Number(first.payloadBytes) > 0);
   assert.equal(second.rtReadSource, "memory");
+  assert.equal(second.rtPayloadFetchCountThisRequest, 0);
   assert.equal(second.rtCacheHit, true);
   assert.equal(second.payloadBytes, first.payloadBytes);
 });
@@ -112,7 +114,9 @@ test("readTripUpdatesFeedFromCache coalesces concurrent payload SELECTs", async 
   const [r1, r2] = await Promise.all([p1, p2]);
   assert.equal(reads, 1);
   assert.equal(r1.rtReadSource, "db");
+  assert.equal(r1.rtPayloadFetchCountThisRequest, 1);
   assert.equal(r2.rtReadSource, "memory");
+  assert.equal(r2.rtPayloadFetchCountThisRequest, 0);
   assert.equal(r2.rtCacheHit, true);
   assert.equal(r1.payloadBytes, r2.payloadBytes);
 });
@@ -164,7 +168,9 @@ test("readTripUpdatesFeedFromCache skips payload SELECT when etag is unchanged e
   assert.equal(metaReads, 2);
   assert.equal(payloadReads, 1);
   assert.equal(first.rtReadSource, "db");
+  assert.equal(first.rtPayloadFetchCountThisRequest, 1);
   assert.equal(second.rtReadSource, "memory");
+  assert.equal(second.rtPayloadFetchCountThisRequest, 0);
   assert.equal(second.rtCacheHit, true);
 });
 
@@ -215,6 +221,7 @@ test("readTripUpdatesFeedFromCache fetches payload when etag changes", async () 
 
   assert.equal(payloadReads, 2);
   assert.equal(second.rtReadSource, "db");
+  assert.equal(second.rtPayloadFetchCountThisRequest, 1);
   assert.equal(second.rtCacheHit, false);
 });
 
@@ -266,6 +273,7 @@ test("readTripUpdatesFeedFromCache uses payload_sha when etag is absent", async 
 
   assert.equal(payloadReads, 1);
   assert.equal(second.rtReadSource, "memory");
+  assert.equal(second.rtPayloadFetchCountThisRequest, 0);
   assert.equal(second.rtCacheHit, true);
 });
 
@@ -315,5 +323,6 @@ test("readTripUpdatesFeedFromCache falls back to fetched_at when etag and sha ar
 
   assert.equal(payloadReads, 2);
   assert.equal(second.rtReadSource, "db");
+  assert.equal(second.rtPayloadFetchCountThisRequest, 1);
   assert.equal(second.rtCacheHit, false);
 });

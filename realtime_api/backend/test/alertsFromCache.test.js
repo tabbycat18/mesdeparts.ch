@@ -33,6 +33,7 @@ test("loadAlertsFromCache returns disabled reason when alerts are disabled", asy
   assert.equal(out.meta.applied, false);
   assert.equal(out.meta.reason, "disabled");
   assert.equal(out.meta.feedKey, "la_servicealerts");
+  assert.equal(out.meta.alertsPayloadFetchCountThisRequest, 0);
   assert.equal(Array.isArray(out.alerts.entities), true);
   assert.equal(out.alerts.entities.length, 0);
 });
@@ -52,6 +53,7 @@ test("loadAlertsFromCache returns missing_cache when cache has no payload", asyn
   assert.equal(out.meta.applied, false);
   assert.equal(out.meta.reason, "missing_cache");
   assert.equal(out.meta.cacheStatus, "MISS");
+  assert.equal(out.meta.alertsPayloadFetchCountThisRequest, 1);
 });
 
 test("loadAlertsFromCache returns stale_cache when payload is older than threshold", async () => {
@@ -72,6 +74,7 @@ test("loadAlertsFromCache returns stale_cache when payload is older than thresho
   assert.equal(out.meta.applied, false);
   assert.equal(out.meta.reason, "stale_cache");
   assert.equal(out.meta.cacheStatus, "STALE");
+  assert.equal(out.meta.alertsPayloadFetchCountThisRequest, 1);
 });
 
 test("loadAlertsFromCache applies stale cached alerts when within stale grace window", async () => {
@@ -122,6 +125,7 @@ test("loadAlertsFromCache applies stale cached alerts when within stale grace wi
   assert.equal(out.meta.cacheStatus, "STALE");
   assert.equal(out.meta.applied, true);
   assert.equal(out.meta.available, true);
+  assert.equal(out.meta.alertsPayloadFetchCountThisRequest, 1);
   assert.equal(Array.isArray(out.alerts.entities), true);
   assert.equal(out.alerts.entities.length, 1);
   assert.equal(out.alerts.entities[0].id, "alert-stale-grace-1");
@@ -182,6 +186,7 @@ test("loadAlertsFromCache decodes fresh cached protobuf and returns normalized a
   assert.equal(out.meta.reason, "applied");
   assert.equal(out.meta.applied, true);
   assert.equal(out.meta.available, true);
+  assert.equal(out.meta.alertsPayloadFetchCountThisRequest, 1);
   assert.equal(Array.isArray(out.alerts.entities), true);
   assert.equal(out.alerts.entities.length, 1);
   assert.equal(out.alerts.entities[0].id, "alert-1");

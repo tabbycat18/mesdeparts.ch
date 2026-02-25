@@ -59,7 +59,7 @@ Primary responsibilities:
 - Prepare canonical response payload (`station`, `resolved`, `departures`, `banners`, `rt`, `alerts`).
 - Normalize departures through `src/models/stationboard.js` (`normalizeDeparture`).
 - Attach alerts from cache (`src/rt/loadAlertsFromCache.js`) and merge alert effects (`attachAlerts`, `synthesizeFromAlerts`).
-- Throttle request-path Service Alerts cache reads with an in-process TTL (`STATIONBOARD_ALERTS_REQUEST_CACHE_TTL_MS`, default 60s) to avoid repeated alert-cache fetch/decode on frequent board refreshes.
+- Throttle request-path Service Alerts cache reads with an in-process TTL (`STATIONBOARD_ALERTS_REQUEST_CACHE_TTL_MS`, default 60s, clamped to minimum 60s) to avoid repeated alert-cache fetch/decode on frequent board refreshes.
 - Apply optional OTD supplement logic (`supplementFromOtdStationboard`) behind request-path upstream guard.
 - Emit debug payloads/timings when debug mode is enabled.
   - `debug.rt.tripUpdates` includes request RT toggle and reasons:
@@ -248,7 +248,7 @@ Primary responsibilities:
 
 Primary responsibilities:
 - Read `la_tripupdates` cache snapshot via `loaders/loadRealtime.js`.
-  - TripUpdates payload decode reads are memory-cached per feed key for a short TTL (`RT_DECODED_FEED_CACHE_MS`, default `10s`, clamped `5s..30s`) with in-flight coalescing.
+- TripUpdates payload decode reads are memory-cached per feed key for a short TTL (`RT_DECODED_FEED_CACHE_MS`, default `10s`, clamped `10s..15s`) with in-flight coalescing.
 - Enforce freshness threshold (`STATIONBOARD_RT_FRESH_MAX_AGE_MS`, default 45s).
 - Scope entities to current board context:
   - requested trip ids (`scopeTripIds`)
@@ -260,7 +260,7 @@ Primary responsibilities:
   - max scanned entities
   - max scoped entities
   - max scoped stop updates
-- Return `tripUpdates` plus rich `meta` (`applied`, `reason`, `cacheAgeMs`, `instance`, counters, `rtReadSource`, `rtCacheHit`, `rtPayloadBytes`, `rtDecodeMs`).
+- Return `tripUpdates` plus rich `meta` (`applied`, `reason`, `cacheAgeMs`, `instance`, counters, `rtReadSource`, `rtCacheHit`, `rtPayloadFetchCountThisRequest`, `rtPayloadBytes`, `rtDecodeMs`).
 - `meta.reason` is the raw scoped-loader reason (for example `applied`, `stale_cache`, `guard_tripped`)
   and is surfaced as `debug.rt.tripUpdates.rtMetaReason` by stationboard debug output.
 

@@ -16,8 +16,8 @@ const rawTtl = Number(process.env.GTFS_RT_CACHE_MS || "30000");
 const CACHE_TTL_MS = Math.max(Number.isFinite(rawTtl) ? rawTtl : 30000, 1000);
 const rawDecodedFeedTtl = Number(process.env.RT_DECODED_FEED_CACHE_MS || "10000");
 const DECODED_FEED_CACHE_TTL_MS = Math.min(
-  30_000,
-  Math.max(Number.isFinite(rawDecodedFeedTtl) ? rawDecodedFeedTtl : 10_000, 5_000)
+  15_000,
+  Math.max(Number.isFinite(rawDecodedFeedTtl) ? rawDecodedFeedTtl : 10_000, 10_000)
 );
 
 const RT_RETENTION_HOURS = Number(process.env.RT_RETENTION_HOURS || "12");
@@ -457,6 +457,7 @@ async function readTripUpdatesFeedFromDb(feedKey, getRtCacheLike) {
       rtReadSource: "db",
       rtCacheHit: false,
       rtDecodeMs: null,
+      rtPayloadFetchCountThisRequest: 1,
     };
   }
 
@@ -478,6 +479,7 @@ async function readTripUpdatesFeedFromDb(feedKey, getRtCacheLike) {
     rtReadSource: "db",
     rtCacheHit: false,
     rtDecodeMs,
+    rtPayloadFetchCountThisRequest: 1,
   };
 }
 
@@ -548,6 +550,7 @@ async function readTripUpdatesFeedFromCacheStore({
         decodeError: previousValue.decodeError || null,
         rtReadSource: "memory",
         rtCacheHit: true,
+        rtPayloadFetchCountThisRequest: 0,
       };
     }
     if (!meta.hasPayload) {
@@ -565,6 +568,7 @@ async function readTripUpdatesFeedFromCacheStore({
         rtReadSource: "memory",
         rtCacheHit: true,
         rtDecodeMs: null,
+        rtPayloadFetchCountThisRequest: 0,
       };
     }
   }
@@ -584,6 +588,7 @@ async function readTripUpdatesFeedFromCacheStore({
       rtReadSource: "db",
       rtCacheHit: false,
       rtDecodeMs: null,
+      rtPayloadFetchCountThisRequest: 0,
     };
   }
 
@@ -622,6 +627,7 @@ export async function readTripUpdatesFeedFromCache(options = {}) {
       ...cacheEntry.value,
       rtReadSource: "memory",
       rtCacheHit: true,
+      rtPayloadFetchCountThisRequest: 0,
     };
   }
 
@@ -631,6 +637,7 @@ export async function readTripUpdatesFeedFromCache(options = {}) {
       ...result,
       rtReadSource: "memory",
       rtCacheHit: true,
+      rtPayloadFetchCountThisRequest: 0,
     };
   }
 

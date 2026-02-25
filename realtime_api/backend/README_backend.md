@@ -162,13 +162,18 @@ This prevents repeated `optimize_stop_search.sql` rebuild churn on unchanged hou
 
 To reduce per-request DB pressure and poller write churn:
 
-- Stationboard TripUpdates reads use a short in-process decoded-feed cache (`RT_DECODED_FEED_CACHE_MS`, default `10s`, clamped `5s..30s`) with in-flight read coalescing.
+- Stationboard TripUpdates reads use a short in-process decoded-feed cache (`RT_DECODED_FEED_CACHE_MS`, default `10s`, clamped `10s..15s`) with in-flight read coalescing.
+- Stationboard request orchestration coalesces TripUpdates cache reads across internal retries/fallback passes, so one request does not trigger duplicate payload fetch paths.
+- Stationboard Service Alerts request-path cache/decode is throttled separately (`STATIONBOARD_ALERTS_REQUEST_CACHE_TTL_MS`, default `60s`, clamped to minimum `60s`).
 - Decoded-feed cache invalidation uses RT content identity per feed (`etag` -> payload SHA -> `fetched_at` fallback) to avoid unnecessary payload re-reads when content is unchanged.
 - `debug=1` diagnostics now include:
   - `debug.rt.tripUpdates.rtReadSource` (`memory` or `db`)
   - `debug.rt.tripUpdates.rtCacheHit`
+  - `debug.rt.tripUpdates.rtPayloadFetchCountThisRequest` (`1` only when this request executed a payload `SELECT`, else `0`)
   - `debug.rt.tripUpdates.rtPayloadBytes`
   - `debug.rt.tripUpdates.rtDecodeMs`
+  - `debug.rt.alerts.alertsPayloadFetchCountThisRequest` (`1` only when this request executed alerts payload `SELECT`, else `0`)
+  - `debug.rt.tripUpdates.instanceId` / `debug.rt.alerts.instanceId` (instance attribution in multi-machine deployments)
 - Pollers avoid redundant writes:
   - unchanged `200` payloads are skipped when fetched recently (`RT_CACHE_MIN_WRITE_INTERVAL_MS`, default `30000`)
   - frequent `304` status writes are throttled by the same interval
