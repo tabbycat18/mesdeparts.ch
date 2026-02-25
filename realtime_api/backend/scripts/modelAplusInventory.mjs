@@ -20,6 +20,19 @@ const TARGET_TABLES = [
   "meta_kv",
 ];
 
+const TIMESTAMP_COLUMN_PRIORITY = [
+  "updated_at",
+  "fetched_at",
+  "seen_at",
+  "created_at",
+  "inserted_at",
+  "active_start",
+  "active_end",
+  "header_timestamp",
+  "start_date",
+  "service_date",
+];
+
 function loadDotEnvIfNeeded() {
   if (process.env.DATABASE_URL) return;
   const candidates = [
@@ -37,7 +50,7 @@ function loadDotEnvIfNeeded() {
       const key = trimmed.slice(0, idx).trim();
       let value = trimmed.slice(idx + 1).trim();
       if (
-        (value.startsWith("\"") && value.endsWith("\"")) ||
+        (value.startsWith('"') && value.endsWith('"')) ||
         (value.startsWith("'") && value.endsWith("'"))
       ) {
         value = value.slice(1, -1);
@@ -59,6 +72,42 @@ function safeErrorMessage(err) {
 
 function title(text) {
   console.log(`\n=== ${text} ===`);
+}
+
+function quoteIdent(name) {
+  const v = String(name || "").trim();
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(v)) {
+    throw new Error(`invalid_identifier:${v}`);
+  }
+  return `"${v}"`;
+}
+
+function toSafeRow(row) {
+  if (!row || typeof row !== "object") return row;
+  return JSON.parse(JSON.stringify(row));
+}
+
+function sanitizeSampleValue(key, value) {
+  if (value == null) return value;
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizeSampleValue("", item));
+  }
+  if (typeof value === "object") {
+    const out = {};
+    for (const [k, v] of Object.entries(value)) {
+      out[k] = sanitizeSampleValue(k, v);
+    }
+    return out;
+  }
+  if (typeof value === "string") {
+    if (key.toLowerCase() === "payload") {
+      return `<omitted payload hex, length=${value.length}>`;
+    }
+    if (value.length > 240) {
+      return `${value.slice(0, 240)}...<truncated ${value.length - 240} chars>`;
+    }
+  }
+  return value;
 }
 
 async function fetchTableCounts(client) {
@@ -83,7 +132,100 @@ async function fetchTableCounts(client) {
     `,
     [TARGET_TABLES]
   );
+  return res.rows.map((row) => ({
+    table_name: row.table_name,
+    exists: row.exists === true,
+    row_count: Number.isFinite(Number(row.row_count)) ? Number(row.row_count) : null,
+  }));
+}
+
+async function fetchTableColumns(client, tableName) {
+  const res = await client.query(
+    `
+      SELECT column_name, data_type, udt_name
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = $1
+      ORDER BY ordinal_position
+    `,
+    [tableName]
+  );
   return res.rows;
+}
+
+function pickTimestampColumns(columns) {
+  const byName = new Map(columns.map((c) => [String(c.column_name), c]));
+  const ordered = [];
+
+  for (const name of TIMESTAMP_COLUMN_PRIORITY) {
+    if (byName.has(name)) ordered.push(byName.get(name));
+  }
+
+  for (const col of columns) {
+    if (ordered.includes(col)) continue;
+    if (
+      col.data_type.includes("timestamp") ||
+      col.data_type === "date" ||
+      col.data_type.includes("time")
+    ) {
+      ordered.push(col);
+    }
+  }
+
+  return ordered.slice(0, 4);
+}
+
+async function fetchTimestampStats(client, tableName, columns) {
+  const out = [];
+  for (const col of pickTimestampColumns(columns)) {
+    const colName = String(col.column_name);
+    const sql = `
+      SELECT
+        MIN(${quoteIdent(colName)})::text AS min_value,
+        MAX(${quoteIdent(colName)})::text AS max_value
+      FROM public.${quoteIdent(tableName)}
+    `;
+    const res = await client.query(sql);
+    out.push({
+      column: colName,
+      data_type: col.data_type,
+      min_value: res.rows[0]?.min_value || null,
+      max_value: res.rows[0]?.max_value || null,
+    });
+  }
+  return out;
+}
+
+async function fetchSampleRows(client, tableName, limit = 5) {
+  const res = await client.query(
+    `
+      SELECT row_to_json(t) AS row
+      FROM (
+        SELECT *
+        FROM public.${quoteIdent(tableName)}
+        LIMIT $1
+      ) t
+    `,
+    [limit]
+  );
+  return res.rows.map((row) => sanitizeSampleValue("", toSafeRow(row.row)));
+}
+
+async function fetchTableIndexes(client, tableName) {
+  const res = await client.query(
+    `
+      SELECT indexname, indexdef
+      FROM pg_indexes
+      WHERE schemaname = 'public'
+        AND tablename = $1
+      ORDER BY indexname
+    `,
+    [tableName]
+  );
+  return res.rows.map((row) => ({
+    index_name: row.indexname,
+    index_def: row.indexdef,
+  }));
 }
 
 async function fetchRtCachePayloads(client) {
@@ -97,7 +239,13 @@ async function fetchRtCachePayloads(client) {
     FROM public.rt_cache
     ORDER BY payload_bytes DESC NULLS LAST, feed_key
   `);
-  return res.rows;
+  return res.rows.map((row) => ({
+    feed_key: row.feed_key,
+    payload_bytes: Number.isFinite(Number(row.payload_bytes)) ? Number(row.payload_bytes) : null,
+    payload_size: row.payload_size,
+    fetched_at: row.fetched_at,
+    last_status: row.last_status,
+  }));
 }
 
 async function fetchRtCachePayloadStatements(client, limit = 20) {
@@ -109,7 +257,7 @@ async function fetchRtCachePayloadStatements(client, limit = 20) {
           rows,
           ROUND(total_exec_time::numeric, 3) AS total_exec_ms,
           ROUND(mean_exec_time::numeric, 3) AS mean_exec_ms,
-          LEFT(REGEXP_REPLACE(query, '\\s+', ' ', 'g'), 500) AS query_sample
+          LEFT(REGEXP_REPLACE(query, '\\s+', ' ', 'g'), 700) AS query_sample
         FROM pg_stat_statements
         WHERE query ILIKE '%rt_cache%'
           AND query ILIKE '%payload%'
@@ -124,42 +272,84 @@ async function fetchRtCachePayloadStatements(client, limit = 20) {
   }
 }
 
-function fetchPayloadReadCodePaths() {
+function scanCodePaths() {
   const patterns = [
     "SELECT payload, fetched_at, etag, last_status, last_error",
-    "getRtCache\\(",
     "readTripUpdatesFeedFromCache\\(",
-    "loadScopedRtFromCache\\(",
-    "loadAlertsFromCache\\(",
+    "loadScopedRtFromCache",
+    "loadAlertsFromCache",
+    "loadScopedRtFromParsedTables",
+    "loadAlertsFromParsedTables",
+    "persistParsedTripUpdatesSnapshot",
+    "persistParsedServiceAlertsSnapshot",
   ];
-  const args = [
-    "-n",
-    patterns.join("|"),
-    "src",
-    "loaders",
-    "scripts",
-    "server.js",
-  ];
-  const rg = spawnSync("rg", args, {
-    cwd: backendRoot,
-    encoding: "utf8",
-  });
-  if (rg.status === 0) {
+  const rg = spawnSync(
+    "rg",
+    ["-n", patterns.join("|"), "src", "loaders", "scripts", "server.js"],
+    {
+      cwd: backendRoot,
+      encoding: "utf8",
+    }
+  );
+
+  if (rg.status !== 0 && rg.status !== 1) {
     return {
-      refs: rg.stdout
-        .split(/\r?\n/)
-        .map((line) => line.trim())
-        .filter(Boolean)
-        .filter((line) => !line.startsWith("scripts/modelAplusInventory.mjs:")),
-      error: null,
+      refs: [],
+      error: safeErrorMessage(rg.stderr || "rg_failed"),
+      stationboardReadsPayload: null,
     };
   }
-  if (rg.status === 1) {
-    return { refs: [], error: null };
-  }
+
+  const refs = String(rg.stdout || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => !line.startsWith("scripts/modelAplusInventory.mjs:"));
+
+  const stationboardReadsPayload = refs.some((line) =>
+    /src\/api\/stationboard\.js|src\/rt\/loadScopedRtFromCache\.js|src\/rt\/loadAlertsFromCache\.js|loaders\/loadRealtime\.js/.test(
+      line
+    )
+  );
+
   return {
-    refs: [],
-    error: safeErrorMessage(rg.stderr || "rg_failed"),
+    refs,
+    error: null,
+    stationboardReadsPayload,
+  };
+}
+
+async function buildTableInventory(client, tableName) {
+  const existsRes = await client.query(
+    `SELECT to_regclass($1) IS NOT NULL AS exists`,
+    [`public.${tableName}`]
+  );
+  const exists = existsRes.rows[0]?.exists === true;
+  if (!exists) {
+    return {
+      table_name: tableName,
+      exists: false,
+      row_count: null,
+      timestamp_stats: [],
+      sample_rows: [],
+      indexes: [],
+    };
+  }
+
+  const countRes = await client.query(`SELECT count(*)::bigint AS c FROM public.${quoteIdent(tableName)}`);
+  const rowCount = Number(countRes.rows[0]?.c || 0);
+  const columns = await fetchTableColumns(client, tableName);
+  const timestampStats = await fetchTimestampStats(client, tableName, columns);
+  const sampleRows = await fetchSampleRows(client, tableName, 5);
+  const indexes = await fetchTableIndexes(client, tableName);
+
+  return {
+    table_name: tableName,
+    exists: true,
+    row_count: rowCount,
+    timestamp_stats: timestampStats,
+    sample_rows: sampleRows,
+    indexes,
   };
 }
 
@@ -178,9 +368,54 @@ async function main() {
 
   await client.connect();
   try {
-    title("Model A+ table inventory");
+    title("Model A+ candidate table counts");
     const counts = await fetchTableCounts(client);
     console.table(counts);
+
+    const inventories = [];
+    for (const tableName of TARGET_TABLES) {
+      const inv = await buildTableInventory(client, tableName);
+      inventories.push(inv);
+    }
+
+    title("Table min/max timestamp-like columns");
+    for (const inv of inventories) {
+      console.log(`\n[${inv.table_name}] exists=${inv.exists} rows=${inv.row_count ?? "n/a"}`);
+      if (!inv.exists) continue;
+      if (!inv.timestamp_stats.length) {
+        console.log("  (no timestamp-like columns found)");
+      } else {
+        console.table(inv.timestamp_stats);
+      }
+    }
+
+    title("Sample rows (max 5 per table)");
+    for (const inv of inventories) {
+      console.log(`\n[${inv.table_name}]`);
+      if (!inv.exists) {
+        console.log("  (table missing)");
+        continue;
+      }
+      if (!inv.sample_rows.length) {
+        console.log("  (no rows)");
+        continue;
+      }
+      console.log(JSON.stringify(inv.sample_rows, null, 2));
+    }
+
+    title("Indexes on candidate tables");
+    for (const inv of inventories) {
+      console.log(`\n[${inv.table_name}]`);
+      if (!inv.exists) {
+        console.log("  (table missing)");
+        continue;
+      }
+      if (!inv.indexes.length) {
+        console.log("  (no indexes)");
+        continue;
+      }
+      console.table(inv.indexes);
+    }
 
     title("rt_cache payload lengths");
     const payloadRows = await fetchRtCachePayloads(client);
@@ -195,16 +430,26 @@ async function main() {
     }
 
     title("Code paths referencing rt_cache payload reads");
-    const codeRefs = fetchPayloadReadCodePaths();
-    if (codeRefs.error) {
-      console.log(`code-scan warning: ${codeRefs.error}`);
+    const codeScan = scanCodePaths();
+    if (codeScan.error) {
+      console.log(`code-scan warning: ${codeScan.error}`);
     }
-    if (!codeRefs.refs.length) {
+    if (!codeScan.refs.length) {
       console.log("(no matches)");
     } else {
-      for (const ref of codeRefs.refs) {
+      for (const ref of codeScan.refs) {
         console.log(ref);
       }
+    }
+
+    title("Stationboard payload-read confirmation");
+    if (codeScan.stationboardReadsPayload === true) {
+      console.log("stationboard_can_read_rt_cache_payload=true");
+      console.log("reason: parsed loader is default, but blob fallback/readRealtime path is still wired.");
+    } else if (codeScan.stationboardReadsPayload === false) {
+      console.log("stationboard_can_read_rt_cache_payload=false");
+    } else {
+      console.log("stationboard_can_read_rt_cache_payload=unknown");
     }
   } finally {
     await client.end().catch(() => {});
