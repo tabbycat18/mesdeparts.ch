@@ -3,9 +3,10 @@ import SwiftUI
 struct SBBClockView: View {
     private static let cycleDurationSeconds = 58.5
     private static let easingDurationMs = 2000.0
+    private static let targetFPS = 60.0
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: false)) { context in
+        TimelineView(.animation(minimumInterval: 1.0 / Self.targetFPS, paused: false)) { context in
             let now = context.date
             let parts = clockParts(for: now)
             let mss = Double(parts.second * 1000 + parts.millisecond)

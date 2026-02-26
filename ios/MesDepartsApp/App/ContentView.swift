@@ -133,12 +133,12 @@ private struct StationboardView: View {
                         SectionHeader(title: appLabel(.servedByLines, language: language))
 
                         ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: MDDesignSystem.Spacing.xs) {
+                            HStack(spacing: MDDesignSystem.Spacing.xs * 0.88) {
                                 ForEach(viewModel.servedLines, id: \.self) { line in
                                     LinePill(line: line)
                                 }
                             }
-                            .padding(.vertical, MDDesignSystem.Spacing.xxs)
+                            .padding(.vertical, MDDesignSystem.Spacing.xxs * 0.88)
                         }
                     }
                 }
@@ -190,7 +190,7 @@ private struct StationboardView: View {
             }
             .padding(MDDesignSystem.Spacing.md)
         }
-        .background(MDDesignSystem.Colors.background.ignoresSafeArea())
+        .background(WebPalette.Brand.boardBlue.ignoresSafeArea())
         .navigationTitle(viewModel.stationName)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -364,15 +364,9 @@ private struct DepartureRowView: View {
     let language: AppLanguageOption
 
     var body: some View {
-        BlueCard {
-            Group {
-                if displayMode == .line {
-                    lineModeLayout
-                } else {
-                    minModeLayout
-                }
-            }
-            .padding(.vertical, 2)
+        BlueCard(verticalPadding: MDDesignSystem.Spacing.md * 0.88) {
+            rowLayout
+                .padding(.vertical, MDDesignSystem.Spacing.xxs * 0.88)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilitySummary)
@@ -380,6 +374,16 @@ private struct DepartureRowView: View {
 
     private var primaryDate: Date? {
         departure.realtimeDeparture ?? departure.scheduledDeparture
+    }
+
+    private var isBusLikeService: Bool {
+        guard let category = departure.category?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .uppercased(),
+              !category.isEmpty else {
+            return false
+        }
+        return category == "B" || category == "BUS" || category == "T" || category == "TRAM"
     }
 
     private var serviceLabel: String {
@@ -414,24 +418,110 @@ private struct DepartureRowView: View {
         return delay > 0 ? "+\(delay) min" : "\(delay) min"
     }
 
-    private var lineModeLayout: some View {
-        VStack(alignment: .leading, spacing: MDDesignSystem.Spacing.xxs) {
-            topBoardRow(timeFont: .title3.weight(.semibold))
-            secondaryRow()
+    private var rowLayout: some View {
+        Group {
+            if isBusLikeService {
+                busLayout
+            } else {
+                trainLayout
+            }
         }
     }
 
-    private var minModeLayout: some View {
-        VStack(alignment: .leading, spacing: MDDesignSystem.Spacing.xxs) {
-            topBoardRow(timeFont: .title3.weight(.semibold))
-            secondaryRow(showMinutes: true)
+    private var trainLayout: some View {
+        VStack(alignment: .leading, spacing: compactRowSpacing) {
+            topBoardRow {
+                trainTimeBlock
+            }
+            if shouldShowTrainSecondaryRow {
+                trainSecondaryRow
+            }
         }
     }
 
-    private var tagsRow: some View {
-        HStack(spacing: MDDesignSystem.Spacing.xs) {
+    private var busLayout: some View {
+        VStack(alignment: .leading, spacing: compactRowSpacing) {
+            topBoardRow {
+                busTimeBlock
+            }
+            if shouldShowBusSecondaryRow {
+                busSecondaryRow
+            }
+        }
+    }
+
+    private var trainTimeBlock: some View {
+        VStack(alignment: .trailing, spacing: compactRowSpacing) {
+            Text(DateFormatters.time(primaryDate))
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(MDDesignSystem.Colors.textPrimary)
+                .monospacedDigit()
             if let delayText {
-                TagPill(text: delayText, style: .delay)
+                TagPill(text: delayText, style: delayTagStyle)
+            }
+        }
+        .frame(width: timeBlockWidth, alignment: .trailing)
+    }
+
+    private var busTimeBlock: some View {
+        VStack(alignment: .trailing, spacing: compactRowSpacing) {
+            Text(minutesLabel)
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(MDDesignSystem.Colors.textPrimary)
+                .monospacedDigit()
+            Text(DateFormatters.time(primaryDate))
+                .font(.caption)
+                .foregroundStyle(MDDesignSystem.Colors.textSecondary)
+                .monospacedDigit()
+
+            if shouldShowBusRightStatusRow {
+                busRightStatusRow
+            }
+        }
+        .frame(width: timeBlockWidth, alignment: .trailing)
+    }
+
+    private var busRightStatusRow: some View {
+        HStack(spacing: compactChipSpacing) {
+            if let delayText {
+                TagPill(text: delayText, style: delayTagStyle)
+            }
+            if departure.realtimeDeparture != nil {
+                TagPill(text: "RT", style: .realtime)
+            }
+        }
+    }
+
+    private func topBoardRow<TimeContent: View>(@ViewBuilder timeContent: () -> TimeContent) -> some View {
+        HStack(alignment: .center, spacing: MDDesignSystem.Spacing.sm) {
+            LinePill(line: serviceLabel)
+
+            destinationBlock
+
+            Spacer(minLength: MDDesignSystem.Spacing.xs)
+
+            timeContent()
+        }
+    }
+
+    private var destinationBlock: some View {
+        VStack(alignment: .leading, spacing: compactRowSpacing) {
+            Text(destinationLabel)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(MDDesignSystem.Colors.textPrimary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var trainSecondaryRow: some View {
+        HStack(alignment: .center, spacing: compactChipSpacing) {
+            if displayMode == .min {
+                Text(minutesLabel)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(MDDesignSystem.Colors.accent)
+                    .monospacedDigit()
             }
             if departure.cancelled {
                 TagPill(text: "Cancelled", style: .cancelled)
@@ -442,42 +532,44 @@ private struct DepartureRowView: View {
             if departure.realtimeDeparture != nil {
                 TagPill(text: "RT", style: .realtime)
             }
-        }
-    }
-
-    private func topBoardRow(timeFont: Font) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: MDDesignSystem.Spacing.sm) {
-            LinePill(line: serviceLabel)
-                .frame(width: 88, alignment: .leading)
-
-            Text(destinationLabel)
-                .font(.body)
-                .foregroundStyle(MDDesignSystem.Colors.textPrimary)
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-            Text(DateFormatters.time(primaryDate))
-                .font(timeFont)
-                .foregroundStyle(MDDesignSystem.Colors.textPrimary)
-                .monospacedDigit()
-                .frame(width: 64, alignment: .trailing)
-        }
-    }
-
-    private func secondaryRow(showMinutes: Bool = false) -> some View {
-        HStack(alignment: .center, spacing: MDDesignSystem.Spacing.xs) {
-            if showMinutes {
-                Text(minutesLabel)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(MDDesignSystem.Colors.accent)
-                    .monospacedDigit()
-            }
-            tagsRow
-                .lineLimit(1)
             Spacer(minLength: 0)
         }
     }
+
+    private var busSecondaryRow: some View {
+        HStack(alignment: .center, spacing: compactChipSpacing) {
+            if departure.cancelled {
+                TagPill(text: "Cancelled", style: .cancelled)
+            }
+            if let platform = departure.platform, !platform.isEmpty {
+                TagPill(text: "Plt \(platform)", style: .platform)
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    private var shouldShowTrainSecondaryRow: Bool {
+        displayMode == .min || departure.cancelled || hasPlatform || departure.realtimeDeparture != nil
+    }
+
+    private var shouldShowBusSecondaryRow: Bool {
+        departure.cancelled || hasPlatform
+    }
+
+    private var shouldShowBusRightStatusRow: Bool {
+        delayText != nil || departure.realtimeDeparture != nil
+    }
+
+    private var hasPlatform: Bool {
+        guard let platform = departure.platform else { return false }
+        return !platform.isEmpty
+    }
+
+    private var timeBlockWidth: CGFloat { 110 }
+
+    private var compactRowSpacing: CGFloat { MDDesignSystem.Spacing.xxs * 0.88 }
+
+    private var compactChipSpacing: CGFloat { MDDesignSystem.Spacing.xs * 0.88 }
 
     private var minutesLabel: String {
         guard let primaryDate else {
@@ -486,6 +578,10 @@ private struct DepartureRowView: View {
         let interval = primaryDate.timeIntervalSinceNow
         let minutes = max(0, Int((interval + 59) / 60))
         return "\(minutes) \(appLabel(.minuteSuffix, language: language))"
+    }
+
+    private var delayTagStyle: TagPillStyle {
+        departure.delayMin == 0 ? .onTime : .delay
     }
 
     private var accessibilitySummary: String {

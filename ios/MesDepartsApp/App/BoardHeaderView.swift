@@ -33,6 +33,7 @@ struct BoardHeaderView: View {
                     Text("\(updatedLabel): \(Self.timeFormatter.string(from: updatedAt))")
                         .font(.footnote)
                         .foregroundStyle(MDDesignSystem.Colors.textSecondary)
+                        .monospacedDigit()
                 }
 
                 if let freshnessLabel, !freshnessLabel.isEmpty {

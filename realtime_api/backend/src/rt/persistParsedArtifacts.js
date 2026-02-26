@@ -189,6 +189,13 @@ function extractServiceAlertsRows(feed) {
       severity: text(normalized.severity) || null,
       header_text: text(normalized.headerText) || null,
       description_text: text(normalized.descriptionText) || null,
+      // Store full multi-language translations in JSONB for localization at read time
+      header_translations: Array.isArray(normalized.headerTranslations) && normalized.headerTranslations.length > 0
+        ? JSON.stringify(normalized.headerTranslations)
+        : null,
+      description_translations: Array.isArray(normalized.descriptionTranslations) && normalized.descriptionTranslations.length > 0
+        ? JSON.stringify(normalized.descriptionTranslations)
+        : null,
       active_start: Number.isFinite(activeStart) ? Math.trunc(activeStart) : null,
       active_end: Number.isFinite(activeEnd) ? Math.trunc(activeEnd) : null,
       informed_entities: JSON.stringify(

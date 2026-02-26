@@ -2,8 +2,8 @@ import SwiftUI
 import UIKit
 
 enum MDDesignSystem {
-    enum Colors {
-        static let background = Color(
+    enum Brand {
+        static let boardBackground = Color(
             uiColor: UIColor { trait in
                 trait.userInterfaceStyle == .dark
                     ? UIColor(red: 0.05, green: 0.09, blue: 0.16, alpha: 1)
@@ -11,7 +11,7 @@ enum MDDesignSystem {
             }
         )
 
-        static let card = Color(
+        static let cardBackground = Color(
             uiColor: UIColor { trait in
                 trait.userInterfaceStyle == .dark
                     ? UIColor(red: 0.10, green: 0.15, blue: 0.24, alpha: 1)
@@ -19,13 +19,19 @@ enum MDDesignSystem {
             }
         )
 
-        static let stroke = Color(
+        static let cardBorder = Color(
             uiColor: UIColor { trait in
                 trait.userInterfaceStyle == .dark
                     ? UIColor(red: 0.20, green: 0.35, blue: 0.64, alpha: 0.9)
                     : UIColor(red: 0.72, green: 0.84, blue: 0.98, alpha: 1)
             }
         )
+    }
+
+    enum Colors {
+        static let background = Brand.boardBackground
+        static let card = Brand.cardBackground
+        static let stroke = Brand.cardBorder
 
         static let textPrimary = Color.primary
         static let textSecondary = Color.secondary

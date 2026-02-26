@@ -165,6 +165,19 @@ export function normalizeAlertEntity(entity) {
     pick(alert, "description_text", "descriptionText")
   );
 
+  // Diagnostic: log languages present in feed (only if single language found)
+  if (process.env.DEBUG_ALERTS_LANGUAGES === "1") {
+    const headerLangs = headerTranslations.map((t) => t.language || "(empty)").join(", ");
+    const descLangs = descriptionTranslations.map((t) => t.language || "(empty)").join(", ");
+    if (headerLangs.split(", ").length === 1) {
+      console.log("[ALERTS] Single language in feed:", {
+        alertId: toTrimmedOrNull(pick(entity, "id")),
+        headerLanguages: headerLangs,
+        descriptionLanguages: descLangs,
+      });
+    }
+  }
+
   return {
     id: toTrimmedOrNull(pick(entity, "id")) || "",
     cause: normalizeEnumValue(pick(alert, "cause"), CAUSE_BY_CODE),
@@ -261,6 +274,24 @@ export async function fetchServiceAlerts({ apiKey, urlOverride, timeoutMs } = {}
 
   const header = feedMessage?.header || {};
   const entities = Array.isArray(feedMessage?.entity) ? feedMessage.entity : [];
+
+  // Diagnostic: check what languages are in the feed
+  if (process.env.DEBUG_ALERTS_LANGUAGES === "1") {
+    const langSamples = entities.slice(0, 3).map((e) => {
+      const alert = e?.alert;
+      if (!alert) return null;
+      const headerLangs = Array.isArray(alert?.header_text?.translation)
+        ? alert.header_text.translation.map((t) => t?.language).join(", ")
+        : alert?.header_text?.language
+          ? String(alert.header_text.language)
+          : "(plain string or missing)";
+      return { id: e?.id, headerLanguages: headerLangs };
+    });
+    console.log("[ALERTS] Feed language sample (first 3 alerts):", {
+      totalEntities: entities.length,
+      samples: langSamples,
+    });
+  }
 
   return {
     feedVersion: toTrimmedOrNull(

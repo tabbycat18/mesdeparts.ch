@@ -1,11 +1,24 @@
 import SwiftUI
 
 struct BlueCard<Content: View>: View {
-    @ViewBuilder let content: Content
+    private let content: Content
+    private let horizontalPadding: CGFloat
+    private let verticalPadding: CGFloat
+
+    init(
+        horizontalPadding: CGFloat = MDDesignSystem.Spacing.md,
+        verticalPadding: CGFloat = MDDesignSystem.Spacing.md,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.horizontalPadding = horizontalPadding
+        self.verticalPadding = verticalPadding
+        self.content = content()
+    }
 
     var body: some View {
         content
-            .padding(MDDesignSystem.Spacing.md)
+            .padding(.horizontal, horizontalPadding)
+            .padding(.vertical, verticalPadding)
             .background(MDDesignSystem.Colors.card)
             .overlay(
                 RoundedRectangle(cornerRadius: MDDesignSystem.Radius.card, style: .continuous)
@@ -44,30 +57,12 @@ struct LinePill: View {
     let line: String
 
     var body: some View {
-        HStack(spacing: MDDesignSystem.Spacing.xs) {
-            Circle()
-                .fill(RouteColorPalette.color(for: line))
-                .frame(width: 10, height: 10)
-
-            Text(line)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(MDDesignSystem.Colors.textPrimary)
-                .lineLimit(1)
-        }
-        .padding(.horizontal, MDDesignSystem.Spacing.sm)
-        .padding(.vertical, MDDesignSystem.Spacing.xs)
-        .background(RouteColorPalette.color(for: line).opacity(0.13))
-        .overlay(
-            Capsule(style: .continuous)
-                .stroke(RouteColorPalette.color(for: line).opacity(0.45), lineWidth: 1)
-        )
-        .clipShape(Capsule(style: .continuous))
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Line \(line)")
+        LinePillView(line: line)
     }
 }
 
 enum TagPillStyle {
+    case onTime
     case delay
     case cancelled
     case platform
@@ -96,56 +91,35 @@ struct TagPill: View {
 
     private var textColor: Color {
         switch style {
+        case .onTime:
+            return WebPalette.Badge.onTimeFg
         case .delay:
-            return Color(red: 0.74, green: 0.30, blue: 0.05)
+            return WebPalette.Badge.delayFg
         case .cancelled:
             return Color(red: 0.72, green: 0.13, blue: 0.11)
         case .platform:
-            return MDDesignSystem.Colors.accent
+            return WebPalette.Badge.platformFg
         case .realtime:
-            return Color(red: 0.12, green: 0.50, blue: 0.23)
+            return WebPalette.Badge.rtFg
         }
     }
 
     private var backgroundColor: Color {
         switch style {
+        case .onTime:
+            return WebPalette.Badge.onTimeBg
         case .delay:
-            return Color(red: 1.0, green: 0.92, blue: 0.83)
+            return WebPalette.Badge.delayBg
         case .cancelled:
             return Color(red: 1.0, green: 0.88, blue: 0.87)
         case .platform:
-            return MDDesignSystem.Colors.accent.opacity(0.12)
+            return WebPalette.Badge.platformBg
         case .realtime:
-            return Color(red: 0.87, green: 0.96, blue: 0.89)
+            return WebPalette.Badge.rtBg
         }
     }
 
     private var borderColor: Color {
         textColor.opacity(0.45)
-    }
-}
-
-enum RouteColorPalette {
-    private static let palette: [Color] = [
-        Color(red: 0.07, green: 0.42, blue: 0.86),
-        Color(red: 0.17, green: 0.55, blue: 0.32),
-        Color(red: 0.90, green: 0.42, blue: 0.13),
-        Color(red: 0.74, green: 0.31, blue: 0.77),
-        Color(red: 0.15, green: 0.61, blue: 0.74),
-        Color(red: 0.69, green: 0.18, blue: 0.31)
-    ]
-
-    static func color(for line: String) -> Color {
-        let normalized = line.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !normalized.isEmpty else {
-            return MDDesignSystem.Colors.accent
-        }
-
-        var hash = 0
-        for scalar in normalized.unicodeScalars {
-            hash = (hash * 31 + Int(scalar.value))
-        }
-        let index = abs(hash) % palette.count
-        return palette[index]
     }
 }

@@ -111,6 +111,22 @@ function uniqueText(values = []) {
   return out;
 }
 
+function parseTranslations(jsonbValue) {
+  if (!jsonbValue) return null;
+  try {
+    if (typeof jsonbValue === "string") {
+      const parsed = JSON.parse(jsonbValue);
+      return Array.isArray(parsed) ? parsed : null;
+    }
+    if (Array.isArray(jsonbValue)) {
+      return jsonbValue;
+    }
+  } catch {
+    // Ignore parse errors, fall back to single-language
+  }
+  return null;
+}
+
 function matchesScope(entity, { scopeStopIds, scopeRouteIds, scopeTripIds } = {}) {
   const informed = Array.isArray(entity?.informedEntities) ? entity.informedEntities : [];
   if (informed.length === 0) return true;
@@ -182,6 +198,8 @@ export async function loadAlertsFromParsedTables(options = {}) {
           severity,
           header_text,
           description_text,
+          header_translations,
+          description_translations,
           active_start,
           active_end,
           informed_entities,
@@ -233,17 +251,24 @@ export async function loadAlertsFromParsedTables(options = {}) {
     }
     const start = parseEpochSecToDate(row?.active_start);
     const end = parseEpochSecToDate(row?.active_end);
+
+    // Prefer JSONB multi-language translations if available; fall back to single-language text columns
+    const headerTranslationsFromJsonb = parseTranslations(row?.header_translations);
+    const descriptionTranslationsFromJsonb = parseTranslations(row?.description_translations);
+    const headerTranslations = headerTranslationsFromJsonb || (text(row?.header_text)
+      ? [{ language: "", text: text(row.header_text) }]
+      : []);
+    const descriptionTranslations = descriptionTranslationsFromJsonb || (text(row?.description_text)
+      ? [{ language: "", text: text(row.description_text) }]
+      : []);
+
     return {
       id: text(row?.alert_id),
       cause: text(row?.cause) || null,
       effect: text(row?.effect) || null,
       severity: text(row?.severity).toLowerCase() || null,
-      headerTranslations: text(row?.header_text)
-        ? [{ language: "", text: text(row.header_text) }]
-        : [],
-      descriptionTranslations: text(row?.description_text)
-        ? [{ language: "", text: text(row.description_text) }]
-        : [],
+      headerTranslations,
+      descriptionTranslations,
       headerText: text(row?.header_text) || null,
       descriptionText: text(row?.description_text) || null,
       activePeriods: [{ start, end }],

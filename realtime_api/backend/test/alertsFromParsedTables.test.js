@@ -138,3 +138,112 @@ test("loadAlertsFromParsedTables uses scoped SQL with lookback and avoids rt_cac
     false
   );
 });
+
+test("loadAlertsFromParsedTables reads JSONB multi-language translations when available", async () => {
+  const loadAlertsFromParsedTables = await loadAlertsFromParsedTablesFn();
+  const nowMs = Date.now();
+  const nowSec = Math.floor(nowMs / 1000);
+
+  const headerTranslations = [
+    { language: "de", text: "Bauarbeiten" },
+    { language: "fr", text: "Travaux" },
+    { language: "it", text: "Lavori in corso" },
+    { language: "en", text: "Construction" },
+  ];
+  const descriptionTranslations = [
+    { language: "de", text: "Quai geschlossen" },
+    { language: "fr", text: "Quai fermé" },
+    { language: "it", text: "Banchina chiusa" },
+    { language: "en", text: "Platform closed" },
+  ];
+
+  const out = await loadAlertsFromParsedTables({
+    enabled: true,
+    nowMs,
+    scopeStopIds: ["8503000:0:1"],
+    queryLike: makeQueryLike({
+      rows: [
+        {
+          alert_id: "alert-multilang",
+          effect: "DETOUR",
+          cause: "CONSTRUCTION",
+          severity: "warning",
+          header_text: "Travaux",
+          description_text: "Quai fermé",
+          // JSONB columns (as JSON-stringified arrays)
+          header_translations: JSON.stringify(headerTranslations),
+          description_translations: JSON.stringify(descriptionTranslations),
+          active_start: nowSec - 60,
+          active_end: nowSec + 600,
+          informed_entities: [{ stop_id: "8503000:0:1" }],
+          updated_at: new Date(nowMs - 1000).toISOString(),
+        },
+      ],
+    }),
+  });
+
+  assert.equal(out.meta.applied, true);
+  assert.equal(out.alerts.entities.length, 1);
+
+  const alert = out.alerts.entities[0];
+  assert.equal(alert.id, "alert-multilang");
+  assert.equal(Array.isArray(alert.headerTranslations), true);
+  assert.equal(Array.isArray(alert.descriptionTranslations), true);
+  assert.equal(alert.headerTranslations.length, 4);
+  assert.equal(alert.descriptionTranslations.length, 4);
+
+  // Verify all languages are present
+  const headerLangs = new Set(alert.headerTranslations.map((t) => t.language));
+  assert.ok(headerLangs.has("de"), "German must be present in header translations");
+  assert.ok(headerLangs.has("fr"), "French must be present in header translations");
+  assert.ok(headerLangs.has("it"), "Italian must be present in header translations");
+  assert.ok(headerLangs.has("en"), "English must be present in header translations");
+
+  const descLangs = new Set(alert.descriptionTranslations.map((t) => t.language));
+  assert.ok(descLangs.has("de"), "German must be present in description translations");
+  assert.ok(descLangs.has("fr"), "French must be present in description translations");
+  assert.ok(descLangs.has("it"), "Italian must be present in description translations");
+  assert.ok(descLangs.has("en"), "English must be present in description translations");
+});
+
+test("loadAlertsFromParsedTables falls back to single-language text columns when JSONB is absent", async () => {
+  const loadAlertsFromParsedTables = await loadAlertsFromParsedTablesFn();
+  const nowMs = Date.now();
+  const nowSec = Math.floor(nowMs / 1000);
+
+  const out = await loadAlertsFromParsedTables({
+    enabled: true,
+    nowMs,
+    scopeStopIds: ["8503000:0:1"],
+    queryLike: makeQueryLike({
+      rows: [
+        {
+          alert_id: "alert-single-lang",
+          effect: "DETOUR",
+          cause: "CONSTRUCTION",
+          severity: "warning",
+          header_text: "Travaux",
+          description_text: "Quai fermé",
+          // JSONB columns absent (null or undefined)
+          header_translations: null,
+          description_translations: null,
+          active_start: nowSec - 60,
+          active_end: nowSec + 600,
+          informed_entities: [{ stop_id: "8503000:0:1" }],
+          updated_at: new Date(nowMs - 1000).toISOString(),
+        },
+      ],
+    }),
+  });
+
+  assert.equal(out.meta.applied, true);
+  assert.equal(out.alerts.entities.length, 1);
+
+  const alert = out.alerts.entities[0];
+  assert.equal(alert.id, "alert-single-lang");
+  // Should fall back to single-language format
+  assert.equal(Array.isArray(alert.headerTranslations), true);
+  assert.equal(alert.headerTranslations.length, 1);
+  assert.equal(alert.headerTranslations[0].language, "");
+  assert.equal(alert.headerTranslations[0].text, "Travaux");
+});
