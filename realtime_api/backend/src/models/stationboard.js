@@ -321,6 +321,7 @@ export function normalizeDeparture(raw, ctx = {}) {
     category: asNullableText(raw?.category),
     number: asNullableText(raw?.number),
     destination: normalizeText(raw?.destination || ""),
+    operator: asNullableText(raw?.operator),
 
     scheduledDeparture,
     realtimeDeparture,

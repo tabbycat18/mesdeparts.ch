@@ -60,6 +60,7 @@ Primary responsibilities:
 - Build base board via `buildStationboard(...)` (static SQL first, then RT merge pipeline).
 - Prepare canonical response payload (`station`, `resolved`, `departures`, `banners`, `rt`, `alerts`).
 - Normalize departures through `src/models/stationboard.js` (`normalizeDeparture`).
+- Each departure includes `operator` = `agency_name` (human-readable, e.g. `"Bernmobil"`) from the `gtfs_agency` table join in stationboard SQL. Falls back to `agency_id` if name is absent. This field is used by the frontend `operatorPatterns` in `network-map.json` for line-badge network detection at any operator stop.
 - Attach alerts from parsed tables (`src/rt/loadAlertsFromParsedTables.js`) and merge alert effects (`attachAlerts`, `synthesizeFromAlerts`).
 - Keep blob-backed alerts loader (`src/rt/loadAlertsFromCache.js`) for explicit debug mode (`debug_rt=blob`) only.
 - Throttle request-path Service Alerts cache reads with an in-process TTL (`STATIONBOARD_ALERTS_REQUEST_CACHE_TTL_MS`, default 60s, clamped to minimum 60s) to avoid repeated alert-cache fetch/decode on frequent board refreshes.
@@ -121,6 +122,7 @@ Primary responsibilities:
 | Stationboard payload shaping (`rt`, `alerts`, `banners`, `departures`) | `src/api/stationboard.js` |
 | Stop search route contract and fallback behavior | `src/api/stopSearchRoute.js` |
 | Canonical departure field computation | `src/models/stationboard.js` |
+| Departure `operator` field (agency name for network/color detection) | `src/sql/stationboard.sql` (JOIN), `src/logic/buildStationboard.js` (set), `src/models/stationboard.js` (expose) |
 
 ## Search deep dive (`src/search` + stop-search route)
 

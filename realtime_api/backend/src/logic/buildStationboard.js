@@ -915,7 +915,7 @@ export async function buildStationboard(locationId, options = {}) {
       line: lineLabel,
       name: lineLabel,
       destination,
-      operator: row.agency_id || "",
+      operator: row.agency_name || row.agency_id || "",
       scheduledDeparture: scheduledDt.toISOString(),
       realtimeDeparture: scheduledDt.toISOString(),
       serviceDate: String(serviceDateInt),

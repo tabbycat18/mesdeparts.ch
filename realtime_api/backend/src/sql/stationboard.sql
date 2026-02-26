@@ -88,10 +88,12 @@ candidates AS (
     r.route_long_name,
     NULL::text AS route_desc,
     r.route_type::text AS route_type,
-    r.agency_id
+    r.agency_id,
+    ag.agency_name
   FROM trips_for_stops tfs
   JOIN active_services a ON a.service_id = tfs.service_id
   LEFT JOIN public.gtfs_routes r ON r.route_id = tfs.route_id
+  LEFT JOIN public.gtfs_agency ag ON ag.agency_id = r.agency_id
 ),
 deduped AS (
   SELECT DISTINCT ON (trip_id, stop_id, stop_sequence)

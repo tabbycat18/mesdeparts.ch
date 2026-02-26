@@ -98,6 +98,7 @@
         "number": { "type": ["string", "null"] },
         "line": { "type": ["string", "null"] },
         "destination": { "type": ["string", "null"] },
+        "operator": { "type": ["string", "null"] },
         "scheduledDeparture": { "type": "string", "format": "date-time" },
         "realtimeDeparture": { "type": ["string", "null"], "format": "date-time" },
         "delayMin": { "type": ["integer", "null"] },

@@ -51,6 +51,9 @@ Static, dependency-free front-end for mesdeparts.ch. Everything in this folder i
 - Embeds: pages add a `dual-embed` class when framed; `publishEmbedState` exposes current board state to the parent.
 - Dual board consumes embedded `boardLoading`/`boardNotice` state so each pane can surface live status in the top banner (localized “Refreshing…” and “Realtime data currently unavailable” when RT is degraded).
 - Network detection is config-driven: operator/agency matching is primary, route-id matching is secondary fallback, and station-name matching is last fallback when operator/route context is missing.
+  - `dep.operator` (= `gtfs_agency.agency_name`, e.g. `”Bernmobil”`, `”TPG”`, `”TPN”`) is now included in every stationboard departure from the backend. It is matched case-insensitively against `operatorPatterns` in `config/network-map.json`. This is the most reliable detection method: it works for any stop the operator serves, including suburbs that don't match station-name patterns.
+  - Swiss GTFS route_id format: `{category_code}-{line_number}-{variant}-{feed_version}` (e.g. `92-10-j26-1`). Category codes `91`, `92`, `96` are shared across ALL Swiss operators (TPG, Bernmobil, BVB, VBL, TPN all use `92-`). Do NOT use bare `^92-` to identify a single operator. TPN is the only operator with a distinct sub-pattern: `^92-8\d{2}` (lines 803–891).
+  - `stationPatterns` (stop name substring match, e.g. `”\\bbern\\b”`) is a last-resort fallback that fails for suburbs like Köniz, Ostermundigen, Gümligen, Wabern. Prefer `operatorPatterns`.
 - If `config/network-map.json` fails to load (for example 404 on a misconfigured static deployment), logic falls back to an embedded default map so line/network colors still resolve.
 - When network detection is unresolved or line-specific classes are missing, both row badges and “Served by lines” chips probe available CSS line classes across known network palettes before falling back to deterministic generic tones.
 
@@ -77,6 +80,7 @@ Static, dependency-free front-end for mesdeparts.ch. Everything in this folder i
 - This UI is now wired for `realtime_api/backend` API routes only.
 - It is not using the old `/locations` + `/stationboard` contract anymore.
 - RT merge/source-of-truth stays backend-side; frontend does not implement platform-vs-parent stop-id matching logic.
+- Each departure now includes `operator` = `gtfs_agency.agency_name` (e.g. `"Bernmobil"`, `"TPG"`, `"TPN"`). This is the authoritative source for `operatorPatterns` matching in `config/network-map.json`. It is resolved in the backend SQL via `LEFT JOIN gtfs_agency` and passed through `normalizeDeparture()` in `src/models/stationboard.js`.
 - For diagnostics only, backend `debug=1` exposes `debug.rt.tripUpdates` (including `rtEnabledForRequest`, `rtMetaReason`, scoped counters).
 
 ## Loading-hint state machine

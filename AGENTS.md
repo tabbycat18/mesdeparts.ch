@@ -61,6 +61,7 @@ If context is still missing after this order, then inspect code.
 | Stationboard client cache policy (browser no-store + CDN cache hints) | `realtime_api/backend/src/api/stationboardRoute.js`, `realtime_api/edge/worker.js` |
 | Stationboard response/meta/alerts wiring | `realtime_api/backend/src/api/stationboard.js` |
 | Core board SQL + RT merge pipeline | `realtime_api/backend/src/logic/buildStationboard.js` |
+| Departure `operator` field (agency_name exposed for frontend network/badge detection) | `realtime_api/backend/src/sql/stationboard.sql` (LEFT JOIN gtfs_agency), `realtime_api/backend/src/logic/buildStationboard.js` (set agency_name\|\|agency_id), `realtime_api/backend/src/models/stationboard.js` (add to normalizeDeparture allowlist) |
 | Stationboard debug RT diagnostics (`rtEnabledForRequest`, `rtMetaReason`, scoped counters) | `realtime_api/backend/src/logic/buildStationboard.js`, `realtime_api/backend/src/api/stationboard.js` |
 | Loader module explanation (feed cache/decode) | `realtime_api/backend/loaders/loadRealtime.js`, docs in `realtime_api/backend/README_src.md` |
 | RT/alerts scoped loader explanation | `realtime_api/backend/src/rt/loadScopedRtFromParsedTables.js`, `realtime_api/backend/src/rt/loadAlertsFromParsedTables.js`, `realtime_api/backend/src/rt/loadScopedRtFromCache.js`, `realtime_api/backend/src/rt/loadAlertsFromCache.js` |
@@ -96,13 +97,22 @@ If context is still missing after this order, then inspect code.
 - `cd realtime_api/frontend && npm test`
 - `npx wrangler deploy --config realtime_api/edge/wrangler.toml`
 
-## 8) Documentation maintenance rule
+## 8) Network/operator detection notes (Swiss specifics)
+- `normalizeDeparture()` in `src/models/stationboard.js` is a strict allowlist — any new departure field MUST be explicitly added there or it will be stripped from the API response. This was the root cause of `operatorPatterns` in `network-map.json` never matching: `operator` was not in the allowlist.
+- Swiss GTFS route_id format: `{category_code}-{line_number}-{optional_variant}-{feed_version}` (e.g. `92-10-j26-1`). Category codes `91`, `92`, `96` are shared across ALL Swiss operators — NOT operator-specific. Do NOT use bare `^92-` to identify a single operator.
+  - Exception: TPN (Transports de la région Nyon–La Côte) uniquely uses 3-digit 800-series line numbers → `^92-8\d{2}` is TPN-specific (lines 803–891).
+  - TPG (Geneva), BVB (Basel), VBL (Luzern), Bernmobil (Bern) all use `92-` with low 1–2-digit line numbers.
+- Reliable operator detection: use `operatorPatterns` in `network-map.json` matched against `dep.operator` (= `gtfs_agency.agency_name`, e.g. `"Bernmobil"`, `"TPG"`, `"TPN"`) — this works for ANY stop the operator serves, including suburbs not matched by station name.
+- `stationPatterns` in `network-map.json` is last-resort fallback (stop name contains "bern" etc.) — fails for suburbs like Köniz, Ostermundigen, Gümligen, Wabern.
+- Adding a new operator network: update `config/network-map.json` (operatorPatterns + palette), the inline `DEFAULT_NETWORK_MAP_CONFIG` in `logic.v*.js`, and `style.v*.css` (badge color rules `.line-{prefix}-{line_id}`).
+
+## 9) Documentation maintenance rule
 - For behavior changes, update docs in the same PR/commit:
   1. Update the nearest technical README (`backend`, `frontend`, `edge`, `scripts`, `src`).
   2. Update `realtime_api/README_INDEX.md` if navigation or authoritative paths changed.
   3. Update this `AGENTS.md` if runtime entrypoints, ownership, or workflow changed.
 
-## 8) Deployment Configuration (for deployment-related changes)
+## 10) Deployment Configuration (for deployment-related changes)
 
 ### Docker Build
 - **Root Dockerfile**: `Dockerfile` at repo root
@@ -151,7 +161,7 @@ If context is still missing after this order, then inspect code.
 - **Build context issues**: Check `.dockerignore` doesn't exclude essential files; verify Dockerfile `COPY` paths reference `realtime_api/backend/`
 - **Port conflicts**: Backend listens on 8080 (in `Dockerfile` ENV PORT=8080); `fly.toml` routes external port 8080 → internal 8080
 
-## 9) Stop-search change protocol (do not skip)
+## 11) Stop-search change protocol (do not skip)
 - Apply changes by risk tier:
   1. aliases/spec data
   2. ranking weights/tie-breakers
