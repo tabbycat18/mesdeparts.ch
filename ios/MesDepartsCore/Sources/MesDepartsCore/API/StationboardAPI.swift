@@ -1,5 +1,10 @@
 import Foundation
 
+public struct StationboardPayload: Sendable {
+    public let response: StationboardResponse
+    public let rawData: Data
+}
+
 public final class StationboardAPI: @unchecked Sendable {
     private let baseURL: URL
     private let httpClient: HTTPClient
@@ -20,6 +25,19 @@ public final class StationboardAPI: @unchecked Sendable {
         limit: Int,
         includeAlerts: Bool
     ) async throws -> StationboardResponse {
+        let payload = try await fetchStationboardPayload(
+            stopId: stopId,
+            limit: limit,
+            includeAlerts: includeAlerts
+        )
+        return payload.response
+    }
+
+    public func fetchStationboardPayload(
+        stopId: String,
+        limit: Int,
+        includeAlerts: Bool
+    ) async throws -> StationboardPayload {
         guard var components = URLComponents(
             url: baseURL.appendingPathComponent("api/stationboard"),
             resolvingAgainstBaseURL: false
@@ -38,6 +56,7 @@ public final class StationboardAPI: @unchecked Sendable {
         }
 
         let data = try await httpClient.get(url: url)
-        return try decoder.decode(StationboardResponse.self, from: data)
+        let response = try decoder.decode(StationboardResponse.self, from: data)
+        return StationboardPayload(response: response, rawData: data)
     }
 }

@@ -4,7 +4,7 @@ This document defines a shared interpretation of stationboard freshness using th
 
 Scope:
 - Endpoint: `GET /api/stationboard`
-- Clients: `realtime_api/frontend` (web), `ios/MesDepartsIOSApp` (iOS app shell)
+- Clients: `realtime_api/frontend` (web), `ios/MesDepartsApp` (iOS app)
 - Fields: `meta.serverTime`, `meta.rtFetchedAt`, `meta.rtCacheAgeMs`, `meta.responseMode`, `meta.rtStatus`
 
 ## 1) Definitions
@@ -12,7 +12,7 @@ Scope:
 ### 1.1 Polling interval targets (current runtime)
 
 - Web target: `15s` (`REFRESH_DEPARTURES = 15_000` in `frontend/v20260205-1.state.js`)
-- iOS target: app-specific; current `ios/MesDepartsIOSApp` shell does not yet implement a polling loop.
+- iOS target: `~20s` with small jitter in `ios/MesDepartsApp` (view-driven polling loop).
 
 Contract rule:
 - Clients must not poll faster than their configured cadence.
@@ -106,4 +106,5 @@ Use these rules for manual checks or CI smoke scripts.
   - rolling buffer in `appState.stationboardFreshnessSamples` (max 20)
   - export helper: `window.mesdepartsExportFreshnessSamples()`
 - iOS:
-  - current `ios/MesDepartsIOSApp` shell has no freshness sample buffer yet.
+  - rolling buffer in `FreshnessDiagnosticsBuffer` (max 50)
+  - diagnostics screen available from Stationboard More menu.

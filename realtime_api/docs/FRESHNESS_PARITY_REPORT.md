@@ -3,13 +3,12 @@
 Date: 2026-02-26
 
 Status note (2026-02-26):
-- `ios/MesDepartsApp` was removed during iOS project consolidation.
-- The runnable iOS target is now `ios/MesDepartsIOSApp/MesDepartsIOSApp.xcodeproj`.
-- iOS file references below are historical from the earlier prototype unless explicitly updated.
+- `ios/MesDepartsApp/MesDepartsApp.xcodeproj` is the runnable iOS target.
+- `ios/MesDepartsIOSApp` is legacy and should not be used for runtime/build validation.
 
 Scope compared:
 - Web: `realtime_api/frontend/v20260205-1.main.js`, `realtime_api/frontend/v20260205-1.logic.js`, `realtime_api/frontend/v20260205-1.state.js`
-- iOS app (current shell): `ios/MesDepartsIOSApp/MesDepartsIOSApp/App/MesDepartsIOSAppApp.swift`, `ios/MesDepartsIOSApp/MesDepartsIOSApp/App/ContentView.swift`
+- iOS app: `ios/MesDepartsApp/App/MesDepartsAppApp.swift`, `ios/MesDepartsApp/App/ContentView.swift`
 - iOS networking: `ios/MesDepartsCore/Sources/MesDepartsCore/API/StationboardAPI.swift`, `ios/MesDepartsCore/Sources/MesDepartsCore/API/HTTPClient.swift`
 
 This is a code-level state-machine parity audit for stationboard refresh + RT freshness semantics.
@@ -104,8 +103,8 @@ stateDiagram-v2
   - `openStop(...)` increments generation, cancels active fetch, clears board state.
 - RT anti-downgrade hold (web-equivalent behavior):
   - `shouldApplyIncomingBoard(incomingHasRTSnapshot:now:)` + `currentBoardHasRTSnapshot` + `lastRTSnapshotAt` hard-cap logic.
-- Lifecycle gating (historical prototype reference):
-  - `MesDepartsApp.scenePhase` -> `setAppActive(...)` pausing timers and in-flight fetches outside active state.
+- Lifecycle gating:
+  - `StationboardView` observes `scenePhase`, starts polling when active and stops in inactive/background.
 - Cache bypass intent for stationboard requests:
   - `HTTPClient` uses ephemeral `URLSessionConfiguration`, `request.cachePolicy = .reloadIgnoringLocalCacheData`, and `Cache-Control: no-store, no-cache, max-age=0`.
 
@@ -114,7 +113,7 @@ stateDiagram-v2
 | Mechanism | Web reference | iOS reference | Verdict | Notes / required change |
 | --- | --- | --- | --- | --- |
 | Poll scheduling + jitter | `scheduleNextRefresh`, `jitteredDelayMs`, `REFRESH_DEPARTURES` in `v20260205-1.main.js` + `v20260205-1.state.js` | `pollInterval`, `jitteredPollDelay`, `scheduleNextPoll` in `StationboardViewModel` | Equivalent | Both run ~15s with small signed jitter and one-shot rescheduling. |
-| Foreground/background gating | `handleVisibilityChange`, `handleWindowFocus`, `document.hidden` checks in `v20260205-1.main.js` | historical prototype mapping: `scenePhase` in `MesDepartsApp.swift` + `setAppActive` in `StationboardViewModel` | Equivalent | Both pause in background and trigger immediate foreground refresh. |
+| Foreground/background gating | `handleVisibilityChange`, `handleWindowFocus`, `document.hidden` checks in `v20260205-1.main.js` | `scenePhase` handling in `StationboardView` + `startPolling`/`stopPolling` in `StationboardViewModel` | Equivalent | Both pause in background and trigger immediate foreground refresh. |
 | In-flight coalescing | `refreshInFlight` + `pendingRefreshRequest` + queued dispatch in `refreshDepartures` | `isRequestInFlight` + `pendingRefreshRequested` + follow-up launch in `fetchNow` defer | Equivalent | Single follow-up request is collapsed while one fetch is active. |
 | Superseded/stale response handling | `requestSeq` snapshot + `isStaleRequest()` in `refreshDepartures` | `requestGeneration` + `fetchStopID` checks in `fetchNow` | Equivalent | Superseded responses are ignored before UI state mutation. |
 | Stop switch stale UI prevention | `clearBoardForStationChange()` in `v20260205-1.main.js` | `openStop(...)` now clears board via `clearBoardForStopChange()` | Equivalent (after fix) | iOS patch added immediate board clear on stop change to prevent previous-stop rows. |
@@ -122,7 +121,7 @@ stateDiagram-v2
 | RT anti-downgrade (keep last RT snapshot) | `shouldApplyIncomingBoard(...)` in `v20260205-1.logic.js` | `shouldApplyIncomingBoard(incomingHasRTSnapshot:now:)` in `StationboardViewModel` | Equivalent (after fix) | iOS patch now preserves recent RT-applied board until hard-cap. |
 | Error/backoff rules | `REFRESH_BACKOFF_STEPS_MS` + transient retry + stale-board rescue branches in `v20260205-1.main.js` | No explicit multi-step backoff ladder; next poll stays jittered cadence | Not equivalent | Acceptable platform difference for now; iOS remains within cadence and relies on lifecycle resume + coalescing. |
 | Cache-control / no-store behavior | `fetch(..., { cache: "no-store" })` in `fetchStationboardRaw` | `HTTPClient` request cache policy + no-store/no-cache headers + ephemeral session | Equivalent (after fix) | iOS patch hardened request/session cache bypass to avoid accidental cached responses. |
-| Meta freshness fields usage | `recordStationboardFreshnessSample` stores `serverTime`, `rtFetchedAt`, `rtCacheAgeMs`, `responseMode`, `rtStatus` | `StationboardFreshnessSample` + `pushFreshnessSample(...)` in `StationboardViewModel` | Equivalent | Both maintain rolling diagnostics buffer (20 samples). |
+| Meta freshness fields usage | `recordStationboardFreshnessSample` stores `serverTime`, `rtFetchedAt`, `rtCacheAgeMs`, `responseMode`, `rtStatus` | `FreshnessDiagnosticSample` + `FreshnessDiagnosticsBuffer` in `StationboardViewModel` | Equivalent | Both maintain rolling diagnostics buffers (iOS max 50 samples). |
 | Incremental `since_rt` / 204 no-change | `fetchStationboardRaw` adds `since_rt` + handles `204` | iOS currently does full GET only via `StationboardAPI.fetchStationboard` | Not equivalent | Acceptable platform difference; does not increase polling frequency, but uses larger payloads. |
 
 ## A) Same
@@ -131,7 +130,7 @@ stateDiagram-v2
 - Foreground/background refresh gating and immediate resume fetch.
 - Single in-flight request with queued follow-up coalescing.
 - Superseded request protection before UI mutation.
-- Freshness sample ring buffer (20) capturing Model A meta timing/status fields.
+- Freshness sample ring buffer capturing Model A meta timing/status fields.
 - Explicit stationboard HTTP cache bypass intent.
 
 ## B) Different
@@ -163,7 +162,7 @@ stateDiagram-v2
 
 ## iOS-only parity patch included in this update
 
-- historical prototype path: `ios/MesDepartsApp/Sources/MesDepartsApp/StationboardViewModel.swift`
+- current app path: `ios/MesDepartsApp/App/ContentView.swift` (`StationboardViewModel`)
   - Added stop-switch board reset.
   - Added RT snapshot hold decision (`shouldApplyIncomingBoard`).
   - Added snapshot-tracking state (`currentBoardHasRTSnapshot`, `lastRTSnapshotAt`).
