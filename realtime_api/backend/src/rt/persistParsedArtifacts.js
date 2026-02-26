@@ -365,6 +365,95 @@ async function insertStopRows(client, rows = []) {
   }
 }
 
+async function upsertTripRows(client, rows = []) {
+  if (!rows.length) return;
+  for (const group of chunk(rows, 200)) {
+    const values = [];
+    const params = [];
+    let p = 1;
+    for (const row of group) {
+      values.push(
+        row.trip_id,
+        row.route_id,
+        row.start_date,
+        row.schedule_relationship
+      );
+      params.push(`($${p}, $${p + 1}, $${p + 2}, $${p + 3}, NOW())`);
+      p += 4;
+    }
+    await client.query(
+      `
+        INSERT INTO public.rt_trip_updates (
+          trip_id,
+          route_id,
+          start_date,
+          schedule_relationship,
+          updated_at
+        )
+        VALUES ${params.join(",")}
+        ON CONFLICT (trip_id) DO UPDATE SET
+          route_id              = EXCLUDED.route_id,
+          start_date            = EXCLUDED.start_date,
+          schedule_relationship = EXCLUDED.schedule_relationship,
+          updated_at            = EXCLUDED.updated_at
+      `,
+      values
+    );
+  }
+}
+
+async function upsertStopRows(client, rows = []) {
+  if (!rows.length) return;
+  for (const group of chunk(rows, 100)) {
+    const values = [];
+    const params = [];
+    let p = 1;
+    for (const row of group) {
+      values.push(
+        row.trip_id,
+        row.stop_sequence,
+        row.stop_id,
+        row.departure_delay,
+        row.arrival_delay,
+        row.departure_time_rt,
+        row.arrival_time_rt,
+        row.platform,
+        row.schedule_relationship
+      );
+      params.push(
+        `($${p}, $${p + 1}, $${p + 2}, $${p + 3}, $${p + 4}, $${p + 5}, $${p + 6}, $${p + 7}, $${p + 8}, NOW())`
+      );
+      p += 9;
+    }
+    await client.query(
+      `
+        INSERT INTO public.rt_stop_time_updates (
+          trip_id,
+          stop_sequence,
+          stop_id,
+          departure_delay,
+          arrival_delay,
+          departure_time_rt,
+          arrival_time_rt,
+          platform,
+          schedule_relationship,
+          updated_at
+        )
+        VALUES ${params.join(",")}
+        ON CONFLICT (trip_id, stop_id, stop_sequence) DO UPDATE SET
+          departure_delay       = EXCLUDED.departure_delay,
+          arrival_delay         = EXCLUDED.arrival_delay,
+          departure_time_rt     = EXCLUDED.departure_time_rt,
+          arrival_time_rt       = EXCLUDED.arrival_time_rt,
+          platform              = EXCLUDED.platform,
+          schedule_relationship = EXCLUDED.schedule_relationship,
+          updated_at            = EXCLUDED.updated_at
+      `,
+      values
+    );
+  }
+}
+
 async function insertAlertRows(client, rows = []) {
   if (!rows.length) return;
   for (const group of chunk(rows, 300)) {
@@ -447,6 +536,40 @@ export async function persistParsedTripUpdatesSnapshot(
       deletedByRetentionStopRows,
       deletedBySnapshotTripRows: Number(deletedBySnapshotTrip?.rowCount || 0),
       deletedBySnapshotStopRows: Number(deletedBySnapshotStop?.rowCount || 0),
+    };
+  }, poolLike);
+}
+
+export async function persistParsedTripUpdatesIncremental(
+  feed,
+  { writeLockId, retentionHours, poolLike } = {}
+) {
+  const lockId = Number(writeLockId);
+  if (!Number.isFinite(lockId)) {
+    throw new Error("persist_parsed_trip_updates_missing_lock_id");
+  }
+  const effectiveRetentionHours = resolveRetentionHours(retentionHours);
+
+  const { tripRows, stopRows } = extractTripUpdatesRows(feed);
+  return withAdvisoryWriteLock(lockId, async (client) => {
+    const deletedByRetentionStopRows = await deleteOlderThanRetention(
+      client,
+      "public.rt_stop_time_updates",
+      effectiveRetentionHours
+    );
+    const deletedByRetentionTripRows = await deleteOlderThanRetention(
+      client,
+      "public.rt_trip_updates",
+      effectiveRetentionHours
+    );
+    await upsertTripRows(client, tripRows);
+    await upsertStopRows(client, stopRows);
+    return {
+      retentionHours: effectiveRetentionHours,
+      tripRows: tripRows.length,
+      stopRows: stopRows.length,
+      deletedByRetentionTripRows,
+      deletedByRetentionStopRows,
     };
   }, poolLike);
 }

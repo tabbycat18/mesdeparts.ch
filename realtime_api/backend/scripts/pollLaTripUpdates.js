@@ -17,7 +17,7 @@ import {
   setRtCachePayloadSha,
   updateRtCacheStatus,
 } from "../src/db/rtCache.js";
-import { persistParsedTripUpdatesSnapshot } from "../src/rt/persistParsedArtifacts.js";
+import { persistParsedTripUpdatesIncremental } from "../src/rt/persistParsedArtifacts.js";
 import {
   touchPollerHeartbeatError,
   touchTripUpdatesHeartbeat,
@@ -178,7 +178,7 @@ export function createLaTripUpdatesPoller({
   getRtCachePayloadShaLike = getRtCachePayloadSha,
   setRtCachePayloadShaLike = setRtCachePayloadSha,
   updateRtCacheStatusLike = updateRtCacheStatus,
-  persistParsedTripUpdatesSnapshotLike = persistParsedTripUpdatesSnapshot,
+  persistParsedTripUpdatesSnapshotLike = persistParsedTripUpdatesIncremental,
   decodeFeedLike = decodeTripUpdatesFeed,
   touchTripUpdatesHeartbeatLike = touchTripUpdatesHeartbeat,
   touchPollerHeartbeatErrorLike = touchPollerHeartbeatError,
@@ -644,10 +644,8 @@ export function createLaTripUpdatesPoller({
         etagPresent: !!responseEtag,
         extra: {
           retentionHours: RT_PARSED_RETENTION_HOURS,
-          parsedTripRowsInserted: Number(parsedWrite?.tripRows || 0),
-          parsedStopRowsInserted: Number(parsedWrite?.stopRows || 0),
-          parsedTripRowsDeletedBySnapshot: Number(parsedWrite?.deletedBySnapshotTripRows || 0),
-          parsedStopRowsDeletedBySnapshot: Number(parsedWrite?.deletedBySnapshotStopRows || 0),
+          parsedTripRowsUpserted: Number(parsedWrite?.tripRows || 0),
+          parsedStopRowsUpserted: Number(parsedWrite?.stopRows || 0),
           parsedTripRowsDeletedByRetention: Number(parsedWrite?.deletedByRetentionTripRows || 0),
           parsedStopRowsDeletedByRetention: Number(parsedWrite?.deletedByRetentionStopRows || 0),
         },

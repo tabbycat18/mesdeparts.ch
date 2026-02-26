@@ -122,6 +122,318 @@ test("persistParsedTripUpdatesSnapshot applies retention delete before snapshot 
   assert.ok(retentionStopIdx >= 0 && snapshotStopIdx > retentionStopIdx);
 });
 
+// ─── persistParsedTripUpdatesIncremental ─────────────────────────────────────
+
+test("persistParsedTripUpdatesIncremental does NOT execute bare DELETE FROM rt_stop_time_updates or rt_trip_updates", async () => {
+  const { persistParsedTripUpdatesIncremental } = await loadPersistors();
+  const { calls, poolLike } = makePoolLike((sql) => {
+    if (sql.includes("DELETE FROM public.rt_stop_time_updates") && sql.includes("WHERE updated_at <")) {
+      return { rows: [], rowCount: 1 };
+    }
+    if (sql.includes("DELETE FROM public.rt_trip_updates") && sql.includes("WHERE updated_at <")) {
+      return { rows: [], rowCount: 1 };
+    }
+    if (sql.includes("INSERT INTO public.rt_trip_updates") && sql.includes("ON CONFLICT")) {
+      return { rows: [], rowCount: 1 };
+    }
+    if (sql.includes("INSERT INTO public.rt_stop_time_updates") && sql.includes("ON CONFLICT")) {
+      return { rows: [], rowCount: 1 };
+    }
+    return { rows: [], rowCount: 0 };
+  });
+
+  await persistParsedTripUpdatesIncremental(
+    {
+      entity: [
+        {
+          trip_update: {
+            trip: { trip_id: "trip-1", route_id: "M1", start_date: "20260225" },
+            stop_time_update: [
+              { stop_id: "8501120", stop_sequence: 5, departure: { delay: 120, time: 1740500000 } },
+            ],
+          },
+        },
+      ],
+    },
+    { writeLockId: 7483921, retentionHours: 4, poolLike }
+  );
+
+  const bareDeleteStop = calls.some(
+    (c) => c.sql === "DELETE FROM public.rt_stop_time_updates"
+  );
+  const bareDeleteTrip = calls.some(
+    (c) => c.sql === "DELETE FROM public.rt_trip_updates"
+  );
+  assert.equal(bareDeleteStop, false, "must NOT issue bare DELETE FROM rt_stop_time_updates");
+  assert.equal(bareDeleteTrip, false, "must NOT issue bare DELETE FROM rt_trip_updates");
+});
+
+test("persistParsedTripUpdatesIncremental executes INSERT ... ON CONFLICT for both tables", async () => {
+  const { persistParsedTripUpdatesIncremental } = await loadPersistors();
+  const { calls, poolLike } = makePoolLike((sql) => {
+    if (sql.includes("DELETE FROM") && sql.includes("WHERE updated_at <")) {
+      return { rows: [], rowCount: 0 };
+    }
+    if (sql.includes("INSERT INTO public.rt_trip_updates") && sql.includes("ON CONFLICT")) {
+      return { rows: [], rowCount: 1 };
+    }
+    if (sql.includes("INSERT INTO public.rt_stop_time_updates") && sql.includes("ON CONFLICT")) {
+      return { rows: [], rowCount: 1 };
+    }
+    return { rows: [], rowCount: 0 };
+  });
+
+  await persistParsedTripUpdatesIncremental(
+    {
+      entity: [
+        {
+          trip_update: {
+            trip: { trip_id: "trip-2", route_id: "M2", start_date: "20260225" },
+            stop_time_update: [
+              { stop_id: "8501200", stop_sequence: 1, departure: { delay: 60 } },
+            ],
+          },
+        },
+      ],
+    },
+    { writeLockId: 7483921, retentionHours: 6, poolLike }
+  );
+
+  const upsertTrip = calls.some(
+    (c) => c.sql.includes("INSERT INTO public.rt_trip_updates") && c.sql.includes("ON CONFLICT")
+  );
+  const upsertStop = calls.some(
+    (c) => c.sql.includes("INSERT INTO public.rt_stop_time_updates") && c.sql.includes("ON CONFLICT")
+  );
+  assert.equal(upsertTrip, true, "must execute INSERT ... ON CONFLICT for rt_trip_updates");
+  assert.equal(upsertStop, true, "must execute INSERT ... ON CONFLICT for rt_stop_time_updates");
+});
+
+test("persistParsedTripUpdatesIncremental still runs retention deletes", async () => {
+  const { persistParsedTripUpdatesIncremental } = await loadPersistors();
+  const { calls, poolLike } = makePoolLike((sql) => {
+    if (sql.includes("DELETE FROM public.rt_stop_time_updates") && sql.includes("WHERE updated_at <")) {
+      return { rows: [], rowCount: 3 };
+    }
+    if (sql.includes("DELETE FROM public.rt_trip_updates") && sql.includes("WHERE updated_at <")) {
+      return { rows: [], rowCount: 2 };
+    }
+    if (sql.includes("INSERT INTO public.rt_trip_updates") && sql.includes("ON CONFLICT")) {
+      return { rows: [], rowCount: 1 };
+    }
+    if (sql.includes("INSERT INTO public.rt_stop_time_updates") && sql.includes("ON CONFLICT")) {
+      return { rows: [], rowCount: 1 };
+    }
+    return { rows: [], rowCount: 0 };
+  });
+
+  const result = await persistParsedTripUpdatesIncremental(
+    {
+      entity: [
+        {
+          trip_update: {
+            trip: { trip_id: "trip-3", route_id: "M3", start_date: "20260225" },
+            stop_time_update: [
+              { stop_id: "8501300", stop_sequence: 2, departure: { delay: 0 } },
+            ],
+          },
+        },
+      ],
+    },
+    { writeLockId: 7483921, retentionHours: 4, poolLike }
+  );
+
+  assert.equal(result.deletedByRetentionStopRows, 3);
+  assert.equal(result.deletedByRetentionTripRows, 2);
+  assert.equal(result.tripRows, 1);
+  assert.equal(result.stopRows, 1);
+  assert.equal(result.retentionHours, 4);
+
+  const retentionStopCalled = calls.some(
+    (c) => c.sql.includes("DELETE FROM public.rt_stop_time_updates") && c.sql.includes("WHERE updated_at <")
+  );
+  const retentionTripCalled = calls.some(
+    (c) => c.sql.includes("DELETE FROM public.rt_trip_updates") && c.sql.includes("WHERE updated_at <")
+  );
+  assert.equal(retentionStopCalled, true, "must run retention DELETE for rt_stop_time_updates");
+  assert.equal(retentionTripCalled, true, "must run retention DELETE for rt_trip_updates");
+});
+
+test("persistParsedTripUpdatesIncremental commits and releases client without leaking transaction", async () => {
+  const { persistParsedTripUpdatesIncremental } = await loadPersistors();
+  const { state, poolLike } = makeTrackedPoolLike((sql) => {
+    if (sql.includes("DELETE FROM") && sql.includes("WHERE updated_at <")) {
+      return { rows: [], rowCount: 0 };
+    }
+    if (sql.includes("INSERT INTO public.rt_trip_updates") && sql.includes("ON CONFLICT")) {
+      return { rows: [], rowCount: 1 };
+    }
+    if (sql.includes("INSERT INTO public.rt_stop_time_updates") && sql.includes("ON CONFLICT")) {
+      return { rows: [], rowCount: 1 };
+    }
+    return { rows: [], rowCount: 0 };
+  });
+
+  const out = await persistParsedTripUpdatesIncremental(
+    {
+      entity: [
+        {
+          trip_update: {
+            trip: { trip_id: "trip-4", route_id: "M4", start_date: "20260225" },
+            stop_time_update: [
+              { stop_id: "8501400", stop_sequence: 3, departure: { delay: 30, time: 1740500000 } },
+            ],
+          },
+        },
+      ],
+    },
+    { writeLockId: 7483921, poolLike }
+  );
+
+  assert.equal(out?.txDiagnostics?.transactionClientUsed, true);
+  assert.equal(out?.txDiagnostics?.transactionCommitted, true);
+  assert.equal(out?.txDiagnostics?.transactionRolledBack, false);
+  assert.equal(out?.txDiagnostics?.clientReleased, true);
+  assert.equal(state.transactionOpen, false);
+  assert.equal(state.checkedOut, 0);
+  assert.equal(state.released, 1);
+});
+
+test("persistParsedTripUpdatesIncremental rolls back and releases client on upsert failure", async () => {
+  const { persistParsedTripUpdatesIncremental } = await loadPersistors();
+  const { state, poolLike } = makeTrackedPoolLike((sql) => {
+    if (sql.includes("DELETE FROM") && sql.includes("WHERE updated_at <")) {
+      return { rows: [], rowCount: 0 };
+    }
+    if (sql.includes("INSERT INTO public.rt_trip_updates") && sql.includes("ON CONFLICT")) {
+      return { rows: [], rowCount: 1 };
+    }
+    if (sql.includes("INSERT INTO public.rt_stop_time_updates") && sql.includes("ON CONFLICT")) {
+      throw new Error("forced_upsert_failure");
+    }
+    return { rows: [], rowCount: 0 };
+  });
+
+  let err = null;
+  try {
+    await persistParsedTripUpdatesIncremental(
+      {
+        entity: [
+          {
+            trip_update: {
+              trip: { trip_id: "trip-5", route_id: "M5", start_date: "20260225" },
+              stop_time_update: [
+                { stop_id: "8501500", stop_sequence: 4, departure: { delay: 90, time: 1740500000 } },
+              ],
+            },
+          },
+        ],
+      },
+      { writeLockId: 7483921, poolLike }
+    );
+  } catch (error) {
+    err = error;
+  }
+
+  assert.match(String(err?.message || ""), /forced_upsert_failure/);
+  assert.equal(err?.txDiagnostics?.transactionClientUsed, true);
+  assert.equal(err?.txDiagnostics?.transactionCommitted, false);
+  assert.equal(err?.txDiagnostics?.transactionRolledBack, true);
+  assert.equal(err?.txDiagnostics?.clientReleased, true);
+  assert.equal(state.transactionOpen, false);
+  assert.equal(state.checkedOut, 0);
+  assert.equal(state.released, 1);
+});
+
+// ─── batch-size / multi-batch behaviour ──────────────────────────────────────
+
+test("persistParsedTripUpdatesIncremental issues multiple batches for trip rows exceeding batch size (200)", async () => {
+  const { persistParsedTripUpdatesIncremental } = await loadPersistors();
+
+  // Build 201 distinct trips so we cross the 200-row batch boundary.
+  const entities = Array.from({ length: 201 }, (_, i) => ({
+    trip_update: {
+      trip: { trip_id: `trip-batch-${i}`, route_id: "MB", start_date: "20260225" },
+      stop_time_update: [],
+    },
+  }));
+
+  const { calls, poolLike } = makePoolLike((sql) => {
+    if (sql.includes("DELETE FROM") && sql.includes("WHERE updated_at <")) {
+      return { rows: [], rowCount: 0 };
+    }
+    if (sql.includes("INSERT INTO public.rt_trip_updates") && sql.includes("ON CONFLICT")) {
+      return { rows: [], rowCount: 1 };
+    }
+    return { rows: [], rowCount: 0 };
+  });
+
+  const result = await persistParsedTripUpdatesIncremental(
+    { entity: entities },
+    { writeLockId: 7483921, poolLike }
+  );
+
+  const tripUpsertCalls = calls.filter(
+    (c) => c.sql.includes("INSERT INTO public.rt_trip_updates") && c.sql.includes("ON CONFLICT")
+  );
+  assert.equal(result.tripRows, 201);
+  assert.equal(tripUpsertCalls.length, 2, "201 trip rows at batch-size 200 must produce exactly 2 INSERT statements");
+  // First batch should carry 200 rows (200 × 4 params = 800 params)
+  assert.equal(tripUpsertCalls[0].params.length, 800);
+  // Second batch carries the 1 remaining row (1 × 4 params = 4 params)
+  assert.equal(tripUpsertCalls[1].params.length, 4);
+});
+
+test("persistParsedTripUpdatesIncremental issues multiple batches for stop rows exceeding batch size (100)", async () => {
+  const { persistParsedTripUpdatesIncremental } = await loadPersistors();
+
+  // One trip, 101 distinct stop-time updates so we cross the 100-row batch boundary.
+  const stopTimeUpdates = Array.from({ length: 101 }, (_, i) => ({
+    stop_id: `stop-${i}`,
+    stop_sequence: i,
+    departure: { delay: i },
+  }));
+
+  const { calls, poolLike } = makePoolLike((sql) => {
+    if (sql.includes("DELETE FROM") && sql.includes("WHERE updated_at <")) {
+      return { rows: [], rowCount: 0 };
+    }
+    if (sql.includes("INSERT INTO public.rt_trip_updates") && sql.includes("ON CONFLICT")) {
+      return { rows: [], rowCount: 1 };
+    }
+    if (sql.includes("INSERT INTO public.rt_stop_time_updates") && sql.includes("ON CONFLICT")) {
+      return { rows: [], rowCount: 1 };
+    }
+    return { rows: [], rowCount: 0 };
+  });
+
+  const result = await persistParsedTripUpdatesIncremental(
+    {
+      entity: [
+        {
+          trip_update: {
+            trip: { trip_id: "trip-stop-batch", route_id: "MB", start_date: "20260225" },
+            stop_time_update: stopTimeUpdates,
+          },
+        },
+      ],
+    },
+    { writeLockId: 7483921, poolLike }
+  );
+
+  const stopUpsertCalls = calls.filter(
+    (c) => c.sql.includes("INSERT INTO public.rt_stop_time_updates") && c.sql.includes("ON CONFLICT")
+  );
+  assert.equal(result.stopRows, 101);
+  assert.equal(stopUpsertCalls.length, 2, "101 stop rows at batch-size 100 must produce exactly 2 INSERT statements");
+  // First batch: 100 rows × 9 params = 900 params
+  assert.equal(stopUpsertCalls[0].params.length, 900);
+  // Second batch: 1 row × 9 params = 9 params
+  assert.equal(stopUpsertCalls[1].params.length, 9);
+});
+
+// ─── persistParsedServiceAlertsSnapshot ──────────────────────────────────────
+
 test("persistParsedServiceAlertsSnapshot keeps snapshot bounded and reports delete/insert counts", async () => {
   const { persistParsedServiceAlertsSnapshot } = await loadPersistors();
   const { calls, poolLike } = makePoolLike((sql) => {
