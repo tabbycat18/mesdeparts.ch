@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 56;
+	objectVersion = 60;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -30,6 +30,14 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		A1B2C3D41A2B3C4D5E6F7004 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A1B2C3D41A2B3C4D5E6F7005 /* MesDepartsIOSApp.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
 		A1B2C3D41A2B3C4D5E6F7006 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
@@ -40,21 +48,13 @@
 		A1B2C3D41A2B3C4D5E6F7007 = {
 			isa = PBXGroup;
 			children = (
-				A1B2C3D41A2B3C4D5E6F7008 /* MesDepartsIOSApp */,
+				A1B2C3D41A2B3C4D5E6F7008 /* App */,
 				A1B2C3D41A2B3C4D5E6F7004 /* Products */,
 				A1B2C3D41A2B3C4D5E6F7006 /* Frameworks */,
 			);
 			sourceTree = "<group>";
 		};
-		A1B2C3D41A2B3C4D5E6F7004 /* Products */ = {
-			isa = PBXGroup;
-			children = (
-				A1B2C3D41A2B3C4D5E6F7005 /* MesDepartsIOSApp.app */,
-			);
-			name = Products;
-			sourceTree = "<group>";
-		};
-		A1B2C3D41A2B3C4D5E6F7008 /* MesDepartsIOSApp */ = {
+		A1B2C3D41A2B3C4D5E6F7008 /* App */ = {
 			isa = PBXGroup;
 			children = (
 				A1B2C3D41A2B3C4D5E6F7200 /* MesDepartsIOSAppApp.swift */,
