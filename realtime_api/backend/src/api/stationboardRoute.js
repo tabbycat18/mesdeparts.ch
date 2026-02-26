@@ -298,7 +298,10 @@ function deriveAlertsStatus(payload, skippedSteps = []) {
   if (alerts.applied === true) return "applied";
   if (reason.includes("budget")) return "skipped_budget";
   if (reason === "disabled" || reason === "not_requested") return "disabled";
+  // "no_alerts": DB was checked successfully, just no active alerts in window → success path
+  if (reason === "no_alerts") return "applied";
   if (!reason || reason.includes("missing")) return "missing_cache";
+  if (reason.includes("stale")) return "stale_cache";
   if (reason.includes("error") || reason.includes("failed") || reason.includes("decode")) {
     return "error_fallback";
   }

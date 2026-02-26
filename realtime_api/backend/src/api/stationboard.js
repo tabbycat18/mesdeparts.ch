@@ -248,7 +248,10 @@ async function loadAlertsThrottled({ nowMs, loadAlertsLike, scopeStopIds } = {})
       const loaded = (await loadLike({
         enabled: true,
         nowMs: currentNowMs,
-        scopeStopIds,
+        // scopeStopIds intentionally omitted: this is a module-level shared cache used
+        // across all requests; per-stop scoping happens post-load in filterLocalizedAlertsByScope.
+        // Passing scopeStopIds here causes exact stop_id SQL mismatches (e.g. "8501000" vs
+        // "Parent8501000") resulting in 0 rows and false missing_cache status.
       })) || {
         alerts: { entities: [] },
         meta: { reason: "missing_cache" },
@@ -893,6 +896,7 @@ function toRtTripUpdatesDebug(rtMeta, departureAuditRows) {
 
 function toRtAlertsDebug(alertsMetaRaw) {
   const base = alertsMetaRaw && typeof alertsMetaRaw === "object" ? alertsMetaRaw : {};
+  const rawReason = String(base.reason || "").trim();
   return {
     alertsSource:
       base.alertsSource === "parsed" || base.alertsSource === "blob_fallback"
@@ -904,6 +908,15 @@ function toRtAlertsDebug(alertsMetaRaw) {
       ? Math.max(0, Number(base.alertsPayloadFetchCountThisRequest))
       : 0,
     instanceId: RT_INSTANCE_META.id,
+    // Debug fields: populated from parsed-loader meta, debug=1 only
+    chosenPath:
+      base.alertsSource === "blob_fallback" ? "cache" : "parsed",
+    parsedRowCount: Number.isFinite(Number(base.parsedRowCount))
+      ? Number(base.parsedRowCount)
+      : null,
+    parsedMaxUpdatedAt:
+      String(base.parsedMaxUpdatedAt || "").trim() || null,
+    statusReasonCode: rawReason || null,
   };
 }
 
@@ -1081,7 +1094,10 @@ function deriveAlertsStatus({
   if (alertsFailedFallback === true) return "error_fallback";
   const reason = String(alertsMeta?.reason || "").trim().toLowerCase();
   if (reason.includes("budget")) return "skipped_budget";
+  // "no_alerts": DB was checked successfully, just no active alerts in window → success path
+  if (reason === "no_alerts") return "applied";
   if (!reason || reason.includes("missing")) return "missing_cache";
+  if (reason.includes("stale")) return "stale_cache";
   if (reason.includes("error") || reason.includes("failed") || reason.includes("decode")) {
     return "error_fallback";
   }

@@ -220,6 +220,8 @@ export async function loadAlertsFromParsedTables(options = {}) {
   if (rows.length === 0) {
     meta.reason = "missing_cache";
     meta.cacheStatus = "MISS";
+    meta.parsedRowCount = 0;
+    meta.parsedMaxUpdatedAt = null;
     return { alerts: EMPTY_ALERTS, meta };
   }
 
@@ -276,6 +278,8 @@ export async function loadAlertsFromParsedTables(options = {}) {
   meta.cacheFetchedAt = fetchedAtIso;
   meta.cacheAgeMs = Number.isFinite(ageMs) ? Math.round(ageMs) : null;
   meta.ageSeconds = Number.isFinite(ageMs) ? Math.floor(ageMs / 1000) : null;
+  meta.parsedRowCount = rows.length;
+  meta.parsedMaxUpdatedAt = fetchedAtIso;
 
   const isStale = Number.isFinite(ageMs) && ageMs > freshnessThresholdMs;
   const staleBeyondGrace =
