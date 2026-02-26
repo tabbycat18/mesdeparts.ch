@@ -105,6 +105,7 @@ const NETWORK_MAP_DEBUG =
 
 // Keep stationboard requests bounded to what the UI can display
 const STATIONBOARD_LIMIT = Math.max(MAX_TRAIN_ROWS * 2, MIN_ROWS * 3, 60);
+const MAX_FRESHNESS_SAMPLES = 20;
 
 const DEFAULT_NETWORK_MAP_CONFIG = Object.freeze({
   defaultNetwork: "generic",
@@ -1220,6 +1221,65 @@ function isInvalidStationboardError(err) {
   return msg.includes("404");
 }
 
+function toIsoOrNull(value) {
+  const textValue = String(value || "").trim();
+  if (!textValue) return null;
+  const parsed = Date.parse(textValue);
+  if (!Number.isFinite(parsed)) return null;
+  return new Date(parsed).toISOString();
+}
+
+function pushFreshnessSample(sample) {
+  const current = Array.isArray(appState.stationboardFreshnessSamples)
+    ? appState.stationboardFreshnessSamples
+    : [];
+  const next = [...current, sample];
+  while (next.length > MAX_FRESHNESS_SAMPLES) next.shift();
+  appState.stationboardFreshnessSamples = next;
+}
+
+function recordStationboardFreshnessSample({
+  stationId,
+  requestStartMs,
+  requestStartIso,
+  requestEndMs,
+  requestEndIso,
+  status,
+  meta = null,
+}) {
+  const responseMeta = meta && typeof meta === "object" ? meta : {};
+  const durationMs = Math.max(0, Math.round(Number(requestEndMs) - Number(requestStartMs)));
+  const sample = {
+    sampledAt: requestEndIso,
+    stationId: String(stationId || "").trim() || null,
+    status: Number.isFinite(Number(status)) ? Number(status) : null,
+    requestStart: requestStartIso,
+    requestEnd: requestEndIso,
+    clientFetchDurationMs: Number.isFinite(durationMs) ? durationMs : null,
+    serverTime: toIsoOrNull(responseMeta.serverTime),
+    rtFetchedAt: toIsoOrNull(responseMeta.rtFetchedAt),
+    rtCacheAgeMs: Number.isFinite(Number(responseMeta.rtCacheAgeMs))
+      ? Number(responseMeta.rtCacheAgeMs)
+      : null,
+    responseMode: String(responseMeta.responseMode || "").trim() || null,
+    rtStatus: String(responseMeta.rtStatus || "").trim() || null,
+  };
+  pushFreshnessSample(sample);
+}
+
+export function exportStationboardFreshnessSamples() {
+  const samples = Array.isArray(appState.stationboardFreshnessSamples)
+    ? appState.stationboardFreshnessSamples
+    : [];
+  const payload = JSON.stringify(samples, null, 2);
+  console.log("[MesDeparts][freshness] stationboard samples", samples);
+  return payload;
+}
+
+if (typeof window !== "undefined") {
+  window.mesdepartsExportFreshnessSamples = exportStationboardFreshnessSamples;
+}
+
 export async function fetchStationboardRaw(options = {}) {
   const { allowRetry = true, bustCache = false } = options;
   if (!appState.stationId) {
@@ -1266,6 +1326,11 @@ export async function fetchStationboardRaw(options = {}) {
   if (bustCache) params.set("_ts", String(Date.now()));
   const url = apiUrl(`/api/stationboard?${params.toString()}`);
   const req = (async () => {
+    const requestStartMs =
+      typeof performance !== "undefined" && typeof performance.now === "function"
+        ? performance.now()
+        : Date.now();
+    const requestStartIso = new Date().toISOString();
     try {
       const controller = new AbortController();
       const timeout = setTimeout(
@@ -1288,6 +1353,24 @@ export async function fetchStationboardRaw(options = {}) {
       appState.lastStationboardCacheStatus = cacheStatus || null;
       appState.lastStationboardHttpStatus = Number(response?.status || 0) || null;
       if (response?.status === 204) {
+        const requestEndMs =
+          typeof performance !== "undefined" && typeof performance.now === "function"
+            ? performance.now()
+            : Date.now();
+        const requestEndIso = new Date().toISOString();
+        recordStationboardFreshnessSample({
+          stationId: stationKey,
+          requestStartMs,
+          requestStartIso,
+          requestEndMs,
+          requestEndIso,
+          status: 204,
+          meta: {
+            responseMode: "not_modified_204",
+            rtStatus: "unchanged_since_rt",
+            rtFetchedAt: appState.lastRtFetchedAt || null,
+          },
+        });
         const fetchedAtHeader = String(response.headers?.get("x-md-rt-fetched-at") || "").trim();
         if (fetchedAtHeader) {
           appState.lastRtFetchedAt = fetchedAtHeader;
@@ -1331,6 +1414,20 @@ export async function fetchStationboardRaw(options = {}) {
       if (fetchedAt) {
         appState.lastRtFetchedAt = fetchedAt;
       }
+      const requestEndMs =
+        typeof performance !== "undefined" && typeof performance.now === "function"
+          ? performance.now()
+          : Date.now();
+      const requestEndIso = new Date().toISOString();
+      recordStationboardFreshnessSample({
+        stationId: stationKey,
+        requestStartMs,
+        requestStartIso,
+        requestEndMs,
+        requestEndIso,
+        status: data.__status,
+        meta: data.meta,
+      });
 
       const needsRetry =
         allowRetry &&
@@ -1354,6 +1451,20 @@ export async function fetchStationboardRaw(options = {}) {
 
       return data;
     } catch (err) {
+      const requestEndMs =
+        typeof performance !== "undefined" && typeof performance.now === "function"
+          ? performance.now()
+          : Date.now();
+      const requestEndIso = new Date().toISOString();
+      recordStationboardFreshnessSample({
+        stationId: stationKey,
+        requestStartMs,
+        requestStartIso,
+        requestEndMs,
+        requestEndIso,
+        status: Number(err?.status || 0) || null,
+        meta: null,
+      });
       const invalidSinceRt =
         Number(err?.status) === 400 &&
         String(err?.body || "").toLowerCase().includes("invalid_since_rt");

@@ -96,6 +96,7 @@ export const appState = {
   lastStationboardCacheStatus: null,
   lastStationboardHttpStatus: null,
   lastStationboardMeta: null,
+  stationboardFreshnessSamples: [],
   boardContextKey: null,
   lastRtSnapshotAtMs: null,
   currentBoardHasRtSnapshot: false,
