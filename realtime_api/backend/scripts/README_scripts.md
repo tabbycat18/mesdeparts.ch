@@ -128,6 +128,19 @@ STATIONBOARD_BASE_URL=https://api.mesdeparts.ch node scripts/debugStop.js "Lausa
 - `sanitySweepM1.js`
   - Multi-station health sanity checks over `/api/stops/search` + `/api/stationboard`.
 
+- `freshnessHarness.mjs`
+  - Compares freshness behavior between:
+    - web headless stationboard sampling sequence, and
+    - iOS diagnostics export JSON (or optional live harness fallback).
+  - Produces `FRESHNESS_COMPARISON_<timestamp>.md` with:
+    - `rtCacheAgeMs` distribution
+    - `rtStatus != applied` rate
+    - `responseMode` distribution
+    - cadence variance / interval checks
+  - Example:
+    - `node scripts/freshnessHarness.mjs --api-base https://api.mesdeparts.ch --stop-id Parent8501120 --web-samples 6 --ios-export ../../ios/diagnostics/freshness_export.json`
+    - `node scripts/freshnessHarness.mjs --web-input ../../realtime_api/docs/diagnostics/freshness/web_samples.json --ios-export ../../ios/diagnostics/freshness_export.json`
+
 ### Stop search tooling
 
 - `benchmarkStopSearch.js`

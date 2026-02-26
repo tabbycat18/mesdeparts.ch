@@ -19,6 +19,7 @@
     "schema:drift": "node scripts/schemaDriftTask.js",
     "sb:filter": "node scripts/filter-stationboard.js",
     "sanity:m1": "node scripts/sanitySweepM1.js",
+    "freshness:harness": "node scripts/freshnessHarness.mjs",
     "probe:rt": "node scripts/probeStationboardRt.js",
     "test": "node --test test/*.test.js"
   },

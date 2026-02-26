@@ -1,0 +1,62 @@
+[
+  {
+    "sampledAt": "2026-02-26T00:16:02.100Z",
+    "stationId": "Parent8501120",
+    "status": 200,
+    "requestStart": "2026-02-26T00:16:00.000Z",
+    "requestEnd": "2026-02-26T00:16:02.100Z",
+    "clientFetchDurationMs": 2100,
+    "serverTime": "2026-02-25T23:14:29.795Z",
+    "rtFetchedAt": "2026-02-25T23:14:24.470Z",
+    "rtCacheAgeMs": 5179,
+    "responseMode": "full",
+    "rtStatus": "applied",
+    "source": "network",
+    "client": "web"
+  },
+  {
+    "sampledAt": "2026-02-26T00:16:16.800Z",
+    "stationId": "Parent8501120",
+    "status": 200,
+    "requestStart": "2026-02-26T00:16:14.900Z",
+    "requestEnd": "2026-02-26T00:16:16.800Z",
+    "clientFetchDurationMs": 1900,
+    "serverTime": "2026-02-25T23:27:14.948Z",
+    "rtFetchedAt": "2026-02-25T23:26:51.478Z",
+    "rtCacheAgeMs": 23304,
+    "responseMode": "full",
+    "rtStatus": "applied",
+    "source": "network",
+    "client": "web"
+  },
+  {
+    "sampledAt": "2026-02-26T00:16:32.300Z",
+    "stationId": "Parent8501120",
+    "status": 200,
+    "requestStart": "2026-02-26T00:16:30.100Z",
+    "requestEnd": "2026-02-26T00:16:32.300Z",
+    "clientFetchDurationMs": 2200,
+    "serverTime": "2026-02-25T23:27:15.308Z",
+    "rtFetchedAt": "2026-02-25T23:26:51.478Z",
+    "rtCacheAgeMs": 23622,
+    "responseMode": "full",
+    "rtStatus": "applied",
+    "source": "network",
+    "client": "web"
+  },
+  {
+    "sampledAt": "2026-02-26T00:16:46.900Z",
+    "stationId": "Parent8501120",
+    "status": 200,
+    "requestStart": "2026-02-26T00:16:45.100Z",
+    "requestEnd": "2026-02-26T00:16:46.900Z",
+    "clientFetchDurationMs": 1800,
+    "serverTime": "2026-02-25T23:27:15.575Z",
+    "rtFetchedAt": "2026-02-25T23:26:51.478Z",
+    "rtCacheAgeMs": 24047,
+    "responseMode": "full",
+    "rtStatus": "applied",
+    "source": "network",
+    "client": "web"
+  }
+]
