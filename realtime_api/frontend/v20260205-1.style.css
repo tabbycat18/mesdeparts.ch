@@ -1926,6 +1926,49 @@ body {
 .line-zvv-17 { background: #9e1762; }
 .line-zvv-20 { background: #9e1762; }
 
+/* VBB / Städtische Verkehrsbetriebe Bern */
+.line-vbb-3   { background: #A9BDC8; color: #000000; }
+.line-vbb-6   { background: #0080C8; }
+.line-vbb-7   { background: #E3000F; }
+.line-vbb-8   { background: #ED6DA6; color: #000000; }
+.line-vbb-9   { background: #FDC300; color: #000000; }
+.line-vbb-10  { background: #00963F; }
+.line-vbb-11  { background: #18BBEE; color: #000000; }
+.line-vbb-12  { background: #F39100; color: #000000; }
+.line-vbb-16  { background: #51BBAB; color: #000000; }
+.line-vbb-17  { background: #B0A907; color: #000000; }
+.line-vbb-19  { background: #84003F; }
+.line-vbb-20  { background: #84003F; }
+.line-vbb-21  { background: #EFD100; color: #000000; }
+.line-vbb-22  { background: #A9BDC8; color: #000000; }
+.line-vbb-26  { background: #F59C0E; color: #000000; }
+.line-vbb-27  { background: #665F0D; }
+.line-vbb-28  { background: #B0A907; color: #000000; }
+.line-vbb-29  { background: #E54F53; }
+.line-vbb-30  { background: #A9BDC8; color: #000000; }
+.line-vbb-31  { background: #AFCA06; color: #000000; }
+.line-vbb-33  { background: #665F0D; }
+.line-vbb-34  { background: #6E3B20; }
+.line-vbb-36  { background: #18BBEE; color: #000000; }
+.line-vbb-40  { background: #51BBAB; color: #000000; }
+.line-vbb-41  { background: #E54F53; }
+.line-vbb-43  { background: #A9BDC8; color: #000000; }
+.line-vbb-44  { background: #665F0D; }
+.line-vbb-46  { background: #1F1B2D; }
+.line-vbb-47  { background: #E54F53; }
+.line-vbb-100 { background: #51BBAB; color: #000000; }
+.line-vbb-101 { background: #6E3B20; }
+.line-vbb-102 { background: #6E3B20; }
+.line-vbb-103 { background: #F59C0E; color: #000000; }
+.line-vbb-104 { background: #E3000F; }
+.line-vbb-105 { background: #FDC300; color: #000000; }
+.line-vbb-106 { background: #18BBEE; color: #000000; }
+.line-vbb-107 { background: #A9BDC8; color: #000000; }
+.line-vbb-340 { background: #B0A907; color: #000000; }
+.line-vbb-451 { background: #84003F; }
+.line-vbb-570 { background: #B0A907; color: #000000; }
+.line-vbb-631 { background: #665F0D; }
+
 /* ---------------- TRAIN LINES (SBB-like) -------------------------- */
 
 .train-longdistance {

@@ -51,7 +51,7 @@
         "nyonnaise"
       ],
       "routeIdPatterns": [
-        "^92-"
+        "^92-8\\d{2}"
       ],
       "stationPatterns": [
         "nyon|rolle|gland|st-cergue|prangins|coppet|c[ée]ligny|\\btpn\\b"
@@ -102,6 +102,20 @@
       "palette": {
         "classPrefix": "line-postbus",
         "fallbackClass": "line-postbus"
+      }
+    },
+    "vbb": {
+      "operatorPatterns": [
+        "städtische verkehrsbetriebe bern",
+        "verkehrsbetriebe bern",
+        "\\bsvb\\b"
+      ],
+      "stationPatterns": [
+        "\\bbern\\b|köniz|ostermundigen|gümligen|wabern|liebefeld|niederwangen|bethlehem"
+      ],
+      "palette": {
+        "classPrefix": "line-vbb-",
+        "fallbackClass": "line-generic"
       }
     }
   }

@@ -139,7 +139,7 @@ const DEFAULT_NETWORK_MAP_CONFIG = Object.freeze({
         "transports publics de la r[eé]gion nyonnaise",
         "nyonnaise",
       ],
-      routeIdPatterns: ["^92-"],
+      routeIdPatterns: ["^92-8\\d{2}"],
       stationPatterns: ["nyon|rolle|gland|st-cergue|prangins|coppet|c[ée]ligny|\\btpn\\b"],
       palette: { classPrefix: "line-tpn-", fallbackClass: "line-generic" },
     },
@@ -158,6 +158,15 @@ const DEFAULT_NETWORK_MAP_CONFIG = Object.freeze({
       routeIdPatterns: ["^96-"],
       stationPatterns: [],
       palette: { classPrefix: "line-postbus", fallbackClass: "line-postbus" },
+    },
+    vbb: {
+      operatorPatterns: [
+        "städtische verkehrsbetriebe bern",
+        "verkehrsbetriebe bern",
+        "\\bsvb\\b",
+      ],
+      stationPatterns: ["\\bbern\\b|köniz|ostermundigen|gümligen|wabern|liebefeld|niederwangen|bethlehem"],
+      palette: { classPrefix: "line-vbb-", fallbackClass: "line-generic" },
     },
   },
 });
@@ -412,6 +421,7 @@ function legacyDetectNetworkFromOperator(operatorName) {
   ) return "tpn";
   if (/\bmbc\b|morges-bi[eè]re|cossonay/.test(op)) return "mbc";
   if (/\bvmcv\b|vevey-montreux/.test(op)) return "vmcv";
+  if (/städtische verkehrsbetriebe bern|verkehrsbetriebe bern|\bsvb\b/.test(op)) return "vbb";
   return "";
 }
 
