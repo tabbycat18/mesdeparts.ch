@@ -252,3 +252,113 @@ test("persistParsedTripUpdatesSnapshot rolls back and releases client on write f
   assert.equal(state.checkedOut, 0);
   assert.equal(state.released, 1);
 });
+
+test("persistParsedServiceAlertsSnapshot includes header_translations and description_translations in INSERT", async () => {
+  const { persistParsedServiceAlertsSnapshot } = await loadPersistors();
+  let capturedInsertSql = null;
+  let capturedInsertParams = null;
+
+  const { poolLike } = makePoolLike((sql, params) => {
+    if (sql.includes("DELETE FROM public.rt_service_alerts")) return { rows: [], rowCount: 0 };
+    if (sql.includes("INSERT INTO public.rt_service_alerts")) {
+      capturedInsertSql = sql;
+      capturedInsertParams = params;
+      return { rows: [], rowCount: 1 };
+    }
+    return { rows: [], rowCount: 0 };
+  });
+
+  await persistParsedServiceAlertsSnapshot(
+    {
+      entity: [
+        {
+          id: "alert-ml",
+          alert: {
+            effect: "DETOUR",
+            informed_entity: [{ stop_id: "8501120" }],
+            active_period: [{ start: 1740500000, end: 1740503600 }],
+            header_text: {
+              translation: [
+                { text: "Bauarbeiten", language: "de" },
+                { text: "Travaux", language: "fr" },
+              ],
+            },
+            description_text: {
+              translation: [
+                { text: "Quai geschlossen", language: "de" },
+                { text: "Quai fermé", language: "fr" },
+              ],
+            },
+          },
+        },
+      ],
+    },
+    { writeLockId: 789, poolLike }
+  );
+
+  assert.ok(capturedInsertSql, "INSERT must have been called");
+  assert.ok(capturedInsertSql.includes("header_translations"), "INSERT SQL must include header_translations column");
+  assert.ok(capturedInsertSql.includes("description_translations"), "INSERT SQL must include description_translations column");
+  assert.ok(capturedInsertSql.includes("::jsonb"), "INSERT must cast JSONB columns");
+
+  // Params contain 11 values per row (p += 11). Check that the JSONB translation
+  // params are non-null JSON strings containing the expected language entries.
+  const headerTranslationParam = capturedInsertParams.find(
+    (p) => typeof p === "string" && p.includes("\"de\"") && p.includes("Bauarbeiten")
+  );
+  const descTranslationParam = capturedInsertParams.find(
+    (p) => typeof p === "string" && p.includes("\"de\"") && p.includes("Quai geschlossen")
+  );
+  assert.ok(headerTranslationParam, "header_translations param must be a JSON string with 'de' translation");
+  assert.ok(descTranslationParam, "description_translations param must be a JSON string with 'de' translation");
+
+  const headerParsed = JSON.parse(headerTranslationParam);
+  const descParsed = JSON.parse(descTranslationParam);
+  assert.equal(headerParsed.length, 2, "header must have 2 translations");
+  assert.equal(descParsed.length, 2, "description must have 2 translations");
+  assert.ok(headerParsed.some((t) => t.language === "fr" && t.text === "Travaux"), "French header translation must be present");
+  assert.ok(descParsed.some((t) => t.language === "fr" && t.text === "Quai fermé"), "French description translation must be present");
+});
+
+test("persistParsedServiceAlertsSnapshot populates header_translations from plain-string header_text", async () => {
+  const { persistParsedServiceAlertsSnapshot } = await loadPersistors();
+  let capturedInsertParams = null;
+
+  const { poolLike } = makePoolLike((sql, params) => {
+    if (sql.includes("DELETE FROM public.rt_service_alerts")) return { rows: [], rowCount: 0 };
+    if (sql.includes("INSERT INTO public.rt_service_alerts")) {
+      capturedInsertParams = params;
+      return { rows: [], rowCount: 1 };
+    }
+    return { rows: [], rowCount: 0 };
+  });
+
+  await persistParsedServiceAlertsSnapshot(
+    {
+      entity: [
+        {
+          id: "alert-no-trans",
+          alert: {
+            effect: "DETOUR",
+            informed_entity: [{ stop_id: "8501120" }],
+            active_period: [],
+            // No translation arrays — only a plain string for header
+            header_text: "Plain text only",
+          },
+        },
+      ],
+    },
+    { writeLockId: 790, poolLike }
+  );
+
+  assert.ok(capturedInsertParams, "INSERT must have been called");
+  // The plain header text normalizes to a single-entry translations JSON array
+  const headerTranslationParam = capturedInsertParams.find(
+    (p) => typeof p === "string" && p.startsWith("[") && p.includes("Plain text only")
+  );
+  assert.ok(headerTranslationParam, "header_translations should still be populated from plain text");
+  const parsed = JSON.parse(headerTranslationParam);
+  assert.equal(Array.isArray(parsed), true);
+  assert.equal(parsed.length, 1);
+  assert.equal(parsed[0].text, "Plain text only");
+});

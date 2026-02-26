@@ -379,14 +379,16 @@ async function insertAlertRows(client, rows = []) {
         row.severity,
         row.header_text,
         row.description_text,
+        row.header_translations ?? null,
+        row.description_translations ?? null,
         row.active_start,
         row.active_end,
         row.informed_entities
       );
       params.push(
-        `($${p}, $${p + 1}, $${p + 2}, $${p + 3}, $${p + 4}, $${p + 5}, $${p + 6}, $${p + 7}, $${p + 8}::jsonb, NOW())`
+        `($${p}, $${p + 1}, $${p + 2}, $${p + 3}, $${p + 4}, $${p + 5}, $${p + 6}::jsonb, $${p + 7}::jsonb, $${p + 8}, $${p + 9}, $${p + 10}::jsonb, NOW())`
       );
-      p += 9;
+      p += 11;
     }
     await client.query(
       `
@@ -397,6 +399,8 @@ async function insertAlertRows(client, rows = []) {
           severity,
           header_text,
           description_text,
+          header_translations,
+          description_translations,
           active_start,
           active_end,
           informed_entities,
