@@ -425,6 +425,22 @@ export function createLaTripUpdatesPoller({
   }
 
   async function tick() {
+    let txLifecycle = {
+      transactionClientUsed: false,
+      transactionCommitted: false,
+      clientReleased: false,
+    };
+    const returnWithTxDiagnostics = (waitMs) => {
+      logLine("poller_tx_client_lifecycle", {
+        status: null,
+        backoffMs: 0,
+        lastFetchedAgeMs: null,
+        etagPresent: false,
+        extra: txLifecycle,
+      });
+      return waitMs;
+    };
+
     const cacheMeta = await getRtCacheMetaLike(feedKey);
     const storedPayloadSha = await getRtCachePayloadShaLike(feedKey).catch(() => null);
     const currentAgeMs = calcAgeMs(cacheMeta?.fetched_at);
@@ -466,7 +482,7 @@ export function createLaTripUpdatesPoller({
           errorMessage: classified.errorMessage,
         },
       });
-      return backoffMs;
+      return returnWithTxDiagnostics(backoffMs);
     }
 
     const responseEtag = toTextOrNull(response.headers.get("etag")) || currentEtag;
@@ -495,7 +511,7 @@ export function createLaTripUpdatesPoller({
               lastFetchedAgeMs: currentAgeMs,
               etagPresent: !!responseEtag,
             });
-            return INTERVAL_MS;
+            return returnWithTxDiagnostics(INTERVAL_MS);
           }
         }
         lastSuccessfulPollAtMs = Number(nowLike());
@@ -507,7 +523,7 @@ export function createLaTripUpdatesPoller({
           lastFetchedAgeMs: currentAgeMs,
           etagPresent: !!responseEtag,
         });
-        return INTERVAL_MS;
+        return returnWithTxDiagnostics(INTERVAL_MS);
       }
       let parsedWrite;
       try {
@@ -516,7 +532,23 @@ export function createLaTripUpdatesPoller({
           writeLockId: FEED_WRITE_LOCK_ID,
           retentionHours: RT_PARSED_RETENTION_HOURS,
         });
+        txLifecycle = {
+          transactionClientUsed:
+            parsedWrite?.txDiagnostics?.transactionClientUsed === true,
+          transactionCommitted:
+            parsedWrite?.txDiagnostics?.transactionCommitted === true,
+          clientReleased:
+            parsedWrite?.txDiagnostics?.clientReleased === true,
+        };
       } catch (err) {
+        txLifecycle = {
+          transactionClientUsed:
+            err?.txDiagnostics?.transactionClientUsed === true,
+          transactionCommitted:
+            err?.txDiagnostics?.transactionCommitted === true,
+          clientReleased:
+            err?.txDiagnostics?.clientReleased === true,
+        };
         const classified = classifyPollerError(err);
         const backoffMs = backoffErrMs();
         consecutive429Count = 0;
@@ -542,7 +574,7 @@ export function createLaTripUpdatesPoller({
             errorMessage: classified.errorMessage,
           },
         });
-        return backoffMs;
+        return returnWithTxDiagnostics(backoffMs);
       }
 
       if (parsedWrite?.writeSkippedByLock === true) {
@@ -552,7 +584,7 @@ export function createLaTripUpdatesPoller({
           lastFetchedAgeMs: currentAgeMs,
           etagPresent: !!responseEtag,
         });
-        return INTERVAL_MS;
+        return returnWithTxDiagnostics(INTERVAL_MS);
       }
       if (incomingPayloadSha) {
         await setRtCachePayloadShaLike(feedKey, incomingPayloadSha, {
@@ -584,7 +616,7 @@ export function createLaTripUpdatesPoller({
           parsedStopRowsDeletedByRetention: Number(parsedWrite?.deletedByRetentionStopRows || 0),
         },
       });
-      return INTERVAL_MS;
+      return returnWithTxDiagnostics(INTERVAL_MS);
     }
 
     if (response.status === 304) {
@@ -597,7 +629,7 @@ export function createLaTripUpdatesPoller({
           lastFetchedAgeMs: currentAgeMs,
           etagPresent: !!responseEtag,
         });
-        return INTERVAL_MS;
+        return returnWithTxDiagnostics(INTERVAL_MS);
       }
 
       const persisted = await persistStatusMetadata(cacheMeta, {
@@ -614,7 +646,7 @@ export function createLaTripUpdatesPoller({
             lastFetchedAgeMs: calcAgeMs(cacheMeta?.fetched_at),
             etagPresent: !!responseEtag,
           });
-          return INTERVAL_MS;
+          return returnWithTxDiagnostics(INTERVAL_MS);
         }
         const backoffMs = backoffErrMs();
         consecutive429Count = 0;
@@ -624,7 +656,7 @@ export function createLaTripUpdatesPoller({
           lastFetchedAgeMs: calcAgeMs(cacheMeta?.fetched_at),
           etagPresent: !!responseEtag,
         });
-        return backoffMs;
+        return returnWithTxDiagnostics(backoffMs);
       }
       resetBackoffState();
       resetWriteLockSkipState();
@@ -635,7 +667,7 @@ export function createLaTripUpdatesPoller({
         lastFetchedAgeMs: 0,
         etagPresent: !!responseEtag,
       });
-      return INTERVAL_MS;
+      return returnWithTxDiagnostics(INTERVAL_MS);
     }
 
     const bodySnippet = (await response.text().catch(() => "")).slice(0, 200);
@@ -659,7 +691,7 @@ export function createLaTripUpdatesPoller({
         lastFetchedAgeMs: calcAgeMs(cacheMeta?.fetched_at),
         etagPresent: !!responseEtag,
       });
-      return backoffMs;
+      return returnWithTxDiagnostics(backoffMs);
     }
 
     const backoffMs = backoffErrMs();
@@ -680,7 +712,7 @@ export function createLaTripUpdatesPoller({
       lastFetchedAgeMs: calcAgeMs(cacheMeta?.fetched_at),
       etagPresent: !!responseEtag,
     });
-    return backoffMs;
+    return returnWithTxDiagnostics(backoffMs);
   }
 
   async function runForever() {

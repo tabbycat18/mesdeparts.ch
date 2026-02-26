@@ -58,6 +58,7 @@ const { resolveStop } = await import("./src/resolve/resolveStop.js");
 const { searchStops, searchStopsWithDebug } = await import("./src/search/stopsSearch.js");
 const { createStationboardRouteHandler } = await import("./src/api/stationboardRoute.js");
 const { createStopSearchRouteHandler } = await import("./src/api/stopSearchRoute.js");
+const { createDbInfoRouteHandler } = await import("./src/api/dbInfoRoute.js");
 const { fetchServiceAlerts } = await import("./src/loaders/fetchServiceAlerts.js");
 const { fetchTripUpdates } = await import("./src/loaders/fetchTripUpdates.js");
 const { summarizeTripUpdates } = await import("./src/loaders/tripUpdatesSummary.js");
@@ -738,6 +739,12 @@ const stationboardRouteHandler = createStationboardRouteHandler({
   logger: console,
 });
 app.get("/api/stationboard", stationboardRouteHandler);
+
+const dbInfoRouteHandler = createDbInfoRouteHandler({
+  dbQueryLike: (sql, params = []) => pool.query(sql, params),
+  isDebugLike: isDebugRequest,
+});
+app.get("/api/_dbinfo", dbInfoRouteHandler);
 
 app.get("/api/debug/alerts", async (req, res) => {
   try {

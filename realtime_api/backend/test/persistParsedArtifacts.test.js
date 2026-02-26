@@ -29,6 +29,48 @@ function makePoolLike(handler) {
   };
 }
 
+function makeTrackedPoolLike(handler) {
+  const state = {
+    checkedOut: 0,
+    transactionOpen: false,
+    released: 0,
+  };
+  const client = {
+    async query(sql, params = []) {
+      const text = String(sql || "").trim();
+      if (text === "BEGIN") {
+        state.transactionOpen = true;
+        return { rows: [], rowCount: 0 };
+      }
+      if (text === "COMMIT") {
+        state.transactionOpen = false;
+        return { rows: [], rowCount: 0 };
+      }
+      if (text === "ROLLBACK") {
+        state.transactionOpen = false;
+        return { rows: [], rowCount: 0 };
+      }
+      if (text.includes("pg_try_advisory_xact_lock")) {
+        return { rows: [{ acquired: true }], rowCount: 1 };
+      }
+      return handler(text, params);
+    },
+    release() {
+      state.checkedOut -= 1;
+      state.released += 1;
+    },
+  };
+  return {
+    state,
+    poolLike: {
+      async connect() {
+        state.checkedOut += 1;
+        return client;
+      },
+    },
+  };
+}
+
 test("persistParsedTripUpdatesSnapshot applies retention delete before snapshot replace", async () => {
   const { persistParsedTripUpdatesSnapshot } = await loadPersistors();
   const { calls, poolLike } = makePoolLike((sql) => {
@@ -118,4 +160,94 @@ test("persistParsedServiceAlertsSnapshot keeps snapshot bounded and reports dele
     true
   );
   assert.equal(calls.some((call) => call.sql === "DELETE FROM public.rt_service_alerts"), true);
+});
+
+test("persistParsedTripUpdatesSnapshot commits and releases client without leaking transaction", async () => {
+  const { persistParsedTripUpdatesSnapshot } = await loadPersistors();
+  const { state, poolLike } = makeTrackedPoolLike((sql) => {
+    if (sql.includes("DELETE FROM public.rt_stop_time_updates") && sql.includes("WHERE updated_at <")) {
+      return { rows: [], rowCount: 0 };
+    }
+    if (sql.includes("DELETE FROM public.rt_trip_updates") && sql.includes("WHERE updated_at <")) {
+      return { rows: [], rowCount: 0 };
+    }
+    if (sql === "DELETE FROM public.rt_stop_time_updates") return { rows: [], rowCount: 0 };
+    if (sql === "DELETE FROM public.rt_trip_updates") return { rows: [], rowCount: 0 };
+    if (sql.includes("INSERT INTO public.rt_trip_updates")) return { rows: [], rowCount: 1 };
+    if (sql.includes("INSERT INTO public.rt_stop_time_updates")) return { rows: [], rowCount: 1 };
+    return { rows: [], rowCount: 0 };
+  });
+
+  const out = await persistParsedTripUpdatesSnapshot(
+    {
+      entity: [
+        {
+          trip_update: {
+            trip: { trip_id: "trip-1", route_id: "M1", start_date: "20260225" },
+            stop_time_update: [
+              { stop_id: "8501120", stop_sequence: 5, departure: { delay: 120, time: 1740500000 } },
+            ],
+          },
+        },
+      ],
+    },
+    { writeLockId: 321, poolLike }
+  );
+
+  assert.equal(out?.txDiagnostics?.transactionClientUsed, true);
+  assert.equal(out?.txDiagnostics?.transactionCommitted, true);
+  assert.equal(out?.txDiagnostics?.clientReleased, true);
+  assert.equal(state.transactionOpen, false);
+  assert.equal(state.checkedOut, 0);
+  assert.equal(state.released, 1);
+});
+
+test("persistParsedTripUpdatesSnapshot rolls back and releases client on write failure", async () => {
+  const { persistParsedTripUpdatesSnapshot } = await loadPersistors();
+  const { state, poolLike } = makeTrackedPoolLike((sql) => {
+    if (sql.includes("DELETE FROM public.rt_stop_time_updates") && sql.includes("WHERE updated_at <")) {
+      return { rows: [], rowCount: 0 };
+    }
+    if (sql.includes("DELETE FROM public.rt_trip_updates") && sql.includes("WHERE updated_at <")) {
+      return { rows: [], rowCount: 0 };
+    }
+    if (sql === "DELETE FROM public.rt_stop_time_updates") return { rows: [], rowCount: 0 };
+    if (sql === "DELETE FROM public.rt_trip_updates") return { rows: [], rowCount: 0 };
+    if (sql.includes("INSERT INTO public.rt_trip_updates")) return { rows: [], rowCount: 1 };
+    if (sql.includes("INSERT INTO public.rt_stop_time_updates")) {
+      throw new Error("forced_insert_failure");
+    }
+    return { rows: [], rowCount: 0 };
+  });
+
+  let err = null;
+  try {
+    await persistParsedTripUpdatesSnapshot(
+      {
+        entity: [
+          {
+            trip_update: {
+              trip: { trip_id: "trip-1", route_id: "M1", start_date: "20260225" },
+              stop_time_update: [
+                { stop_id: "8501120", stop_sequence: 5, departure: { delay: 120, time: 1740500000 } },
+              ],
+            },
+          },
+        ],
+      },
+      { writeLockId: 654, poolLike }
+    );
+  } catch (error) {
+    err = error;
+  }
+
+  assert.match(String(err?.message || ""), /forced_insert_failure/);
+
+  assert.equal(err?.txDiagnostics?.transactionClientUsed, true);
+  assert.equal(err?.txDiagnostics?.transactionCommitted, false);
+  assert.equal(err?.txDiagnostics?.transactionRolledBack, true);
+  assert.equal(err?.txDiagnostics?.clientReleased, true);
+  assert.equal(state.transactionOpen, false);
+  assert.equal(state.checkedOut, 0);
+  assert.equal(state.released, 1);
 });
