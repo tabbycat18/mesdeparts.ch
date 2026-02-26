@@ -426,3 +426,113 @@ test("service alerts changed 200 writes parsed snapshot + metadata only", async 
   assert.equal(Buffer.isBuffer(statusArgs[1]), false);
   assert.equal(shaWrites, 1);
 });
+
+test("service alerts poller run loop emits service_alerts_poller_tick_timing with all timing fields on success 200 cycle", async () => {
+  const createLaServiceAlertsPoller = await loadPollerFactory();
+  const payload = Buffer.from("timing-test-alerts-payload");
+  const logs = [];
+  let sleepCount = 0;
+  const stop = new Error("stop_after_timing_logged");
+
+  const poller = createLaServiceAlertsPoller({
+    token: "test-token",
+    fetchLike: async () => okResponse(payload, "etag-timing"),
+    getRtCacheMetaLike: async () => ({
+      fetched_at: new Date(Date.now() - 120_000),
+      etag: "etag-old",
+      last_status: 200,
+      last_error: null,
+    }),
+    getRtCachePayloadShaLike: async () => null,
+    updateRtCacheStatusLike: async () => ({ updated: true, writeSkippedByLock: false }),
+    ensureRtCacheMetadataRowLike: async () => ({ inserted: false, writeSkippedByLock: false }),
+    setRtCachePayloadShaLike: async () => ({ updated: true, writeSkippedByLock: false }),
+    persistParsedServiceAlertsSnapshotLike: async () => ({ updated: true, writeSkippedByLock: false }),
+    decodeFeedLike: () => ({ entity: [] }),
+    sleepLike: async () => {
+      sleepCount += 1;
+      if (sleepCount >= 2) throw stop;
+    },
+    logLike: (entry) => logs.push(entry),
+  });
+
+  await assert.rejects(() => poller.runForever(), stop);
+  const timing = logs.find((entry) => entry?.event === "service_alerts_poller_tick_timing");
+  assert.ok(timing, "service_alerts_poller_tick_timing event must be emitted");
+  assert.equal(typeof timing.tickStartedAt, "string");
+  assert.ok(Number.isFinite(timing.fetchMs) && timing.fetchMs >= 0, "fetchMs must be a non-negative number");
+  assert.ok(Number.isFinite(timing.dbWriteMs) && timing.dbWriteMs >= 0, "dbWriteMs must be non-negative on success path");
+  assert.ok(Number.isFinite(timing.tickDurationMs) && timing.tickDurationMs >= 0, "tickDurationMs must be non-negative");
+  assert.ok(Number.isFinite(timing.sleepPlannedMs) && timing.sleepPlannedMs >= 0, "sleepPlannedMs must be non-negative");
+  assert.ok(Number.isFinite(timing.sleepActualMs) && timing.sleepActualMs >= 0, "sleepActualMs must be non-negative");
+});
+
+test("service alerts poller run loop emits service_alerts_poller_tick_timing with dbWriteMs=0 on unchanged payload path", async () => {
+  const createLaServiceAlertsPoller = await loadPollerFactory();
+  const payload = Buffer.from("unchanged-timing-alerts-payload");
+  const payloadSha = payloadSha256Hex(payload);
+  const logs = [];
+  let sleepCount = 0;
+  const stop = new Error("stop_after_timing_logged");
+
+  const poller = createLaServiceAlertsPoller({
+    token: "test-token",
+    fetchLike: async () => okResponse(payload, "etag-same"),
+    getRtCacheMetaLike: async () => ({
+      fetched_at: new Date(Date.now() - 2_000),
+      etag: "etag-same",
+      last_status: 200,
+      last_error: null,
+    }),
+    getRtCachePayloadShaLike: async () => payloadSha,
+    updateRtCacheStatusLike: async () => ({ updated: true, writeSkippedByLock: false }),
+    ensureRtCacheMetadataRowLike: async () => ({ inserted: false, writeSkippedByLock: false }),
+    persistParsedServiceAlertsSnapshotLike: async () => ({ updated: true, writeSkippedByLock: false }),
+    decodeFeedLike: () => ({ entity: [] }),
+    sleepLike: async () => {
+      sleepCount += 1;
+      if (sleepCount >= 2) throw stop;
+    },
+    logLike: (entry) => logs.push(entry),
+  });
+
+  await assert.rejects(() => poller.runForever(), stop);
+  const timing = logs.find((entry) => entry?.event === "service_alerts_poller_tick_timing");
+  assert.ok(timing, "service_alerts_poller_tick_timing event must be emitted");
+  assert.equal(timing.dbWriteMs, 0, "dbWriteMs must be 0 on unchanged payload path");
+  assert.ok(Number.isFinite(timing.fetchMs) && timing.fetchMs >= 0, "fetchMs must be non-negative");
+});
+
+test("service alerts poller run loop emits service_alerts_poller_tick_timing with dbWriteMs=null on 429 path", async () => {
+  const createLaServiceAlertsPoller = await loadPollerFactory();
+  const logs = [];
+  let sleepCount = 0;
+  const stop = new Error("stop_after_timing_logged");
+
+  const poller = createLaServiceAlertsPoller({
+    token: "test-token",
+    fetchLike: async () => rateLimitResponse(),
+    getRtCacheMetaLike: async () => ({
+      fetched_at: new Date(Date.now() - 30_000),
+      etag: null,
+      last_status: 200,
+      last_error: null,
+    }),
+    getRtCachePayloadShaLike: async () => null,
+    updateRtCacheStatusLike: async () => ({ updated: true, writeSkippedByLock: false }),
+    ensureRtCacheMetadataRowLike: async () => ({ inserted: false, writeSkippedByLock: false }),
+    persistParsedServiceAlertsSnapshotLike: async () => ({ updated: true, writeSkippedByLock: false }),
+    decodeFeedLike: () => ({ entity: [] }),
+    sleepLike: async () => {
+      sleepCount += 1;
+      if (sleepCount >= 2) throw stop;
+    },
+    logLike: (entry) => logs.push(entry),
+  });
+
+  await assert.rejects(() => poller.runForever(), stop);
+  const timing = logs.find((entry) => entry?.event === "service_alerts_poller_tick_timing");
+  assert.ok(timing, "service_alerts_poller_tick_timing event must be emitted");
+  assert.equal(timing.dbWriteMs, null, "dbWriteMs must be null on 429 path");
+  assert.ok(Number.isFinite(timing.fetchMs) && timing.fetchMs >= 0, "fetchMs must be non-negative");
+});

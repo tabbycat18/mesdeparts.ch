@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
+import { performance } from "node:perf_hooks";
 import GtfsRealtimeBindings from "gtfs-realtime-bindings";
 
 import {
@@ -203,6 +204,7 @@ export function createLaServiceAlertsPoller({
   let consecutiveWriteLockSkips = 0;
   let lockSkipWarningEmitted = false;
   let lastSuccessfulPollAtMs = null;
+  let lastTickTiming = null;
 
   function logLine(
     event,
@@ -429,6 +431,10 @@ export function createLaServiceAlertsPoller({
   }
 
   async function tick() {
+    const tickPerfStart = performance.now();
+    const tickStartedAt = new Date(nowLike()).toISOString();
+    const timing = { tickStartedAt, fetchMs: null, dbWriteMs: null, tickDurationMs: null };
+
     let txLifecycle = {
       transactionClientUsed: false,
       transactionCommitted: null,
@@ -436,6 +442,8 @@ export function createLaServiceAlertsPoller({
       clientReleased: null,
     };
     const returnWithTxDiagnostics = (waitMs) => {
+      timing.tickDurationMs = Math.round(performance.now() - tickPerfStart);
+      lastTickTiming = { ...timing };
       logLine("service_alerts_poller_tx_client_lifecycle", {
         status: null,
         backoffMs: 0,
@@ -465,9 +473,11 @@ export function createLaServiceAlertsPoller({
     });
 
     let response;
+    const fetchPerfStart = performance.now();
     try {
       response = await fetchServiceAlertsBytes({ etag: currentEtag });
     } catch (err) {
+      timing.fetchMs = Math.round(performance.now() - fetchPerfStart);
       const classified = classifyPollerError(err);
       const backoffMs = backoffErrMs();
       consecutive429Count = 0;
@@ -500,6 +510,8 @@ export function createLaServiceAlertsPoller({
 
     if (response.status === 200) {
       const payloadBytes = Buffer.from(await response.arrayBuffer());
+      // fetchMs through body read; updated below after decode for changed payloads
+      timing.fetchMs = Math.round(performance.now() - fetchPerfStart);
       const incomingPayloadSha = payloadSha256Hex(payloadBytes);
       const existingPayloadSha = toTextOrNull(storedPayloadSha);
       const payloadUnchanged =
@@ -508,6 +520,7 @@ export function createLaServiceAlertsPoller({
         incomingPayloadSha === existingPayloadSha;
 
       if (payloadUnchanged) {
+        timing.dbWriteMs = 0;
         if (Number.isFinite(currentAgeMs) && currentAgeMs >= RT_CACHE_MIN_WRITE_INTERVAL_MS) {
           const statusPersisted = await persistStatusMetadata(cacheMeta, {
             status: 200,
@@ -537,12 +550,16 @@ export function createLaServiceAlertsPoller({
         return returnWithTxDiagnostics(INTERVAL_MS);
       }
       let parsedWrite;
+      let dbPerfStart;
       try {
         const decodedFeed = decodeFeedLike(payloadBytes);
+        timing.fetchMs = Math.round(performance.now() - fetchPerfStart); // includes decode
+        dbPerfStart = performance.now();
         parsedWrite = await persistParsedServiceAlertsSnapshotLike(decodedFeed, {
           writeLockId: FEED_WRITE_LOCK_ID,
           retentionHours: RT_PARSED_RETENTION_HOURS,
         });
+        timing.dbWriteMs = Math.round(performance.now() - dbPerfStart);
         txLifecycle = {
           transactionClientUsed:
             parsedWrite?.txDiagnostics?.transactionClientUsed === true,
@@ -556,6 +573,10 @@ export function createLaServiceAlertsPoller({
                 : null,
         };
       } catch (err) {
+        timing.fetchMs = Math.round(performance.now() - fetchPerfStart); // includes failed decode
+        if (dbPerfStart != null && timing.dbWriteMs === null) {
+          timing.dbWriteMs = Math.round(performance.now() - dbPerfStart);
+        }
         txLifecycle = {
           transactionClientUsed:
             err?.txDiagnostics?.transactionClientUsed === true,
@@ -636,6 +657,8 @@ export function createLaServiceAlertsPoller({
     }
 
     if (response.status === 304) {
+      timing.fetchMs = Math.round(performance.now() - fetchPerfStart);
+      timing.dbWriteMs = 0;
       if (Number.isFinite(currentAgeMs) && currentAgeMs < RT_CACHE_MIN_WRITE_INTERVAL_MS) {
         resetBackoffState();
         resetWriteLockSkipState();
@@ -687,8 +710,10 @@ export function createLaServiceAlertsPoller({
     }
 
     const bodySnippet = (await response.text().catch(() => "")).slice(0, 200);
+    timing.fetchMs = Math.round(performance.now() - fetchPerfStart);
 
     if (response.status === 429) {
+      timing.dbWriteMs = null;
       const backoffMs = backoff429Ms();
       consecutiveErrCount = 0;
       resetWriteLockSkipState();
@@ -710,6 +735,7 @@ export function createLaServiceAlertsPoller({
       return returnWithTxDiagnostics(backoffMs);
     }
 
+    timing.dbWriteMs = null;
     const backoffMs = backoffErrMs();
     consecutive429Count = 0;
     resetWriteLockSkipState();
@@ -733,6 +759,7 @@ export function createLaServiceAlertsPoller({
 
   async function runForever() {
     for (;;) {
+      const loopPerfStart = performance.now();
       const loopStartedMs = Number(nowLike());
       let waitMs = INTERVAL_MS;
       try {
@@ -766,7 +793,17 @@ export function createLaServiceAlertsPoller({
         ? Math.max(0, Number(nowLike()) - loopStartedMs)
         : 0;
       const sleepMs = Math.max(0, waitMs - elapsedMs);
+      const sleepPerfStart = performance.now();
       await sleepLike(sleepMs);
+      const sleepActualMs = Math.round(performance.now() - sleepPerfStart);
+      logLine("service_alerts_poller_tick_timing", {
+        extra: {
+          ...(lastTickTiming || {}),
+          sleepPlannedMs: sleepMs,
+          sleepActualMs,
+          loopCycleMs: Math.round(performance.now() - loopPerfStart),
+        },
+      });
     }
   }
 
