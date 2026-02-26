@@ -19,6 +19,7 @@ import {
 } from "../debug/stationboardDebug.js";
 import { guardStationboardRequestPathUpstream } from "../util/upstreamRequestGuard.js";
 import { LA_SERVICEALERTS_FEED_KEY, LA_TRIPUPDATES_FEED_KEY } from "../db/rtCache.js";
+import { getPollerHeartbeat } from "../db/rtPollerHeartbeat.js";
 import { loadAlertsFromCache } from "../rt/loadAlertsFromCache.js";
 import { loadAlertsFromParsedTables } from "../rt/loadAlertsFromParsedTables.js";
 import { readTripUpdatesFeedFromCache } from "../../loaders/loadRealtime.js";
@@ -749,6 +750,30 @@ function randomRequestId() {
   return `sb-${Date.now().toString(36)}-${rand}`;
 }
 
+function toEpochMsOrNull(value) {
+  if (!value) return null;
+  const ms = value instanceof Date ? value.getTime() : new Date(value).getTime();
+  return Number.isFinite(ms) ? ms : null;
+}
+
+export function toPollerHeartbeatDebug(heartbeatRow, { nowMs = Date.now() } = {}) {
+  const safe = heartbeatRow && typeof heartbeatRow === "object" ? heartbeatRow : {};
+  const currentNowMs = Number.isFinite(Number(nowMs)) ? Number(nowMs) : Date.now();
+  const updatedAtMs = toEpochMsOrNull(safe.updated_at);
+  const tripupdatesAtMs = toEpochMsOrNull(safe.tripupdates_updated_at);
+  const alertsAtMs = toEpochMsOrNull(safe.alerts_updated_at);
+  return {
+    pollerHeartbeatAgeMs:
+      Number.isFinite(updatedAtMs) ? Math.max(0, currentNowMs - updatedAtMs) : null,
+    pollerTripupdatesAgeMs:
+      Number.isFinite(tripupdatesAtMs) ? Math.max(0, currentNowMs - tripupdatesAtMs) : null,
+    pollerAlertsAgeMs:
+      Number.isFinite(alertsAtMs) ? Math.max(0, currentNowMs - alertsAtMs) : null,
+    pollerLastError:
+      String(safe.last_error || "").trim() || null,
+  };
+}
+
 function roundMs(value) {
   const num = Number(value);
   if (!Number.isFinite(num)) return 0;
@@ -1192,6 +1217,19 @@ export async function getStationboard({
   const traceCancellation = createCancellationTracer("api/stationboard", {
     enabled: process.env.DEBUG === "1",
   });
+  let pollerHeartbeatDebug = toPollerHeartbeatDebug(null);
+  if (debugEnabled) {
+    try {
+      const heartbeatRow = await getPollerHeartbeat();
+      pollerHeartbeatDebug = toPollerHeartbeatDebug(heartbeatRow, {
+        nowMs: Date.now(),
+      });
+    } catch (err) {
+      debugState.warnings.push(
+        `poller_heartbeat_lookup_failed:${String(err?.message || err)}`
+      );
+    }
+  }
 
   debugLog("request", {
     requested: {
@@ -1683,6 +1721,7 @@ export async function getStationboard({
         rt: {
           tripUpdates: toRtTripUpdatesDebug(debugState.rtTripUpdates, departureAudit),
           alerts: toRtAlertsDebug(alertsResponseMeta),
+          ...pollerHeartbeatDebug,
         },
         departureAudit,
         latencySafe: buildLatencySafeDebug({
@@ -1759,6 +1798,7 @@ export async function getStationboard({
         rt: {
           tripUpdates: toRtTripUpdatesDebug(debugState.rtTripUpdates, departureAudit),
           alerts: toRtAlertsDebug(alertsResponseMeta),
+          ...pollerHeartbeatDebug,
         },
         departureAudit,
         latencySafe: buildLatencySafeDebug({
@@ -1971,6 +2011,7 @@ export async function getStationboard({
         rt: {
           tripUpdates: toRtTripUpdatesDebug(debugState.rtTripUpdates, departureAudit),
           alerts: toRtAlertsDebug(alertsResponseMeta),
+          ...pollerHeartbeatDebug,
         },
         alertsCache: debugState.alertsCache,
         departureAudit,
@@ -2046,6 +2087,7 @@ export async function getStationboard({
         rt: {
           tripUpdates: toRtTripUpdatesDebug(debugState.rtTripUpdates, departureAudit),
           alerts: toRtAlertsDebug(alertsResponseMeta),
+          ...pollerHeartbeatDebug,
         },
         alertsCache: debugState.alertsCache,
         departureAudit,

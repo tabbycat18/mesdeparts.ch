@@ -17,6 +17,10 @@ import {
   updateRtCacheStatus,
 } from "../src/db/rtCache.js";
 import { persistParsedTripUpdatesSnapshot } from "../src/rt/persistParsedArtifacts.js";
+import {
+  touchPollerHeartbeatError,
+  touchTripUpdatesHeartbeat,
+} from "../src/db/rtPollerHeartbeat.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -32,7 +36,9 @@ const FETCH_TIMEOUT_MS = Math.max(
 const BACKOFF_429_BASE_MS = 60_000;
 const BACKOFF_429_MAX_MS = 10 * 60_000;
 const BACKOFF_ERR_BASE_MS = 15_000;
-const BACKOFF_ERR_MAX_MS = 2 * 60_000;
+const BACKOFF_ERR_MAX_MS = 120_000;
+const BACKOFF_NONTRANSIENT_BASE_MS = 120_000;
+const BACKOFF_NONTRANSIENT_MAX_MS = 10 * 60_000;
 const RT_CACHE_MIN_WRITE_INTERVAL_MS = Math.max(
   5_000,
   Number(process.env.RT_CACHE_MIN_WRITE_INTERVAL_MS || "30000")
@@ -53,6 +59,21 @@ const FEED_KEY = LA_TRIPUPDATES_FEED_KEY;
 const FEED_WRITE_LOCK_ID = 7_483_921;
 const UPSTREAM_URL =
   String(process.env.LA_GTFS_RT_URL || "").trim() || LA_GTFS_RT_TRIP_UPDATES_URL;
+const TRANSIENT_ERROR_CODES = new Set([
+  "57P01",
+  "57P02",
+  "57P03",
+  "08000",
+  "08001",
+  "08003",
+  "08004",
+  "08006",
+  "53300",
+  "ETIMEDOUT",
+  "ECONNRESET",
+  "ECONNREFUSED",
+  "EPIPE",
+]);
 
 function loadDotEnvIfNeeded() {
   const hasToken =
@@ -122,6 +143,27 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, timeoutMs));
 }
 
+function classifyPollerError(err) {
+  const code = toTextOrNull(err?.code)?.toUpperCase() || null;
+  const message = toTextOrNull(err?.message || err) || "unknown_error";
+  const lower = message.toLowerCase();
+  const transientByCode = !!code && TRANSIENT_ERROR_CODES.has(code);
+  const transientByMessage =
+    lower.includes("connection timeout") ||
+    lower.includes("connection terminated") ||
+    lower.includes("database") ||
+    lower.includes("could not connect") ||
+    lower.includes("econnreset") ||
+    lower.includes("etimedout");
+  const isTransient = transientByCode || transientByMessage;
+  return {
+    errorCode: code,
+    errorMessage: message,
+    errorClass: isTransient ? "transient" : "non_transient",
+    transient: isTransient,
+  };
+}
+
 function decodeTripUpdatesFeed(payloadBytes) {
   const buffer = Buffer.isBuffer(payloadBytes) ? payloadBytes : Buffer.from(payloadBytes || []);
   return GtfsRealtimeBindings.transit_realtime.FeedMessage.decode(buffer);
@@ -137,11 +179,14 @@ export function createLaTripUpdatesPoller({
   updateRtCacheStatusLike = updateRtCacheStatus,
   persistParsedTripUpdatesSnapshotLike = persistParsedTripUpdatesSnapshot,
   decodeFeedLike = decodeTripUpdatesFeed,
+  touchTripUpdatesHeartbeatLike = touchTripUpdatesHeartbeat,
+  touchPollerHeartbeatErrorLike = touchPollerHeartbeatError,
   sleepLike = sleep,
   nowLike = () => Date.now(),
   feedKey = FEED_KEY,
   upstreamUrl = UPSTREAM_URL,
   fetchTimeoutMs = FETCH_TIMEOUT_MS,
+  heartbeatEnabled = process.env.RT_POLLER_HEARTBEAT_ENABLED !== "0",
   logLike = (payload) => console.log(JSON.stringify(payload)),
 } = {}) {
   if (!token) {
@@ -150,13 +195,21 @@ export function createLaTripUpdatesPoller({
 
   let consecutive429Count = 0;
   let consecutiveErrCount = 0;
+  let consecutiveNonTransientErrCount = 0;
   let consecutiveWriteLockSkips = 0;
   let lockSkipWarningEmitted = false;
+  let lastSuccessfulPollAtMs = null;
 
   function logLine(
     event,
     { status = null, backoffMs = 0, lastFetchedAgeMs = null, etagPresent = false, extra = {} } = {}
   ) {
+    const successAtIso = Number.isFinite(lastSuccessfulPollAtMs)
+      ? new Date(lastSuccessfulPollAtMs).toISOString()
+      : null;
+    const successAgeMs = Number.isFinite(lastSuccessfulPollAtMs)
+      ? Math.max(0, Number(nowLike()) - lastSuccessfulPollAtMs)
+      : null;
     logLike({
       event,
       nowISO: new Date(nowLike()).toISOString(),
@@ -164,6 +217,8 @@ export function createLaTripUpdatesPoller({
       backoffMs,
       lastFetchedAgeMs,
       etagPresent: etagPresent === true,
+      lastSuccessfulPollAt: successAtIso,
+      lastSuccessfulPollAgeMs: successAgeMs,
       ...extra,
     });
   }
@@ -184,9 +239,18 @@ export function createLaTripUpdatesPoller({
     );
   }
 
+  function backoffNonTransientMs() {
+    consecutiveNonTransientErrCount += 1;
+    return Math.min(
+      BACKOFF_NONTRANSIENT_BASE_MS * 2 ** (consecutiveNonTransientErrCount - 1),
+      BACKOFF_NONTRANSIENT_MAX_MS
+    );
+  }
+
   function resetBackoffState() {
     consecutive429Count = 0;
     consecutiveErrCount = 0;
+    consecutiveNonTransientErrCount = 0;
   }
 
   function resetWriteLockSkipState() {
@@ -228,32 +292,113 @@ export function createLaTripUpdatesPoller({
     }
   }
 
-  async function persistStatusMetadata(cacheMeta, { status, errorText, etag, updateFetchedAt }) {
-    const fetchedAtValue = updateFetchedAt ? new Date(nowLike()) : cacheMeta?.fetched_at || new Date(nowLike());
-    if (!cacheMeta) {
-      const ensured = await ensureRtCacheMetadataRowLike(feedKey, {
-        fetchedAt: fetchedAtValue,
-        etag: toTextOrNull(etag),
-        last_status: status == null ? null : Number(status),
-        last_error: toTextOrNull(errorText),
-        writeLockId: FEED_WRITE_LOCK_ID,
+  async function writeSuccessHeartbeat() {
+    if (!heartbeatEnabled) return;
+    try {
+      await touchTripUpdatesHeartbeatLike({ at: new Date(nowLike()) });
+    } catch (err) {
+      const classified = classifyPollerError(err);
+      logLine("poller_heartbeat_write_failed", {
+        status: null,
+        backoffMs: 0,
+        lastFetchedAgeMs: null,
+        etagPresent: false,
+        extra: {
+          reconnecting: false,
+          errorClass: classified.errorClass,
+          errorCode: classified.errorCode,
+          errorMessage: classified.errorMessage,
+        },
       });
-      if (ensured?.writeSkippedByLock === true) {
-        return { updated: false, lockSkipped: true };
-      }
     }
-    const writeResult = await updateRtCacheStatusLike(
-      feedKey,
-      fetchedAtValue,
-      toTextOrNull(etag) || toTextOrNull(cacheMeta?.etag),
-      status == null ? null : Number(status),
-      toTextOrNull(errorText),
-      { writeLockId: FEED_WRITE_LOCK_ID }
-    );
-    return {
-      updated: writeResult?.writeSkippedByLock !== true,
-      lockSkipped: writeResult?.writeSkippedByLock === true,
-    };
+  }
+
+  async function writeErrorHeartbeat(errorMessage) {
+    if (!heartbeatEnabled) return;
+    try {
+      await touchPollerHeartbeatErrorLike({
+        at: new Date(nowLike()),
+        errorMessage,
+      });
+    } catch (err) {
+      const classified = classifyPollerError(err);
+      logLine("poller_heartbeat_write_failed", {
+        status: null,
+        backoffMs: 0,
+        lastFetchedAgeMs: null,
+        etagPresent: false,
+        extra: {
+          reconnecting: false,
+          errorClass: classified.errorClass,
+          errorCode: classified.errorCode,
+          errorMessage: classified.errorMessage,
+        },
+      });
+    }
+  }
+
+  async function persistStatusMetadata(cacheMeta, { status, errorText, etag, updateFetchedAt }) {
+    const fetchedAtValue = updateFetchedAt
+      ? new Date(nowLike())
+      : cacheMeta?.fetched_at || new Date(nowLike());
+    try {
+      if (!cacheMeta) {
+        const ensured = await ensureRtCacheMetadataRowLike(feedKey, {
+          fetchedAt: fetchedAtValue,
+          etag: toTextOrNull(etag),
+          last_status: status == null ? null : Number(status),
+          last_error: toTextOrNull(errorText),
+          writeLockId: FEED_WRITE_LOCK_ID,
+        });
+        if (ensured?.writeSkippedByLock === true) {
+          logLine("poller_db_write_ok", {
+            status,
+            backoffMs: 0,
+            lastFetchedAgeMs: calcAgeMs(fetchedAtValue),
+            etagPresent: !!toTextOrNull(etag),
+            extra: { lockSkipped: true, updateFetchedAt: updateFetchedAt === true },
+          });
+          return { updated: false, lockSkipped: true };
+        }
+      }
+      const writeResult = await updateRtCacheStatusLike(
+        feedKey,
+        fetchedAtValue,
+        toTextOrNull(etag) || toTextOrNull(cacheMeta?.etag),
+        status == null ? null : Number(status),
+        toTextOrNull(errorText),
+        { writeLockId: FEED_WRITE_LOCK_ID }
+      );
+      logLine("poller_db_write_ok", {
+        status,
+        backoffMs: 0,
+        lastFetchedAgeMs: calcAgeMs(fetchedAtValue),
+        etagPresent: !!toTextOrNull(etag) || !!toTextOrNull(cacheMeta?.etag),
+        extra: {
+          lockSkipped: writeResult?.writeSkippedByLock === true,
+          updateFetchedAt: updateFetchedAt === true,
+        },
+      });
+      return {
+        updated: writeResult?.writeSkippedByLock !== true,
+        lockSkipped: writeResult?.writeSkippedByLock === true,
+      };
+    } catch (err) {
+      const classified = classifyPollerError(err);
+      logLine("poller_db_write_failed", {
+        status,
+        backoffMs: 0,
+        lastFetchedAgeMs: calcAgeMs(cacheMeta?.fetched_at),
+        etagPresent: !!toTextOrNull(etag) || !!toTextOrNull(cacheMeta?.etag),
+        extra: {
+          reconnecting: true,
+          errorClass: classified.errorClass,
+          errorCode: classified.errorCode,
+          errorMessage: classified.errorMessage,
+        },
+      });
+      throw err;
+    }
   }
 
   async function fetchTripUpdatesBytes({ etag }) {
@@ -296,6 +441,7 @@ export function createLaTripUpdatesPoller({
     try {
       response = await fetchTripUpdatesBytes({ etag: currentEtag });
     } catch (err) {
+      const classified = classifyPollerError(err);
       const backoffMs = backoffErrMs();
       consecutive429Count = 0;
       resetWriteLockSkipState();
@@ -305,11 +451,20 @@ export function createLaTripUpdatesPoller({
         etag: currentEtag,
         updateFetchedAt: false,
       });
+      await writeErrorHeartbeat(
+        `[tripupdates] fetch_failed ${classified.errorCode || ""} ${classified.errorMessage}`.trim()
+      );
       logLine("poller_fetch_error_backoff", {
         status: null,
         backoffMs,
         lastFetchedAgeMs: calcAgeMs(cacheMeta?.fetched_at),
         etagPresent: !!currentEtag,
+        extra: {
+          reconnecting: true,
+          errorClass: classified.errorClass,
+          errorCode: classified.errorCode,
+          errorMessage: classified.errorMessage,
+        },
       });
       return backoffMs;
     }
@@ -343,6 +498,7 @@ export function createLaTripUpdatesPoller({
             return INTERVAL_MS;
           }
         }
+        lastSuccessfulPollAtMs = Number(nowLike());
         resetBackoffState();
         resetWriteLockSkipState();
         logLine("poller_skip_write_unchanged", {
@@ -361,6 +517,7 @@ export function createLaTripUpdatesPoller({
           retentionHours: RT_PARSED_RETENTION_HOURS,
         });
       } catch (err) {
+        const classified = classifyPollerError(err);
         const backoffMs = backoffErrMs();
         consecutive429Count = 0;
         resetWriteLockSkipState();
@@ -370,11 +527,20 @@ export function createLaTripUpdatesPoller({
           etag: responseEtag,
           updateFetchedAt: false,
         });
+        await writeErrorHeartbeat(
+          `[tripupdates] parse_or_db_failed ${classified.errorCode || ""} ${classified.errorMessage}`.trim()
+        );
         logLine("poller_fetch_error_backoff", {
           status: 200,
           backoffMs,
           lastFetchedAgeMs: calcAgeMs(cacheMeta?.fetched_at),
           etagPresent: !!responseEtag,
+          extra: {
+            reconnecting: true,
+            errorClass: classified.errorClass,
+            errorCode: classified.errorCode,
+            errorMessage: classified.errorMessage,
+          },
         });
         return backoffMs;
       }
@@ -399,6 +565,8 @@ export function createLaTripUpdatesPoller({
         etag: responseEtag,
         updateFetchedAt: true,
       });
+      await writeSuccessHeartbeat();
+      lastSuccessfulPollAtMs = Number(nowLike());
       resetBackoffState();
       resetWriteLockSkipState();
       logLine("poller_fetch_200", {
@@ -460,6 +628,7 @@ export function createLaTripUpdatesPoller({
       }
       resetBackoffState();
       resetWriteLockSkipState();
+      lastSuccessfulPollAtMs = Number(nowLike());
       logLine("poller_fetch_304", {
         status: 304,
         backoffMs: 0,
@@ -481,6 +650,9 @@ export function createLaTripUpdatesPoller({
         etag: responseEtag,
         updateFetchedAt: false,
       });
+      await writeErrorHeartbeat(
+        `[tripupdates] upstream_429 ${toTextOrNull(bodySnippet) || "Rate Limit Exceeded"}`
+      );
       logLine("poller_fetch_429_backoff", {
         status: 429,
         backoffMs,
@@ -499,6 +671,9 @@ export function createLaTripUpdatesPoller({
       etag: responseEtag,
       updateFetchedAt: false,
     });
+    await writeErrorHeartbeat(
+      `[tripupdates] upstream_error ${response.status} ${toTextOrNull(bodySnippet) || ""}`.trim()
+    );
     logLine("poller_fetch_error_backoff", {
       status: response.status,
       backoffMs,
@@ -511,10 +686,34 @@ export function createLaTripUpdatesPoller({
   async function runForever() {
     for (;;) {
       const loopStartedMs = Number(nowLike());
-      const waitMsRaw = await tick();
-      const waitMs = Number.isFinite(Number(waitMsRaw))
-        ? Math.max(0, Number(waitMsRaw))
-        : INTERVAL_MS;
+      let waitMs = INTERVAL_MS;
+      try {
+        const waitMsRaw = await tick();
+        waitMs = Number.isFinite(Number(waitMsRaw))
+          ? Math.max(0, Number(waitMsRaw))
+          : INTERVAL_MS;
+      } catch (err) {
+        const classified = classifyPollerError(err);
+        const backoffMs = classified.transient ? backoffErrMs() : backoffNonTransientMs();
+        consecutive429Count = 0;
+        resetWriteLockSkipState();
+        await writeErrorHeartbeat(
+          `[tripupdates] tick_failed ${classified.errorCode || ""} ${classified.errorMessage}`.trim()
+        );
+        logLine("poller_tick_failed_backoff", {
+          status: null,
+          backoffMs,
+          lastFetchedAgeMs: null,
+          etagPresent: false,
+          extra: {
+            reconnecting: true,
+            errorClass: classified.errorClass,
+            errorCode: classified.errorCode,
+            errorMessage: classified.errorMessage,
+          },
+        });
+        waitMs = backoffMs;
+      }
       const elapsedMs = Number.isFinite(loopStartedMs)
         ? Math.max(0, Number(nowLike()) - loopStartedMs)
         : 0;
@@ -529,8 +728,10 @@ export function createLaTripUpdatesPoller({
     _getStateForTests: () => ({
       consecutive429Count,
       consecutiveErrCount,
+      consecutiveNonTransientErrCount,
       consecutiveWriteLockSkips,
       lockSkipWarningEmitted,
+      lastSuccessfulPollAtMs,
     }),
   };
 }

@@ -34,6 +34,11 @@ export const pool = new Pool({
     require: true,
     rejectUnauthorized: false,
   },
+  keepAlive: true,
+  keepAliveInitialDelayMillis: Math.max(
+    1_000,
+    Number(process.env.PG_KEEPALIVE_INITIAL_DELAY_MS || "10000")
+  ),
   max: Math.max(2, Number(process.env.PG_POOL_MAX || "12")),
   idleTimeoutMillis: Math.max(1000, Number(process.env.PG_IDLE_TIMEOUT_MS || "10000")),
   connectionTimeoutMillis: Math.max(

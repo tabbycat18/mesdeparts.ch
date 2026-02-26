@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 
 async function loadPollerFactory() {
   process.env.DATABASE_URL ||= "postgres://localhost:5432/mesdeparts_test";
+  process.env.RT_POLLER_HEARTBEAT_ENABLED = "0";
   const mod = await import("../scripts/pollLaServiceAlerts.js");
   return mod.createLaServiceAlertsPoller;
 }

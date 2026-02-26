@@ -20,6 +20,7 @@ This file documents SQL files used by the active realtime backend.
 | `sql/optimize_stop_search.sql` | Build/swap `stop_search_index`, maintain stop-search functions/aliases/indexes. | `refreshGtfsIfNeeded.js` and manual | Critical in refresh pipeline |
 | `sql/cleanup_old_after_swap.sql` | Drop `*_old` GTFS tables after successful cutover. | `refreshGtfsIfNeeded.js` | Non-fatal post-step |
 | `sql/create_rt_cache.sql` | Create `public.rt_cache` table for poller/API cache exchange. | Manual ops / provisioning | Critical for poller-only RT strategy |
+| `sql/create_rt_poller_heartbeat.sql` | Create `public.rt_poller_heartbeat` table for poller freshness/health tracking. | Manual ops / provisioning | Critical for stale-RT diagnostics |
 | `sql/optimize_stationboard.sql` | Backfill time-seconds columns + add stationboard indexes (non-concurrent). | Manual ops | Performance optimization |
 | `sql/optimize_stationboard_latency.sql` | Add low-lock concurrent latency indexes for stops/aliases/stoptimes. | Manual ops | Performance optimization |
 | `sql/legacy/schema_gtfs.sql` | Historical legacy schema/bootstrap SQL kept for archive/reference only. | Legacy audits only | Not in active runtime path |
@@ -123,6 +124,16 @@ Safe edit guidance for search SQL:
   - `public.rt_cache(feed_key, fetched_at, payload, etag, last_status, last_error)`.
 - Required for poller-only upstream strategy.
 
+### `sql/create_rt_poller_heartbeat.sql`
+
+- Creates shared poller heartbeat table:
+  - `public.rt_poller_heartbeat(id, updated_at, tripupdates_updated_at, alerts_updated_at, last_error, instance_id)`.
+- Used by pollers to expose:
+  - latest successful parsed snapshot time per feed
+  - latest poller error message (`last_error`)
+  - instance attribution (`instance_id`)
+- Used by `scripts/checkPollerHeartbeat.js` for fast stale-RT diagnostics.
+
 ### `sql/optimize_stationboard.sql`
 
 - Adds and backfills:
@@ -163,6 +174,9 @@ From `realtime_api/backend`:
 # Create shared RT cache table
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f sql/create_rt_cache.sql
 
+# Create poller heartbeat table
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f sql/create_rt_poller_heartbeat.sql
+
 # Stationboard performance indexes/backfill
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f sql/optimize_stationboard.sql
 
@@ -181,6 +195,7 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f sql/optimize_stop_search.sql
 | Stage referential gate | `sql/validate_stage.sql` |
 | Stop-search normalization/index behavior | `sql/optimize_stop_search.sql` |
 | RT cache table shape | `sql/create_rt_cache.sql` |
+| Poller heartbeat/staleness table shape | `sql/create_rt_poller_heartbeat.sql` |
 | Stationboard DB performance tuning | `sql/optimize_stationboard.sql`, `sql/optimize_stationboard_latency.sql` |
 | Runtime scheduled board selection logic | `src/sql/stationboard.sql` |
 

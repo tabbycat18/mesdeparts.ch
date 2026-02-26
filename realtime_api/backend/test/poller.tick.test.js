@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 
 async function loadPollerFactory() {
   process.env.DATABASE_URL ||= "postgres://localhost:5432/mesdeparts_test";
+  process.env.RT_POLLER_HEARTBEAT_ENABLED = "0";
   const mod = await import("../scripts/pollLaTripUpdates.js");
   return mod.createLaTripUpdatesPoller;
 }
@@ -130,6 +131,52 @@ test("poller run loop compensates tick duration before sleeping", async () => {
 
   await assert.rejects(() => poller.runForever(), stop);
   assert.equal(sleptMs, 0);
+});
+
+test("poller run loop continues after transient DB failure without exiting", async () => {
+  const createLaTripUpdatesPoller = await loadPollerFactory();
+  const stop = new Error("stop_after_second_sleep");
+  const sleepCalls = [];
+  let getMetaCalls = 0;
+  let fetchCalls = 0;
+
+  const poller = createLaTripUpdatesPoller({
+    token: "test-token",
+    getRtCacheMetaLike: async () => {
+      getMetaCalls += 1;
+      if (getMetaCalls === 1) {
+        const err = new Error("Connection terminated due to connection timeout");
+        err.code = "08006";
+        throw err;
+      }
+      return {
+        fetched_at: new Date(Date.now() - 30_000),
+        etag: null,
+        last_status: 200,
+        last_error: null,
+      };
+    },
+    fetchLike: async () => {
+      fetchCalls += 1;
+      return rateLimitResponse();
+    },
+    getRtCachePayloadShaLike: async () => null,
+    updateRtCacheStatusLike: async () => ({ updated: true, writeSkippedByLock: false }),
+    ensureRtCacheMetadataRowLike: async () => ({ inserted: false, writeSkippedByLock: false }),
+    persistParsedTripUpdatesSnapshotLike: async () => ({ updated: true, writeSkippedByLock: false }),
+    decodeFeedLike: () => ({ entity: [] }),
+    logLike: () => {},
+    sleepLike: async (ms) => {
+      sleepCalls.push(ms);
+      if (sleepCalls.length >= 2) throw stop;
+    },
+  });
+
+  await assert.rejects(() => poller.runForever(), stop);
+  assert.equal(getMetaCalls >= 2, true);
+  assert.equal(fetchCalls, 1);
+  assert.equal(sleepCalls[0] >= 15_000, true);
+  assert.equal(sleepCalls[1] >= 60_000, true);
 });
 
 test("poller writes parsed trip updates on changed 200 payload", async () => {

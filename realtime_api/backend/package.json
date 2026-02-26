@@ -13,6 +13,7 @@
     "poller": "TZ=Europe/Zurich node scripts/pollFeeds.js",
     "poller:trip": "TZ=Europe/Zurich node scripts/pollLaTripUpdates.js",
     "poller:alerts": "TZ=Europe/Zurich node scripts/pollLaServiceAlerts.js",
+    "poller:heartbeat": "node scripts/checkPollerHeartbeat.js",
     "stops:debug": "node scripts/debugStop.js",
     "stops:verify": "node scripts/verifyStops.js",
     "search:bench": "node scripts/benchmarkStopSearch.js",

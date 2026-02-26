@@ -37,6 +37,9 @@ node scripts/debugStationboard.js
 
 # End-to-end stop debug (search -> stationboard)
 node scripts/debugStop.js "Lausanne, Bel-Air"
+
+# Poller heartbeat staleness check (defaults: trip 90s, alerts 300s)
+node scripts/checkPollerHeartbeat.js
 ```
 
 If your backend is not local, set base URL for debug scripts:
@@ -66,6 +69,7 @@ fly secrets set DATABASE_URL_POLLER="postgresql://...poller-url..." -a mesdepart
 - `pollFeeds.js`
   - Starts both pollers together when tokens are available.
   - Used by `npm run poller`.
+  - Supervises trip/alerts pollers independently; transient DB/network failures are non-fatal and restart with capped exponential backoff.
 
 - `pollLaTripUpdates.js`
   - Polls LA GTFS-RT TripUpdates feed, decodes protobuf, writes parsed snapshots to `rt_trip_updates` + `rt_stop_time_updates`.
@@ -79,6 +83,10 @@ fly secrets set DATABASE_URL_POLLER="postgresql://...poller-url..." -a mesdepart
   - Uses advisory xact lock on parsed+metadata writes to avoid concurrent writer churn across duplicate pollers (`poller_write_locked_skip`).
   - Emits contention guardrail warning (`poller_write_lock_contention_warning`) when write-lock skips repeat beyond `RT_POLLER_LOCK_SKIP_WARN_STREAK` (default `6`) and cache age exceeds `RT_POLLER_LOCK_SKIP_STALE_AGE_MS` (default `90000` ms).
   - `poller_fetch_200` logs include parsed compaction metrics (`parsedTripRowsInserted`, `parsedStopRowsInserted`, snapshot/retention delete counts).
+  - Runtime resilience: `runForever()` catches transient DB/network errors (for example `08006`, `57P01`, `ETIMEDOUT`, `ECONNRESET`), logs structured failure metadata, and retries with exponential backoff (`15s -> 30s -> 60s -> 120s` cap for transient errors).
+  - Tick logs include in-memory `lastSuccessfulPollAt` / `lastSuccessfulPollAgeMs`.
+  - On each successful parsed snapshot commit, updates `public.rt_poller_heartbeat.tripupdates_updated_at`.
+  - On transient failures, updates `public.rt_poller_heartbeat.last_error` (non-fatal) so staleness/health can be checked quickly.
 
 - `pollLaServiceAlerts.js`
   - Polls LA GTFS Service Alerts feed, decodes protobuf, writes parsed snapshots to `rt_service_alerts`.
@@ -92,6 +100,30 @@ fly secrets set DATABASE_URL_POLLER="postgresql://...poller-url..." -a mesdepart
   - Uses advisory xact lock on parsed+metadata writes to avoid concurrent writer churn across duplicate pollers (`service_alerts_poller_write_locked_skip`).
   - Emits contention guardrail warning (`service_alerts_poller_write_lock_contention_warning`) when write-lock skips repeat beyond `RT_POLLER_LOCK_SKIP_WARN_STREAK` (default `6`) and cache age exceeds `RT_POLLER_LOCK_SKIP_STALE_AGE_MS` (default `90000` ms).
   - `service_alerts_poller_fetch_200` logs include parsed compaction metrics (`parsedAlertRowsInserted`, snapshot/retention delete counts).
+  - Runtime resilience: `runForever()` catches transient DB/network errors (for example `08006`, `57P01`, `ETIMEDOUT`, `ECONNRESET`), logs structured failure metadata, and retries with exponential backoff (`15s -> 30s -> 60s -> 120s` cap for transient errors).
+  - Tick logs include in-memory `lastSuccessfulPollAt` / `lastSuccessfulPollAgeMs`.
+  - On each successful parsed snapshot commit, updates `public.rt_poller_heartbeat.alerts_updated_at`.
+  - On transient failures, updates `public.rt_poller_heartbeat.last_error` (non-fatal) so staleness/health can be checked quickly.
+
+### Poller heartbeat check
+
+- `checkPollerHeartbeat.js`
+  - Reads `public.rt_poller_heartbeat` and prints JSON ages for:
+    - `tripupdates_updated_at`
+    - `alerts_updated_at`
+    - `updated_at`
+  - Exit codes:
+    - `0`: heartbeat fresh
+    - `2`: stale or missing heartbeat row
+    - `1`: script/query failure
+  - Threshold defaults:
+    - tripupdates: `90s`
+    - alerts: `300s`
+  - CLI overrides:
+    - `--trip-threshold-s <seconds>`
+    - `--alerts-threshold-s <seconds>`
+  - Example:
+    - `node scripts/checkPollerHeartbeat.js --trip-threshold-s 120 --alerts-threshold-s 420`
 
 ### Static GTFS refresh / import
 
@@ -235,6 +267,7 @@ Extra guardrail before changing ranking/SQL:
 | `scripts/benchmarkStopSearch.js` | Benchmarks stop-search query performance against DB. | `npm run search:bench` |
 | `scripts/debugStationboard.js` | Fetches one stationboard and prints cancellation/delay/source summary. | manual debug |
 | `scripts/captureWrongTripDetails.mjs` | Captures live stationboard JSON and prints trip-detail identifiers per departure. | incident diagnostics |
+| `scripts/checkPollerHeartbeat.js` | Prints poller heartbeat ages and exits non-zero on stale poller/parsed RT thresholds. | ops stale-RT check |
 | `scripts/debugStop.js` | One-query pipeline check (`/api/stops/search` then `/api/stationboard`). | `npm run stops:debug -- "<query>"` |
 | `scripts/debugTripUpdatesCancelCount.js` | Pulls TripUpdates and summarizes cancel/skip signals. | manual RT debug |
 | `scripts/fetchAlertsFeedMeta.js` | Reads Service Alerts feed metadata (`feed_version`, timestamps). | metadata check |
@@ -288,6 +321,11 @@ Extra guardrail before changing ranking/SQL:
   - Command: `node scripts/pollLaTripUpdates.js` (or `npm run poller:trip`)
   - Needs: `DATABASE_URL` and trip-update token (`GTFS_RT_TOKEN` / `OPENDATA_SWISS_TOKEN` / `OPENTDATA_GTFS_RT_KEY`).
   - Common failure: `[DB] ERROR: DATABASE_URL is missing. Set it before running the server.`
+
+- `checkPollerHeartbeat.js`
+  - Command: `node scripts/checkPollerHeartbeat.js` (or `npm run poller:heartbeat`)
+  - Needs: reachable DB and table from `sql/create_rt_poller_heartbeat.sql`.
+  - Common stale signal (exit `2`): `tripupdates.ageS` > threshold or `alerts.ageS` > threshold.
 
 - `benchmarkStopSearch.js`
   - Command: `npm run search:bench`
