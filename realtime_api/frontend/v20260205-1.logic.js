@@ -791,19 +791,37 @@ function normalizeLineToken(value) {
   return compact;
 }
 
+function normalizeModeToken(mode) {
+  const raw = String(mode || "").trim().toLowerCase();
+  if (!raw) return "";
+  if (raw === "bus" || raw === "tram" || raw === "metro") return "bus";
+  if (raw === "train" || raw === "rail") return "train";
+  return "";
+}
+
+function resolveExpectedJourneyMode(dep) {
+  const explicit = normalizeModeToken(dep?.mode);
+  if (explicit) return explicit;
+
+  const depCategory = normalizeCat(dep?.category);
+  if (!depCategory) return "";
+  return normalizeModeToken(classifyMode(depCategory));
+}
+
 function lineLooksLike(dep, journey) {
+  const expectedMode = resolveExpectedJourneyMode(dep);
   const depNum = normalizeLineToken(dep?.number || dep?.simpleLineId || dep?.line);
   const jNum = normalizeLineToken(journey?.number);
   if (depNum) {
     // For bus/tram rows, unknown journey numbers are too ambiguous on mixed hubs.
-    if (dep?.mode === "bus" && !jNum) return false;
+    if (expectedMode === "bus" && !jNum) return false;
     if (jNum && depNum !== jNum) return false;
   }
 
   const depCat = normalizeCat(dep?.category);
   const jCat = normalizeCat(journey?.category);
-  if (dep?.mode === "bus" && classifyMode(jCat) === "train") return false;
-  if (dep?.mode === "train" && depCat && jCat && depCat !== jCat) return false;
+  if (expectedMode === "bus" && classifyMode(jCat) === "train") return false;
+  if (expectedMode === "train" && depCat && jCat && depCat !== jCat) return false;
   return true;
 }
 
@@ -2292,6 +2310,7 @@ export async function fetchJourneyDetails(dep, { signal } = {}) {
   const fromStationId = dep.fromStationId || appState.stationId || null;
   const fromStationName = dep.fromStationName || appState.STATION || "";
   const to = dep.dest;
+  const expectedJourneyMode = resolveExpectedJourneyMode(dep);
 
   const passList = Array.isArray(dep?.passList) ? dep.passList : null;
   const directSection = buildSectionFromPassList(passList);
@@ -2300,7 +2319,7 @@ export async function fetchJourneyDetails(dep, { signal } = {}) {
     fromStationId,
     fromStationName
   );
-  const isTrain = dep.mode === "train";
+  const isTrain = expectedJourneyMode === "train";
 
   // Stationboard train passLists sometimes omit the queried station; in that case,
   // prefer fetching fresh details instead of trusting incomplete cached data.
@@ -2310,6 +2329,11 @@ export async function fetchJourneyDetails(dep, { signal } = {}) {
   // For buses/trams, keep using the stationboard passList when it looks valid.
   // For trains, only use it as a fallback if live lookups fail (to avoid stale/partial data).
   if (!isTrain && directFallback) {
+    return { section: directSection, connection: null };
+  }
+
+  // If mode is unknown, avoid cross-mode switching by keeping current trip details when possible.
+  if (!expectedJourneyMode && directSection) {
     return { section: directSection, connection: null };
   }
 
@@ -2334,6 +2358,11 @@ export async function fetchJourneyDetails(dep, { signal } = {}) {
           : dep.stop_sequence
         : dep.stopSequence,
   };
+
+  if (!expectedJourneyMode && identifiers.tripId) {
+    const viaId = await fetchJourneyDetailsById(identifiers.tripId, { signal });
+    if (viaId) return viaId;
+  }
 
   async function fetchConnections(fromParam) {
     const url =
@@ -2383,12 +2412,20 @@ export async function fetchJourneyDetails(dep, { signal } = {}) {
   let bestStrictSection = null;
   let bestStrictConn = null;
   let bestStrictScore = Infinity;
+  let rejectedModeCount = 0;
+  const traceCandidates = [];
+  const pushTrace = (entry) => {
+    if (traceCandidates.length >= 24) return;
+    traceCandidates.push(entry);
+  };
 
   for (const conn of conns) {
     for (const section of conn?.sections || []) {
       const j = section?.journey;
       const depTs = section?.departure?.departureTimestamp;
       if (typeof depTs !== "number") continue;
+      const journeyMode = normalizeModeToken(classifyMode(j?.category || ""));
+      const lineMatch = lineLooksLike(dep, j);
 
       const hasFromStation = passListContainsStation(
         section?.journey?.passList,
@@ -2396,26 +2433,66 @@ export async function fetchJourneyDetails(dep, { signal } = {}) {
         fromStationName
       );
 
+      // Root cause fix: relaxed matching previously allowed cross-mode candidates,
+      // so bus rows could attach rail trip details when timing was close.
+      // Restricting by mode here is safe because this only affects modal enrichment
+      // (`fetchJourneyDetails`), not the stationboard listing itself.
+      if (expectedJourneyMode && journeyMode && expectedJourneyMode !== journeyMode) {
+        rejectedModeCount += 1;
+        pushTrace({
+          depTs,
+          journeyCategory: String(j?.category || ""),
+          journeyNumber: String(j?.number || ""),
+          journeyMode,
+          lineMatch,
+          hasFromStation,
+          decision: "reject_mode_mismatch",
+          expectedJourneyMode,
+        });
+        continue;
+      }
+
       const relaxedScore =
         Math.abs(depTs - targetTs) +
-        (lineLooksLike(dep, j) ? 0 : 3600) +
+        (lineMatch ? 0 : 3600) +
         (hasFromStation ? 0 : 7200);
+      const tookRelaxedBest = relaxedScore < bestScore;
       if (relaxedScore < bestScore) {
         bestScore = relaxedScore;
         bestSection = section;
         bestConn = conn;
       }
+      pushTrace({
+        depTs,
+        journeyCategory: String(j?.category || ""),
+        journeyNumber: String(j?.number || ""),
+        journeyMode,
+        lineMatch,
+        hasFromStation,
+        relaxedScore,
+        tookRelaxedBest,
+      });
 
-      const strictMatch =
-        lineLooksLike(dep, j) &&
-        (dep.mode !== "bus" || classifyMode(j?.category || "") === "bus");
+      const strictMatch = lineMatch;
       if (!strictMatch) continue;
       const strictScore = Math.abs(depTs - targetTs) + (hasFromStation ? 0 : 7200);
+      const tookStrictBest = strictScore < bestStrictScore;
       if (strictScore < bestStrictScore) {
         bestStrictScore = strictScore;
         bestStrictSection = section;
         bestStrictConn = conn;
       }
+      pushTrace({
+        depTs,
+        journeyCategory: String(j?.category || ""),
+        journeyNumber: String(j?.number || ""),
+        journeyMode,
+        lineMatch,
+        hasFromStation,
+        strictScore,
+        tookStrictBest,
+        strictMatch,
+      });
     }
   }
 
@@ -2425,6 +2502,24 @@ export async function fetchJourneyDetails(dep, { signal } = {}) {
   }
 
   if (!bestSection) throw new Error("No journey details available for this départ");
+
+  if (isJourneyDebugEnabled()) {
+    const chosenJourney = bestSection?.journey || {};
+    logJourneyRequestDebug({
+      debugTripResolution: {
+        expectedJourneyMode: expectedJourneyMode || "unknown",
+        rejectedModeCount,
+        chosen: {
+          category: String(chosenJourney?.category || ""),
+          number: String(chosenJourney?.number || ""),
+          mode: normalizeModeToken(classifyMode(chosenJourney?.category || "")) || "unknown",
+          bestScore: Number.isFinite(bestScore) ? bestScore : null,
+          bestStrictScore: Number.isFinite(bestStrictScore) ? bestStrictScore : null,
+        },
+        candidates: traceCandidates,
+      },
+    });
+  }
 
   const bestPassList = bestSection?.journey?.passList;
   if (

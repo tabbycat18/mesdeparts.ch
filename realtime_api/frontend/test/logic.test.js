@@ -601,6 +601,115 @@ assert.equal(
   }
 }
 
+// fetchJourneyDetails should reject rail-only candidates for bus departures
+{
+  const originalFetch = globalThis.fetch;
+  const targetMs = Date.parse("2026-02-17T05:01:00+01:00");
+  const targetTs = Math.floor(targetMs / 1000);
+
+  appState.stationId = "Parent8592059";
+  appState.STATION = "Lausanne, Vieux-Moulin";
+
+  globalThis.fetch = async (url) => {
+    const u = String(url || "");
+    if (u.includes("/api/connections")) {
+      return {
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        json: async () => ({
+          connections: [
+            {
+              sections: [
+                {
+                  journey: {
+                    category: "R",
+                    number: "1",
+                    passList: [
+                      { station: { id: "Parent8501120", name: "Lausanne" } },
+                      { station: { id: "Parent8501008", name: "Genève" } },
+                    ],
+                  },
+                  departure: {
+                    departureTimestamp: targetTs,
+                    station: { name: "Lausanne" },
+                  },
+                  arrival: {
+                    station: { name: "Genève" },
+                  },
+                },
+              ],
+            },
+          ],
+        }),
+      };
+    }
+    throw new Error(`Unexpected fetch URL in test: ${u}`);
+  };
+
+  try {
+    await assert.rejects(
+      () =>
+        fetchJourneyDetails({
+          mode: "bus",
+          number: "1",
+          line: "1",
+          simpleLineId: "1",
+          category: "B",
+          dest: "Lausanne, Bel-Air",
+          fromStationId: "Parent8592059",
+          fromStationName: "Lausanne, Vieux-Moulin",
+          scheduledTime: targetMs,
+          scheduledTimestamp: targetTs,
+          timeStr: "05:01",
+        }),
+      /No journey details available/
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
+// Unknown-mode departures should prefer existing trip details over connection guesses.
+{
+  const originalFetch = globalThis.fetch;
+  let fetchCalled = false;
+
+  globalThis.fetch = async () => {
+    fetchCalled = true;
+    throw new Error("connections should not be fetched for unknown-mode direct fallback");
+  };
+
+  try {
+    const detail = await fetchJourneyDetails({
+      mode: "",
+      category: "",
+      number: "1",
+      line: "1",
+      simpleLineId: "1",
+      dest: "Lausanne, Bel-Air",
+      fromStationId: "Parent8592059",
+      fromStationName: "Lausanne, Vieux-Moulin",
+      passList: [
+        {
+          station: { id: "Parent8592059", name: "Lausanne, Vieux-Moulin" },
+          departureTimestamp: 1_770_000_000,
+        },
+        {
+          station: { id: "Parent8591988", name: "Lausanne, Bel-Air" },
+          arrivalTimestamp: 1_770_000_360,
+        },
+      ],
+    });
+
+    assert.equal(fetchCalled, false);
+    assert.ok(Array.isArray(detail?.section?.journey?.passList));
+    assert.equal(detail.section.journey.passList.length, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
 // fetchStationboardRaw should send since_rt and handle 204 no-content responses.
 {
   const originalFetch = globalThis.fetch;

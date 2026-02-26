@@ -46,6 +46,7 @@ Static, dependency-free front-end for mesdeparts.ch. Everything in this folder i
 - Stationboard fetches use `cache: "no-store"` on the browser side to avoid Safari/iPad HTTP cache staleness while preserving edge-cache behavior on `api.mesdeparts.ch`.
 - Stale board guard: if the board looks stale/empty, the UI triggers a cache-bypassing refetch at most once per minute per station.
 - Trip-details modal (`Détail du trajet`) uses abortable/time-bounded fetches and always exits loading state; non-OK/timeout failures show an error plus a retry button instead of indefinite loading.
+- Trip-details candidate resolution now enforces mode compatibility (bus vs train) to prevent cross-mode misattachments, and unknown-mode rows prefer existing stationboard details over cross-mode guesses.
 - Station search uses `/api/stops/search` and geolocation helper via `/api/stops/nearby`.
 - Embeds: pages add a `dual-embed` class when framed; `publishEmbedState` exposes current board state to the parent.
 - Dual board consumes embedded `boardLoading`/`boardNotice` state so each pane can surface live status in the top banner (localized “Refreshing…” and “Realtime data currently unavailable” when RT is degraded).

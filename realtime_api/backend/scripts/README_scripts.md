@@ -114,6 +114,13 @@ STATIONBOARD_BASE_URL=https://api.mesdeparts.ch node scripts/debugStop.js "Lausa
   - Typical deploy validation:
     - `STATIONBOARD_BASE_URL=https://api.mesdeparts.ch node scripts/debugStationboard.js Parent8587387`
 
+- `captureWrongTripDetails.mjs`
+  - Captures one live `/api/stationboard` response to a timestamped JSON file and prints a compact per-departure table.
+  - Includes identifiers used in the trip-details view (`key`, `trip_id`, `route_id`, `stop_id`, `stop_sequence`) plus `service_id` when present.
+  - Usage:
+    - `node scripts/captureWrongTripDetails.mjs --stop-id Parent8501120`
+    - `API_BASE_URL=https://api.mesdeparts.ch node scripts/captureWrongTripDetails.mjs --stop-id Parent8501120 --limit 20 --include-alerts 0 --debug 1`
+
 - `filter-stationboard.js`
   - Filters stationboard JSON from stdin for quick CLI inspection.
   - Example:
@@ -218,6 +225,7 @@ Extra guardrail before changing ranking/SQL:
 | --- | --- | --- |
 | `scripts/benchmarkStopSearch.js` | Benchmarks stop-search query performance against DB. | `npm run search:bench` |
 | `scripts/debugStationboard.js` | Fetches one stationboard and prints cancellation/delay/source summary. | manual debug |
+| `scripts/captureWrongTripDetails.mjs` | Captures live stationboard JSON and prints trip-detail identifiers per departure. | incident diagnostics |
 | `scripts/debugStop.js` | One-query pipeline check (`/api/stops/search` then `/api/stationboard`). | `npm run stops:debug -- "<query>"` |
 | `scripts/debugTripUpdatesCancelCount.js` | Pulls TripUpdates and summarizes cancel/skip signals. | manual RT debug |
 | `scripts/fetchAlertsFeedMeta.js` | Reads Service Alerts feed metadata (`feed_version`, timestamps). | metadata check |
