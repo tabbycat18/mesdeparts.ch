@@ -49,8 +49,15 @@ STATIONBOARD_BASE_URL=https://api.mesdeparts.ch node scripts/debugStop.js "Lausa
 ## Required environment (common)
 
 - `DATABASE_URL` for DB-dependent scripts
+- `DATABASE_URL_POLLER` optional poller-only DB URL override (used when `application_name=md_poller`; falls back to `DATABASE_URL` if unset)
 - `GTFS_RT_TOKEN` / `OPENDATA_SWISS_TOKEN` / `OPENTDATA_GTFS_RT_KEY` for TripUpdates polling
 - `OPENTDATA_GTFS_SA_KEY` / `OPENTDATA_API_KEY` for Service Alerts polling
+
+Fly poller secret example:
+
+```bash
+fly secrets set DATABASE_URL_POLLER="postgresql://...poller-url..." -a mesdeparts-rt-poller
+```
 
 ## Script groups
 
@@ -269,8 +276,8 @@ Extra guardrail before changing ranking/SQL:
 
 - `pollFeeds.js`
   - Command: `node scripts/pollFeeds.js` (or `npm run poller`)
-  - Needs: `DATABASE_URL` plus at least one valid poller token (trip and/or alerts).
-  - Common failure: `[DB] ERROR: DATABASE_URL is missing. Set it before running the server.`
+  - Needs: `DATABASE_URL` (or `DATABASE_URL_POLLER` for poller process) plus at least one valid poller token (trip and/or alerts).
+  - Common failure: `[DB] ERROR: missing DB URL for poller. Set DATABASE_URL_POLLER (preferred) or DATABASE_URL.`
 
 - `pollLaServiceAlerts.js`
   - Command: `node scripts/pollLaServiceAlerts.js` (or `npm run poller:alerts`)
