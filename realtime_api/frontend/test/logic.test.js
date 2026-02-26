@@ -722,9 +722,10 @@ assert.equal(
       () =>
         fetchJourneyDetails({
           mode: "bus",
-          number: "9193",
-          line: "9193",
-          simpleLineId: "9193",
+          number: "9",
+          line: "9",
+          simpleLineId: "9",
+          journeyId: "9193",
           category: "B",
           dest: "Lausanne, Bel-Air",
           fromStationId: "Parent8592059",
