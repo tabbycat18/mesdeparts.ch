@@ -345,26 +345,26 @@ test("persistParsedTripUpdatesIncremental rolls back and releases client on upse
   assert.equal(state.released, 1);
 });
 
-// ─── batch-size / multi-batch behaviour ──────────────────────────────────────
+// ─── batch-size / MAX_PARAMS invariant tests ──────────────────────────────────
+// These tests verify properties that must hold regardless of the exact batch
+// size constants, so they remain valid if batch sizes are tuned later.
 
-test("persistParsedTripUpdatesIncremental issues multiple batches for trip rows exceeding batch size (200)", async () => {
-  const { persistParsedTripUpdatesIncremental } = await loadPersistors();
+test("upsert trip batches: no batch exceeds UPSERT_MAX_PARAMS bound parameters and all rows accounted for", async () => {
+  const { persistParsedTripUpdatesIncremental, UPSERT_MAX_PARAMS, TRIP_PARAMS_PER_ROW, TRIP_UPSERT_BATCH_SIZE } =
+    await loadPersistors();
 
-  // Build 201 distinct trips so we cross the 200-row batch boundary.
-  const entities = Array.from({ length: 201 }, (_, i) => ({
+  // Use a row count large enough to guarantee > 1 batch for any reasonable batch size.
+  const n = TRIP_UPSERT_BATCH_SIZE * 2 + 1;
+  const entities = Array.from({ length: n }, (_, i) => ({
     trip_update: {
-      trip: { trip_id: `trip-batch-${i}`, route_id: "MB", start_date: "20260225" },
+      trip: { trip_id: `trip-inv-${i}`, route_id: "MI", start_date: "20260225" },
       stop_time_update: [],
     },
   }));
 
   const { calls, poolLike } = makePoolLike((sql) => {
-    if (sql.includes("DELETE FROM") && sql.includes("WHERE updated_at <")) {
-      return { rows: [], rowCount: 0 };
-    }
-    if (sql.includes("INSERT INTO public.rt_trip_updates") && sql.includes("ON CONFLICT")) {
-      return { rows: [], rowCount: 1 };
-    }
+    if (sql.includes("DELETE FROM") && sql.includes("WHERE updated_at <")) return { rows: [], rowCount: 0 };
+    if (sql.includes("INSERT INTO public.rt_trip_updates") && sql.includes("ON CONFLICT")) return { rows: [], rowCount: 1 };
     return { rows: [], rowCount: 0 };
   });
 
@@ -373,37 +373,43 @@ test("persistParsedTripUpdatesIncremental issues multiple batches for trip rows 
     { writeLockId: 7483921, poolLike }
   );
 
-  const tripUpsertCalls = calls.filter(
+  const tripCalls = calls.filter(
     (c) => c.sql.includes("INSERT INTO public.rt_trip_updates") && c.sql.includes("ON CONFLICT")
   );
-  assert.equal(result.tripRows, 201);
-  assert.equal(tripUpsertCalls.length, 2, "201 trip rows at batch-size 200 must produce exactly 2 INSERT statements");
-  // First batch should carry 200 rows (200 × 4 params = 800 params)
-  assert.equal(tripUpsertCalls[0].params.length, 800);
-  // Second batch carries the 1 remaining row (1 × 4 params = 4 params)
-  assert.equal(tripUpsertCalls[1].params.length, 4);
+
+  assert.equal(result.tripRows, n, "all trip rows must be processed");
+  assert.ok(tripCalls.length > 1, `must use multiple batches for ${n} rows (got ${tripCalls.length})`);
+  assert.equal(result.tripBatchCount, tripCalls.length, "tripBatchCount in return value must match actual call count");
+
+  // Invariant: no batch may exceed UPSERT_MAX_PARAMS bound parameters.
+  for (const call of tripCalls) {
+    assert.ok(
+      call.params.length <= UPSERT_MAX_PARAMS,
+      `batch used ${call.params.length} params, exceeds UPSERT_MAX_PARAMS ${UPSERT_MAX_PARAMS}`
+    );
+    assert.equal(call.params.length % TRIP_PARAMS_PER_ROW, 0, "params count must be a multiple of TRIP_PARAMS_PER_ROW");
+  }
+
+  // Total params across all batches must equal n * TRIP_PARAMS_PER_ROW.
+  const totalParams = tripCalls.reduce((sum, c) => sum + c.params.length, 0);
+  assert.equal(totalParams, n * TRIP_PARAMS_PER_ROW, "sum of params across batches must equal total rows × params-per-row");
 });
 
-test("persistParsedTripUpdatesIncremental issues multiple batches for stop rows exceeding batch size (100)", async () => {
-  const { persistParsedTripUpdatesIncremental } = await loadPersistors();
+test("upsert stop batches: no batch exceeds UPSERT_MAX_PARAMS bound parameters and all rows accounted for", async () => {
+  const { persistParsedTripUpdatesIncremental, UPSERT_MAX_PARAMS, STOP_PARAMS_PER_ROW, STOP_UPSERT_BATCH_SIZE } =
+    await loadPersistors();
 
-  // One trip, 101 distinct stop-time updates so we cross the 100-row batch boundary.
-  const stopTimeUpdates = Array.from({ length: 101 }, (_, i) => ({
-    stop_id: `stop-${i}`,
+  const n = STOP_UPSERT_BATCH_SIZE * 2 + 1;
+  const stopTimeUpdates = Array.from({ length: n }, (_, i) => ({
+    stop_id: `stop-inv-${i}`,
     stop_sequence: i,
     departure: { delay: i },
   }));
 
   const { calls, poolLike } = makePoolLike((sql) => {
-    if (sql.includes("DELETE FROM") && sql.includes("WHERE updated_at <")) {
-      return { rows: [], rowCount: 0 };
-    }
-    if (sql.includes("INSERT INTO public.rt_trip_updates") && sql.includes("ON CONFLICT")) {
-      return { rows: [], rowCount: 1 };
-    }
-    if (sql.includes("INSERT INTO public.rt_stop_time_updates") && sql.includes("ON CONFLICT")) {
-      return { rows: [], rowCount: 1 };
-    }
+    if (sql.includes("DELETE FROM") && sql.includes("WHERE updated_at <")) return { rows: [], rowCount: 0 };
+    if (sql.includes("INSERT INTO public.rt_trip_updates") && sql.includes("ON CONFLICT")) return { rows: [], rowCount: 1 };
+    if (sql.includes("INSERT INTO public.rt_stop_time_updates") && sql.includes("ON CONFLICT")) return { rows: [], rowCount: 1 };
     return { rows: [], rowCount: 0 };
   });
 
@@ -412,7 +418,7 @@ test("persistParsedTripUpdatesIncremental issues multiple batches for stop rows 
       entity: [
         {
           trip_update: {
-            trip: { trip_id: "trip-stop-batch", route_id: "MB", start_date: "20260225" },
+            trip: { trip_id: "trip-stop-inv", route_id: "MI", start_date: "20260225" },
             stop_time_update: stopTimeUpdates,
           },
         },
@@ -421,15 +427,62 @@ test("persistParsedTripUpdatesIncremental issues multiple batches for stop rows 
     { writeLockId: 7483921, poolLike }
   );
 
-  const stopUpsertCalls = calls.filter(
+  const stopCalls = calls.filter(
     (c) => c.sql.includes("INSERT INTO public.rt_stop_time_updates") && c.sql.includes("ON CONFLICT")
   );
-  assert.equal(result.stopRows, 101);
-  assert.equal(stopUpsertCalls.length, 2, "101 stop rows at batch-size 100 must produce exactly 2 INSERT statements");
-  // First batch: 100 rows × 9 params = 900 params
-  assert.equal(stopUpsertCalls[0].params.length, 900);
-  // Second batch: 1 row × 9 params = 9 params
-  assert.equal(stopUpsertCalls[1].params.length, 9);
+
+  assert.equal(result.stopRows, n, "all stop rows must be processed");
+  assert.ok(stopCalls.length > 1, `must use multiple batches for ${n} rows (got ${stopCalls.length})`);
+  assert.equal(result.stopBatchCount, stopCalls.length, "stopBatchCount in return value must match actual call count");
+
+  // Invariant: no batch may exceed UPSERT_MAX_PARAMS bound parameters.
+  for (const call of stopCalls) {
+    assert.ok(
+      call.params.length <= UPSERT_MAX_PARAMS,
+      `batch used ${call.params.length} params, exceeds UPSERT_MAX_PARAMS ${UPSERT_MAX_PARAMS}`
+    );
+    assert.equal(call.params.length % STOP_PARAMS_PER_ROW, 0, "params count must be a multiple of STOP_PARAMS_PER_ROW");
+  }
+
+  const totalParams = stopCalls.reduce((sum, c) => sum + c.params.length, 0);
+  assert.equal(totalParams, n * STOP_PARAMS_PER_ROW, "sum of params across batches must equal total rows × params-per-row");
+});
+
+test("upsert batch stats: return value includes tripBatchCount, stopBatchCount, maxBatchSize fields", async () => {
+  const { persistParsedTripUpdatesIncremental } = await loadPersistors();
+
+  const { poolLike } = makePoolLike((sql) => {
+    if (sql.includes("DELETE FROM") && sql.includes("WHERE updated_at <")) return { rows: [], rowCount: 0 };
+    if (sql.includes("INSERT INTO public.rt_trip_updates") && sql.includes("ON CONFLICT")) return { rows: [], rowCount: 1 };
+    if (sql.includes("INSERT INTO public.rt_stop_time_updates") && sql.includes("ON CONFLICT")) return { rows: [], rowCount: 1 };
+    return { rows: [], rowCount: 0 };
+  });
+
+  const result = await persistParsedTripUpdatesIncremental(
+    {
+      entity: [
+        {
+          trip_update: {
+            trip: { trip_id: "trip-stats", route_id: "MS", start_date: "20260225" },
+            stop_time_update: [
+              { stop_id: "8500001", stop_sequence: 1, departure: { delay: 10 } },
+              { stop_id: "8500002", stop_sequence: 2, departure: { delay: 20 } },
+            ],
+          },
+        },
+      ],
+    },
+    { writeLockId: 7483921, poolLike }
+  );
+
+  assert.equal(typeof result.tripBatchCount, "number");
+  assert.equal(typeof result.tripMaxBatchSize, "number");
+  assert.equal(typeof result.stopBatchCount, "number");
+  assert.equal(typeof result.stopMaxBatchSize, "number");
+  assert.ok(result.tripBatchCount >= 1);
+  assert.ok(result.stopBatchCount >= 1);
+  assert.ok(result.tripMaxBatchSize >= 1);
+  assert.ok(result.stopMaxBatchSize >= 1);
 });
 
 // ─── persistParsedServiceAlertsSnapshot ──────────────────────────────────────

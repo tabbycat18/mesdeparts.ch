@@ -58,6 +58,7 @@ const RT_LOCK_SKIP_WARN_AGE_MS = Math.max(
 );
 const FEED_KEY = LA_TRIPUPDATES_FEED_KEY;
 const FEED_WRITE_LOCK_ID = 7_483_921;
+const RT_UPSERT_BATCH_DEBUG = process.env.RT_UPSERT_BATCH_DEBUG === "1";
 const UPSTREAM_URL =
   String(process.env.LA_GTFS_RT_URL || "").trim() || LA_GTFS_RT_TRIP_UPDATES_URL;
 const TRANSIENT_ERROR_CODES = new Set([
@@ -556,6 +557,12 @@ export function createLaTripUpdatesPoller({
           retentionHours: RT_PARSED_RETENTION_HOURS,
         });
         timing.dbWriteMs = Math.round(performance.now() - dbPerfStart);
+        if (RT_UPSERT_BATCH_DEBUG) {
+          timing.tripBatchCount = parsedWrite?.tripBatchCount ?? null;
+          timing.tripMaxBatchSize = parsedWrite?.tripMaxBatchSize ?? null;
+          timing.stopBatchCount = parsedWrite?.stopBatchCount ?? null;
+          timing.stopMaxBatchSize = parsedWrite?.stopMaxBatchSize ?? null;
+        }
         txLifecycle = {
           transactionClientUsed:
             parsedWrite?.txDiagnostics?.transactionClientUsed === true,

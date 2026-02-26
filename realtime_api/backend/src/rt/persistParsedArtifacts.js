@@ -96,6 +96,26 @@ function chunk(array, size) {
   return out;
 }
 
+// Upsert batch-sizing constants.
+// UPSERT_MAX_PARAMS is the hard cap on bound parameters per statement (protects
+// against oversized wire payloads that cause connection stalls).
+// Effective batch size = min(desired, floor(MAX_PARAMS / paramsPerRow)).
+export const UPSERT_MAX_PARAMS = 30_000;
+export const TRIP_PARAMS_PER_ROW = 4;   // trip_id, route_id, start_date, schedule_relationship
+export const STOP_PARAMS_PER_ROW = 9;   // trip_id, stop_sequence, stop_id, dep_delay, arr_delay, dep_time, arr_time, platform, sched_rel
+
+const TRIP_UPSERT_DESIRED_BATCH_ROWS = 500;
+const STOP_UPSERT_DESIRED_BATCH_ROWS = 500;
+
+export const TRIP_UPSERT_BATCH_SIZE = Math.min(
+  TRIP_UPSERT_DESIRED_BATCH_ROWS,
+  Math.floor(UPSERT_MAX_PARAMS / TRIP_PARAMS_PER_ROW)
+);
+export const STOP_UPSERT_BATCH_SIZE = Math.min(
+  STOP_UPSERT_DESIRED_BATCH_ROWS,
+  Math.floor(UPSERT_MAX_PARAMS / STOP_PARAMS_PER_ROW)
+);
+
 function parseActivePeriodBounds(periods = []) {
   let minStart = null;
   let maxEnd = null;
@@ -366,8 +386,12 @@ async function insertStopRows(client, rows = []) {
 }
 
 async function upsertTripRows(client, rows = []) {
-  if (!rows.length) return;
-  for (const group of chunk(rows, 200)) {
+  if (!rows.length) return { batchCount: 0, maxBatchSize: 0 };
+  let batchCount = 0;
+  let maxBatchSize = 0;
+  for (const group of chunk(rows, TRIP_UPSERT_BATCH_SIZE)) {
+    batchCount++;
+    if (group.length > maxBatchSize) maxBatchSize = group.length;
     const values = [];
     const params = [];
     let p = 1;
@@ -400,11 +424,16 @@ async function upsertTripRows(client, rows = []) {
       values
     );
   }
+  return { batchCount, maxBatchSize };
 }
 
 async function upsertStopRows(client, rows = []) {
-  if (!rows.length) return;
-  for (const group of chunk(rows, 100)) {
+  if (!rows.length) return { batchCount: 0, maxBatchSize: 0 };
+  let batchCount = 0;
+  let maxBatchSize = 0;
+  for (const group of chunk(rows, STOP_UPSERT_BATCH_SIZE)) {
+    batchCount++;
+    if (group.length > maxBatchSize) maxBatchSize = group.length;
     const values = [];
     const params = [];
     let p = 1;
@@ -452,6 +481,7 @@ async function upsertStopRows(client, rows = []) {
       values
     );
   }
+  return { batchCount, maxBatchSize };
 }
 
 async function insertAlertRows(client, rows = []) {
@@ -562,14 +592,20 @@ export async function persistParsedTripUpdatesIncremental(
       "public.rt_trip_updates",
       effectiveRetentionHours
     );
-    await upsertTripRows(client, tripRows);
-    await upsertStopRows(client, stopRows);
+    const { batchCount: tripBatchCount, maxBatchSize: tripMaxBatchSize } =
+      await upsertTripRows(client, tripRows);
+    const { batchCount: stopBatchCount, maxBatchSize: stopMaxBatchSize } =
+      await upsertStopRows(client, stopRows);
     return {
       retentionHours: effectiveRetentionHours,
       tripRows: tripRows.length,
       stopRows: stopRows.length,
       deletedByRetentionTripRows,
       deletedByRetentionStopRows,
+      tripBatchCount,
+      tripMaxBatchSize,
+      stopBatchCount,
+      stopMaxBatchSize,
     };
   }, poolLike);
 }
