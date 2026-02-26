@@ -508,6 +508,42 @@ function cloneJson(value) {
   }
 }
 
+// Contract guard: response.alerts.entities must always be an array in the HTTP response –
+// never null, never undefined, never absent.
+// Applied to every HTTP response payload immediately before res.json() – no effect on DB/poller data.
+function guardStationboardPayload(payload, { debug = false, requestId = "", site = "" } = {}) {
+  if (!payload || typeof payload !== "object") return payload;
+  const alerts = payload.alerts;
+  const alertsIsObject = alerts !== null && typeof alerts === "object";
+  const entitiesIsArray = Array.isArray(alerts?.entities);
+
+  if (debug) {
+    console.info("[API] stationboard alerts shape pre-send", {
+      requestId,
+      site,
+      alerts_type: typeof alerts,
+      entities_in_alerts: alertsIsObject && "entities" in alerts,
+      entities_is_null: alertsIsObject && alerts.entities === null,
+      entities_is_array: entitiesIsArray,
+    });
+  }
+
+  if (alertsIsObject && !entitiesIsArray) {
+    // entities is absent, null, or non-array – this is the injection point.
+    // Log a warning only when the key was explicitly present with a non-array value.
+    if ("entities" in alerts) {
+      console.warn("[API] stationboard alerts.entities was not an array – coercing to []", {
+        requestId,
+        site,
+        entities_value: alerts.entities,
+      });
+    }
+    return { ...payload, alerts: { ...alerts, entities: [] } };
+  }
+
+  return payload;
+}
+
 function readCachedStationboard(key) {
   const item = stationboardResponseCache.get(key);
   if (!item || !item.payload) return null;
@@ -965,7 +1001,7 @@ export function createStationboardRouteHandler({
               },
             };
           }
-          return res.json(normalizedCached);
+          return res.json(guardStationboardPayload(normalizedCached, { debug, requestId, site: "timeout_cache" }));
         }
 
         const fallbackPayloadRaw = buildStaticFallbackPayload({
@@ -1007,7 +1043,7 @@ export function createStationboardRouteHandler({
           rtReason: "build_timeout_static_fallback",
           totalMs: roundMs(performance.now() - routeStartedMs),
         });
-        return res.status(200).json(fallbackPayload);
+        return res.status(200).json(guardStationboardPayload(fallbackPayload, { debug, requestId, site: "timeout_fallback" }));
       }
       const normalizedResult = ensureTopLevelMeta(result, {
         requestId,
@@ -1072,7 +1108,7 @@ export function createStationboardRouteHandler({
         degraded: normalizedResult?.debug?.latencySafe?.degradedMode === true,
         skippedSteps: normalizedResult?.debug?.latencySafe?.skippedSteps || [],
       });
-      return res.json(normalizedResult);
+      return res.json(guardStationboardPayload(normalizedResult, { debug, requestId, site: "main" }));
     } catch (err) {
       const backendTotalMs = roundMs(performance.now() - routeStartedMs);
       setResponseHeader(res, "x-md-backend-total-ms", String(backendTotalMs));
@@ -1133,7 +1169,7 @@ export function createStationboardRouteHandler({
           setResponseHeader(res, "x-md-stale", "1");
           setResponseHeader(res, "x-md-stale-reason", "stationboard_timeout_or_db_timeout");
           applyRtDiagnosticHeaders(res, normalizedCached, { cacheKey: responseCacheKey });
-          return res.status(200).json(normalizedCached);
+          return res.status(200).json(guardStationboardPayload(normalizedCached, { debug, requestId, site: "error_cache" }));
         }
 
         const stopId =
@@ -1175,7 +1211,7 @@ export function createStationboardRouteHandler({
         setResponseHeader(res, "x-md-stale", "1");
         setResponseHeader(res, "x-md-stale-reason", "stationboard_timeout_or_db_timeout_no_cache");
         applyRtDiagnosticHeaders(res, fallbackPayload, { cacheKey: responseCacheKey });
-        return res.status(200).json(fallbackPayload);
+        return res.status(200).json(guardStationboardPayload(fallbackPayload, { debug, requestId, site: "error_fallback" }));
       }
       if (process.env.NODE_ENV !== "production") {
         return res.status(500).json({
