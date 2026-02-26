@@ -120,32 +120,13 @@ private struct StationboardView: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: MDDesignSystem.Spacing.lg) {
-                BlueCard {
-                    VStack(alignment: .leading, spacing: MDDesignSystem.Spacing.xs) {
-                        Text(viewModel.stationName)
-                            .font(.title3.weight(.semibold))
-                            .foregroundStyle(MDDesignSystem.Colors.textPrimary)
-
-                        if let subtitle = stop.subtitle {
-                            Text(subtitle)
-                                .font(.footnote)
-                                .foregroundStyle(MDDesignSystem.Colors.textSecondary)
-                        }
-
-                        if let freshnessLabel = viewModel.freshnessLabel {
-                            Text(freshnessLabel)
-                                .font(.footnote)
-                                .foregroundStyle(MDDesignSystem.Colors.textSecondary)
-                        }
-
-                        if let lastUpdatedAt = viewModel.lastUpdatedAt {
-                            Text("\(appLabel(.updatedLabel, language: language)): \(DateFormatters.time(lastUpdatedAt))")
-                                .font(.footnote)
-                                .foregroundStyle(MDDesignSystem.Colors.textSecondary)
-                        }
-                    }
-                    .accessibilityElement(children: .combine)
-                }
+                BoardHeaderView(
+                    stationName: viewModel.stationName,
+                    subtitle: headerSubtitle,
+                    updatedAt: viewModel.lastUpdatedAt,
+                    freshnessLabel: viewModel.freshnessLabel,
+                    updatedLabel: appLabel(.updatedLabel, language: language)
+                )
 
                 if !viewModel.servedLines.isEmpty {
                     VStack(alignment: .leading, spacing: MDDesignSystem.Spacing.sm) {
@@ -281,6 +262,19 @@ private struct StationboardView: View {
             viewModel.stopPolling()
         }
     }
+
+    private var headerSubtitle: String? {
+        switch language {
+        case .fr:
+            return "Vos prochains departs"
+        case .de:
+            return "Ihre nachsten Abfahrten"
+        case .it:
+            return "Le tue prossime partenze"
+        case .en:
+            return "Your next departures"
+        }
+    }
 }
 
 private struct DepartureDetailView: View {
@@ -378,6 +372,7 @@ private struct DepartureRowView: View {
                     minModeLayout
                 }
             }
+            .padding(.vertical, 2)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilitySummary)
@@ -420,48 +415,16 @@ private struct DepartureRowView: View {
     }
 
     private var lineModeLayout: some View {
-        VStack(alignment: .leading, spacing: MDDesignSystem.Spacing.xs) {
-            HStack(alignment: .firstTextBaseline, spacing: MDDesignSystem.Spacing.sm) {
-                LinePill(line: serviceLabel)
-                Spacer()
-                Text(DateFormatters.time(primaryDate))
-                    .font(.headline)
-                    .foregroundStyle(MDDesignSystem.Colors.textPrimary)
-                    .monospacedDigit()
-            }
-
-            Text(destinationLabel)
-                .font(.body)
-                .foregroundStyle(MDDesignSystem.Colors.textPrimary)
-
-            tagsRow
+        VStack(alignment: .leading, spacing: MDDesignSystem.Spacing.xxs) {
+            topBoardRow(timeFont: .title3.weight(.semibold))
+            secondaryRow()
         }
     }
 
     private var minModeLayout: some View {
-        HStack(alignment: .top, spacing: MDDesignSystem.Spacing.sm) {
-            Text(minutesLabel)
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(MDDesignSystem.Colors.accent)
-                .monospacedDigit()
-                .frame(minWidth: 64, alignment: .leading)
-
-            VStack(alignment: .leading, spacing: MDDesignSystem.Spacing.xs) {
-                HStack(alignment: .firstTextBaseline, spacing: MDDesignSystem.Spacing.xs) {
-                    LinePill(line: serviceLabel)
-                    Spacer()
-                    Text(DateFormatters.time(primaryDate))
-                        .font(.subheadline)
-                        .foregroundStyle(MDDesignSystem.Colors.textSecondary)
-                        .monospacedDigit()
-                }
-
-                Text(destinationLabel)
-                    .font(.body)
-                    .foregroundStyle(MDDesignSystem.Colors.textPrimary)
-
-                tagsRow
-            }
+        VStack(alignment: .leading, spacing: MDDesignSystem.Spacing.xxs) {
+            topBoardRow(timeFont: .title3.weight(.semibold))
+            secondaryRow(showMinutes: true)
         }
     }
 
@@ -479,6 +442,40 @@ private struct DepartureRowView: View {
             if departure.realtimeDeparture != nil {
                 TagPill(text: "RT", style: .realtime)
             }
+        }
+    }
+
+    private func topBoardRow(timeFont: Font) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: MDDesignSystem.Spacing.sm) {
+            LinePill(line: serviceLabel)
+                .frame(width: 88, alignment: .leading)
+
+            Text(destinationLabel)
+                .font(.body)
+                .foregroundStyle(MDDesignSystem.Colors.textPrimary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text(DateFormatters.time(primaryDate))
+                .font(timeFont)
+                .foregroundStyle(MDDesignSystem.Colors.textPrimary)
+                .monospacedDigit()
+                .frame(width: 64, alignment: .trailing)
+        }
+    }
+
+    private func secondaryRow(showMinutes: Bool = false) -> some View {
+        HStack(alignment: .center, spacing: MDDesignSystem.Spacing.xs) {
+            if showMinutes {
+                Text(minutesLabel)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(MDDesignSystem.Colors.accent)
+                    .monospacedDigit()
+            }
+            tagsRow
+                .lineLimit(1)
+            Spacer(minLength: 0)
         }
     }
 

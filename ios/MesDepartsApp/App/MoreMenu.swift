@@ -218,27 +218,59 @@ struct MoreMenuButton: View {
                 Label(appLabel(.filters, language: language), systemImage: "line.3.horizontal.decrease.circle")
             }
 
+            Menu {
+                Button {
+                    languageBinding.wrappedValue = .en
+                } label: {
+                    languageMenuLabel("EN", isSelected: languageBinding.wrappedValue == .en)
+                }
+                Button {
+                    languageBinding.wrappedValue = .fr
+                } label: {
+                    languageMenuLabel("FR", isSelected: languageBinding.wrappedValue == .fr)
+                }
+                Button {
+                    languageBinding.wrappedValue = .de
+                } label: {
+                    languageMenuLabel("DE", isSelected: languageBinding.wrappedValue == .de)
+                }
+                Button {
+                    languageBinding.wrappedValue = .it
+                } label: {
+                    languageMenuLabel("IT", isSelected: languageBinding.wrappedValue == .it)
+                }
+            } label: {
+                Label(appLabel(.language, language: language), systemImage: "globe")
+            }
+
+            Menu {
+                Button {
+                    displayModeBinding.wrappedValue = .line
+                } label: {
+                    modeMenuLabel(
+                        appLabel(.displayModeLine, language: language),
+                        isSelected: displayModeBinding.wrappedValue == .line
+                    )
+                }
+                Button {
+                    displayModeBinding.wrappedValue = .min
+                } label: {
+                    modeMenuLabel(
+                        appLabel(.displayModeMin, language: language),
+                        isSelected: displayModeBinding.wrappedValue == .min
+                    )
+                }
+            } label: {
+                Label(appLabel(.displayMode, language: language), systemImage: "rectangle.grid.1x2")
+            }
+
+            Divider()
+
             Button {
                 presentedSheet = .diagnostics
             } label: {
                 Label(appLabel(.diagnostics, language: language), systemImage: "waveform.path.ecg")
             }
-
-            Divider()
-
-            Picker(appLabel(.displayMode, language: language), selection: displayModeBinding) {
-                Text(appLabel(.displayModeLine, language: language)).tag(DisplayModeOption.line)
-                Text(appLabel(.displayModeMin, language: language)).tag(DisplayModeOption.min)
-            }
-
-            Picker(appLabel(.language, language: language), selection: languageBinding) {
-                Text("EN").tag(AppLanguageOption.en)
-                Text("FR").tag(AppLanguageOption.fr)
-                Text("DE").tag(AppLanguageOption.de)
-                Text("IT").tag(AppLanguageOption.it)
-            }
-
-            Divider()
 
             Button {
                 presentedSheet = .about
@@ -246,10 +278,27 @@ struct MoreMenuButton: View {
                 Label(appLabel(.aboutInfo, language: language), systemImage: "info.circle")
             }
         } label: {
-            Label(appLabel(.more, language: language), systemImage: "ellipsis.circle")
-                .labelStyle(.iconOnly)
+            Image(systemName: "ellipsis.circle")
         }
         .accessibilityLabel(appLabel(.more, language: language))
+    }
+
+    @ViewBuilder
+    private func languageMenuLabel(_ code: String, isSelected: Bool) -> some View {
+        if isSelected {
+            Label(code, systemImage: "checkmark")
+        } else {
+            Text(code)
+        }
+    }
+
+    @ViewBuilder
+    private func modeMenuLabel(_ label: String, isSelected: Bool) -> some View {
+        if isSelected {
+            Label(label, systemImage: "checkmark")
+        } else {
+            Text(label)
+        }
     }
 }
 
