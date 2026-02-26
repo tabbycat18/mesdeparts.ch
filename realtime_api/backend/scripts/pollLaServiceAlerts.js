@@ -511,8 +511,16 @@ export function createLaServiceAlertsPoller({
 
   async function runForever() {
     for (;;) {
-      const waitMs = await tick();
-      await sleepLike(waitMs);
+      const loopStartedMs = Number(nowLike());
+      const waitMsRaw = await tick();
+      const waitMs = Number.isFinite(Number(waitMsRaw))
+        ? Math.max(0, Number(waitMsRaw))
+        : INTERVAL_MS;
+      const elapsedMs = Number.isFinite(loopStartedMs)
+        ? Math.max(0, Number(nowLike()) - loopStartedMs)
+        : 0;
+      const sleepMs = Math.max(0, waitMs - elapsedMs);
+      await sleepLike(sleepMs);
     }
   }
 

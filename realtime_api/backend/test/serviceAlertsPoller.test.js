@@ -92,7 +92,44 @@ test("service alerts poller run loop sleeps backoff before any next upstream fet
 
   await assert.rejects(() => poller.runForever(), stop);
   assert.equal(fetchCalls, 1);
-  assert.ok(Number.isFinite(sleptMs) && sleptMs >= 60_000);
+  assert.ok(Number.isFinite(sleptMs) && sleptMs >= 59_000 && sleptMs <= 60_000);
+});
+
+test("service alerts poller run loop compensates tick duration before sleeping", async () => {
+  const createLaServiceAlertsPoller = await loadPollerFactory();
+  const payload = Buffer.from("same-alerts-payload");
+  const payloadSha = payloadSha256Hex(payload);
+  let sleptMs = null;
+  let fakeNow = 1_000_000;
+  const stop = new Error("stop_after_first_sleep");
+
+  const poller = createLaServiceAlertsPoller({
+    token: "test-token",
+    nowLike: () => fakeNow,
+    fetchLike: async () => {
+      fakeNow += 75_000;
+      return okResponse(payload, "etag-same");
+    },
+    getRtCacheMetaLike: async () => ({
+      fetched_at: new Date(Date.now() - 120_000),
+      etag: "etag-same",
+      last_status: 200,
+      last_error: null,
+    }),
+    getRtCachePayloadShaLike: async () => payloadSha,
+    updateRtCacheStatusLike: async () => ({ updated: true, writeSkippedByLock: false }),
+    ensureRtCacheMetadataRowLike: async () => ({ inserted: false, writeSkippedByLock: false }),
+    persistParsedServiceAlertsSnapshotLike: async () => ({ updated: true, writeSkippedByLock: false }),
+    decodeFeedLike: () => ({ entity: [] }),
+    sleepLike: async (ms) => {
+      sleptMs = ms;
+      throw stop;
+    },
+    logLike: () => {},
+  });
+
+  await assert.rejects(() => poller.runForever(), stop);
+  assert.equal(sleptMs, 0);
 });
 
 test("service alerts poller writes parsed alerts on changed 200 payload", async () => {

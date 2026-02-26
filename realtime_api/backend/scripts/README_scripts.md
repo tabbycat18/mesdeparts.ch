@@ -66,6 +66,7 @@ STATIONBOARD_BASE_URL=https://api.mesdeparts.ch node scripts/debugStop.js "Lausa
   - Does not execute `rt_cache.payload` UPSERT writes on poll ticks (blob write path is disabled).
   - Snapshot strategy: each successful parsed write replaces the previous parsed snapshot; retention compaction window is controlled by `RT_PARSED_RETENTION_HOURS` (default `6`).
   - Default interval: `GTFS_RT_POLL_INTERVAL_MS` (default `15000` ms).
+  - Scheduling is fixed-rate: sleep time subtracts tick execution time to avoid cadence drift (`effective wait = max(0, interval - tickDuration)`).
   - Has 429/error backoff logic.
   - Skips parsed snapshot rewrites when payload SHA-256 is unchanged (`poller_skip_write_unchanged`); may apply metadata-only status updates.
   - Uses advisory xact lock on parsed+metadata writes to avoid concurrent writer churn across duplicate pollers (`poller_write_locked_skip`).
@@ -78,6 +79,7 @@ STATIONBOARD_BASE_URL=https://api.mesdeparts.ch node scripts/debugStop.js "Lausa
   - Does not execute `rt_cache.payload` UPSERT writes on poll ticks (blob write path is disabled).
   - Snapshot strategy: each successful parsed write replaces the previous parsed snapshot; retention compaction window is controlled by `RT_PARSED_RETENTION_HOURS` (default `6`).
   - Default interval: `GTFS_SA_POLL_INTERVAL_MS` (default `60000` ms, min `15000`).
+  - Scheduling is fixed-rate: sleep time subtracts tick execution time to avoid cadence drift (`effective wait = max(0, interval - tickDuration)`).
   - Has 429/error backoff logic.
   - Skips parsed snapshot rewrites when payload SHA-256 is unchanged (`service_alerts_poller_skip_write_unchanged`); may apply metadata-only status updates.
   - Uses advisory xact lock on parsed+metadata writes to avoid concurrent writer churn across duplicate pollers (`service_alerts_poller_write_locked_skip`).
