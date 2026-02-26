@@ -112,7 +112,8 @@ deduped AS (
     route_long_name,
     route_desc,
     route_type,
-    agency_id
+    agency_id,
+    agency_name
   FROM candidates
   ORDER BY
     trip_id,
