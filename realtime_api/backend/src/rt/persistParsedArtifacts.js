@@ -105,7 +105,7 @@ export const TRIP_PARAMS_PER_ROW = 4;   // trip_id, route_id, start_date, schedu
 export const STOP_PARAMS_PER_ROW = 9;   // trip_id, stop_sequence, stop_id, dep_delay, arr_delay, dep_time, arr_time, platform, sched_rel
 
 const TRIP_UPSERT_DESIRED_BATCH_ROWS = 500;
-const STOP_UPSERT_DESIRED_BATCH_ROWS = 500;
+const STOP_UPSERT_DESIRED_BATCH_ROWS = 200;
 
 export const TRIP_UPSERT_BATCH_SIZE = Math.min(
   TRIP_UPSERT_DESIRED_BATCH_ROWS,
@@ -469,7 +469,8 @@ async function upsertStopRows(client, rows = []) {
           updated_at
         )
         VALUES ${params.join(",")}
-        ON CONFLICT (trip_id, stop_id, stop_sequence) DO UPDATE SET
+        ON CONFLICT (trip_id, stop_sequence) DO UPDATE SET
+          stop_id               = EXCLUDED.stop_id,
           departure_delay       = EXCLUDED.departure_delay,
           arrival_delay         = EXCLUDED.arrival_delay,
           departure_time_rt     = EXCLUDED.departure_time_rt,

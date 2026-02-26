@@ -209,6 +209,46 @@ test("persistParsedTripUpdatesIncremental executes INSERT ... ON CONFLICT for bo
   assert.equal(upsertStop, true, "must execute INSERT ... ON CONFLICT for rt_stop_time_updates");
 });
 
+test("persistParsedTripUpdatesIncremental uses ON CONFLICT (trip_id, stop_sequence) DO UPDATE for stop_time_updates", async () => {
+  const { persistParsedTripUpdatesIncremental } = await loadPersistors();
+  let capturedStopSql = null;
+  const { poolLike } = makePoolLike((sql) => {
+    if (sql.includes("DELETE FROM") && sql.includes("WHERE updated_at <")) return { rows: [], rowCount: 0 };
+    if (sql.includes("INSERT INTO public.rt_trip_updates") && sql.includes("ON CONFLICT")) return { rows: [], rowCount: 1 };
+    if (sql.includes("INSERT INTO public.rt_stop_time_updates") && sql.includes("ON CONFLICT")) {
+      capturedStopSql = sql;
+      return { rows: [], rowCount: 1 };
+    }
+    return { rows: [], rowCount: 0 };
+  });
+
+  await persistParsedTripUpdatesIncremental(
+    {
+      entity: [
+        {
+          trip_update: {
+            trip: { trip_id: "trip-conflict-target", route_id: "MC", start_date: "20260225" },
+            stop_time_update: [
+              { stop_id: "8501100", stop_sequence: 1, departure: { delay: 30 } },
+            ],
+          },
+        },
+      ],
+    },
+    { writeLockId: 7483921, poolLike }
+  );
+
+  assert.ok(capturedStopSql, "INSERT INTO rt_stop_time_updates must have been called");
+  assert.ok(
+    capturedStopSql.includes("ON CONFLICT (trip_id, stop_sequence) DO UPDATE"),
+    `stop upsert must use ON CONFLICT (trip_id, stop_sequence) DO UPDATE, got: ${capturedStopSql}`
+  );
+  assert.ok(
+    capturedStopSql.includes("stop_id") && capturedStopSql.includes("EXCLUDED.stop_id"),
+    "DO UPDATE SET must include stop_id = EXCLUDED.stop_id"
+  );
+});
+
 test("persistParsedTripUpdatesIncremental still runs retention deletes", async () => {
   const { persistParsedTripUpdatesIncremental } = await loadPersistors();
   const { calls, poolLike } = makePoolLike((sql) => {
