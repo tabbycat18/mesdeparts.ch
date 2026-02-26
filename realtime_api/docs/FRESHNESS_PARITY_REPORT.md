@@ -2,9 +2,14 @@
 
 Date: 2026-02-26
 
+Status note (2026-02-26):
+- `ios/MesDepartsApp` was removed during iOS project consolidation.
+- The runnable iOS target is now `ios/MesDepartsIOSApp/MesDepartsIOSApp.xcodeproj`.
+- iOS file references below are historical from the earlier prototype unless explicitly updated.
+
 Scope compared:
 - Web: `realtime_api/frontend/v20260205-1.main.js`, `realtime_api/frontend/v20260205-1.logic.js`, `realtime_api/frontend/v20260205-1.state.js`
-- iOS app: `ios/MesDepartsApp/Sources/MesDepartsApp/StationboardViewModel.swift`, `ios/MesDepartsApp/Sources/MesDepartsApp/MesDepartsApp.swift`, `ios/MesDepartsApp/Sources/MesDepartsApp/StationboardView.swift`
+- iOS app (current shell): `ios/MesDepartsIOSApp/MesDepartsIOSApp/App/MesDepartsIOSAppApp.swift`, `ios/MesDepartsIOSApp/MesDepartsIOSApp/App/ContentView.swift`
 - iOS networking: `ios/MesDepartsCore/Sources/MesDepartsCore/API/StationboardAPI.swift`, `ios/MesDepartsCore/Sources/MesDepartsCore/API/HTTPClient.swift`
 
 This is a code-level state-machine parity audit for stationboard refresh + RT freshness semantics.
@@ -99,7 +104,7 @@ stateDiagram-v2
   - `openStop(...)` increments generation, cancels active fetch, clears board state.
 - RT anti-downgrade hold (web-equivalent behavior):
   - `shouldApplyIncomingBoard(incomingHasRTSnapshot:now:)` + `currentBoardHasRTSnapshot` + `lastRTSnapshotAt` hard-cap logic.
-- Lifecycle gating:
+- Lifecycle gating (historical prototype reference):
   - `MesDepartsApp.scenePhase` -> `setAppActive(...)` pausing timers and in-flight fetches outside active state.
 - Cache bypass intent for stationboard requests:
   - `HTTPClient` uses ephemeral `URLSessionConfiguration`, `request.cachePolicy = .reloadIgnoringLocalCacheData`, and `Cache-Control: no-store, no-cache, max-age=0`.
@@ -109,7 +114,7 @@ stateDiagram-v2
 | Mechanism | Web reference | iOS reference | Verdict | Notes / required change |
 | --- | --- | --- | --- | --- |
 | Poll scheduling + jitter | `scheduleNextRefresh`, `jitteredDelayMs`, `REFRESH_DEPARTURES` in `v20260205-1.main.js` + `v20260205-1.state.js` | `pollInterval`, `jitteredPollDelay`, `scheduleNextPoll` in `StationboardViewModel` | Equivalent | Both run ~15s with small signed jitter and one-shot rescheduling. |
-| Foreground/background gating | `handleVisibilityChange`, `handleWindowFocus`, `document.hidden` checks in `v20260205-1.main.js` | `scenePhase` in `MesDepartsApp.swift` + `setAppActive` in `StationboardViewModel` | Equivalent | Both pause in background and trigger immediate foreground refresh. |
+| Foreground/background gating | `handleVisibilityChange`, `handleWindowFocus`, `document.hidden` checks in `v20260205-1.main.js` | historical prototype mapping: `scenePhase` in `MesDepartsApp.swift` + `setAppActive` in `StationboardViewModel` | Equivalent | Both pause in background and trigger immediate foreground refresh. |
 | In-flight coalescing | `refreshInFlight` + `pendingRefreshRequest` + queued dispatch in `refreshDepartures` | `isRequestInFlight` + `pendingRefreshRequested` + follow-up launch in `fetchNow` defer | Equivalent | Single follow-up request is collapsed while one fetch is active. |
 | Superseded/stale response handling | `requestSeq` snapshot + `isStaleRequest()` in `refreshDepartures` | `requestGeneration` + `fetchStopID` checks in `fetchNow` | Equivalent | Superseded responses are ignored before UI state mutation. |
 | Stop switch stale UI prevention | `clearBoardForStationChange()` in `v20260205-1.main.js` | `openStop(...)` now clears board via `clearBoardForStopChange()` | Equivalent (after fix) | iOS patch added immediate board clear on stop change to prevent previous-stop rows. |
@@ -158,7 +163,7 @@ stateDiagram-v2
 
 ## iOS-only parity patch included in this update
 
-- `ios/MesDepartsApp/Sources/MesDepartsApp/StationboardViewModel.swift`
+- historical prototype path: `ios/MesDepartsApp/Sources/MesDepartsApp/StationboardViewModel.swift`
   - Added stop-switch board reset.
   - Added RT snapshot hold decision (`shouldApplyIncomingBoard`).
   - Added snapshot-tracking state (`currentBoardHasRTSnapshot`, `lastRTSnapshotAt`).

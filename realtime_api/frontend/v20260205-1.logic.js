@@ -2499,6 +2499,22 @@ export async function fetchJourneyDetails(dep, { signal } = {}) {
   if (bestStrictSection) {
     bestSection = bestStrictSection;
     bestConn = bestStrictConn;
+  } else if (expectedJourneyMode === "bus") {
+    // Bus trip-details safety: do not fall back to relaxed candidates.
+    // If strict line-compatible bus matching fails, returning no details is safer
+    // than accidentally attaching an unrelated (often rail) journey.
+    if (isJourneyDebugEnabled()) {
+      logJourneyRequestDebug({
+        debugTripResolution: {
+          expectedJourneyMode,
+          rejectedModeCount,
+          decision: "reject_relaxed_for_bus_no_strict_match",
+          candidates: traceCandidates,
+        },
+      });
+    }
+    if (directFallback) return directFallback;
+    throw new Error("No journey details available for this départ");
   }
 
   if (!bestSection) throw new Error("No journey details available for this départ");

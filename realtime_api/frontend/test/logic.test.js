@@ -670,6 +670,76 @@ assert.equal(
   }
 }
 
+// fetchJourneyDetails should reject relaxed fallback for bus when no strict match exists
+// (e.g., upstream section has missing/ambiguous category and non-matching number).
+{
+  const originalFetch = globalThis.fetch;
+  const targetMs = Date.parse("2026-02-17T05:03:00+01:00");
+  const targetTs = Math.floor(targetMs / 1000);
+
+  appState.stationId = "Parent8592059";
+  appState.STATION = "Lausanne, Vieux-Moulin";
+
+  globalThis.fetch = async (url) => {
+    const u = String(url || "");
+    if (u.includes("/api/connections")) {
+      return {
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        json: async () => ({
+          connections: [
+            {
+              sections: [
+                {
+                  journey: {
+                    category: "",
+                    number: "33",
+                    passList: [
+                      { station: { id: "Parent8501120", name: "Lausanne" } },
+                      { station: { id: "Parent8501008", name: "Genève" } },
+                    ],
+                  },
+                  departure: {
+                    departureTimestamp: targetTs,
+                    station: { name: "Lausanne" },
+                  },
+                  arrival: {
+                    station: { name: "Genève" },
+                  },
+                },
+              ],
+            },
+          ],
+        }),
+      };
+    }
+    throw new Error(`Unexpected fetch URL in test: ${u}`);
+  };
+
+  try {
+    await assert.rejects(
+      () =>
+        fetchJourneyDetails({
+          mode: "bus",
+          number: "9193",
+          line: "9193",
+          simpleLineId: "9193",
+          category: "B",
+          dest: "Lausanne, Bel-Air",
+          fromStationId: "Parent8592059",
+          fromStationName: "Lausanne, Vieux-Moulin",
+          scheduledTime: targetMs,
+          scheduledTimestamp: targetTs,
+          timeStr: "05:03",
+        }),
+      /No journey details available/
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
 // Unknown-mode departures should prefer existing trip details over connection guesses.
 {
   const originalFetch = globalThis.fetch;
