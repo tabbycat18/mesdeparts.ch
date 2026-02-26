@@ -1051,6 +1051,11 @@ function buildAlertsResponseMeta({
     )
       ? Math.max(0, Number(source.alertsPayloadFetchCountThisRequest))
       : 0,
+    // Debug fields from parsed loader — pass through so toRtAlertsDebug can surface them
+    parsedRowCount: Number.isFinite(Number(source.parsedRowCount))
+      ? Number(source.parsedRowCount)
+      : null,
+    parsedMaxUpdatedAt: String(source.parsedMaxUpdatedAt || "").trim() || null,
   };
 }
 
