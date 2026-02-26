@@ -196,6 +196,7 @@ test("persistParsedTripUpdatesSnapshot commits and releases client without leaki
 
   assert.equal(out?.txDiagnostics?.transactionClientUsed, true);
   assert.equal(out?.txDiagnostics?.transactionCommitted, true);
+  assert.equal(out?.txDiagnostics?.transactionRolledBack, false);
   assert.equal(out?.txDiagnostics?.clientReleased, true);
   assert.equal(state.transactionOpen, false);
   assert.equal(state.checkedOut, 0);

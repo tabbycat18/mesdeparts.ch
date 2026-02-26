@@ -201,11 +201,12 @@ function extractServiceAlertsRows(feed) {
 
 async function withAdvisoryWriteLock(lockId, fn, poolLike = pool) {
   const client = await poolLike.connect();
+  let caughtError = null;
   const txDiagnostics = {
     transactionClientUsed: true,
     transactionCommitted: false,
     transactionRolledBack: false,
-    clientReleased: false,
+    clientReleased: null,
   };
   try {
     await client.query("BEGIN");
@@ -234,6 +235,7 @@ async function withAdvisoryWriteLock(lockId, fn, poolLike = pool) {
       txDiagnostics,
     };
   } catch (err) {
+    caughtError = err;
     try {
       if (!txDiagnostics.transactionCommitted && !txDiagnostics.transactionRolledBack) {
         await client.query("ROLLBACK");
@@ -251,8 +253,15 @@ async function withAdvisoryWriteLock(lockId, fn, poolLike = pool) {
         txDiagnostics.transactionRolledBack = true;
       }
     } catch {}
-    client.release();
-    txDiagnostics.clientReleased = true;
+    try {
+      client.release();
+      txDiagnostics.clientReleased = true;
+    } catch {
+      txDiagnostics.clientReleased = false;
+      if (caughtError && typeof caughtError === "object") {
+        caughtError.txDiagnostics = txDiagnostics;
+      }
+    }
   }
 }
 

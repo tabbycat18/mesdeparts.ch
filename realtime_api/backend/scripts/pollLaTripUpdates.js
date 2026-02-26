@@ -427,8 +427,9 @@ export function createLaTripUpdatesPoller({
   async function tick() {
     let txLifecycle = {
       transactionClientUsed: false,
-      transactionCommitted: false,
-      clientReleased: false,
+      transactionCommitted: null,
+      transactionRolledBack: null,
+      clientReleased: null,
     };
     const returnWithTxDiagnostics = (waitMs) => {
       logLine("poller_tx_client_lifecycle", {
@@ -436,7 +437,13 @@ export function createLaTripUpdatesPoller({
         backoffMs: 0,
         lastFetchedAgeMs: null,
         etagPresent: false,
-        extra: txLifecycle,
+        extra: {
+          ...txLifecycle,
+          lifecycleOk:
+            txLifecycle.transactionClientUsed === true
+              ? txLifecycle.clientReleased === true
+              : true,
+        },
       });
       return waitMs;
     };
@@ -535,19 +542,27 @@ export function createLaTripUpdatesPoller({
         txLifecycle = {
           transactionClientUsed:
             parsedWrite?.txDiagnostics?.transactionClientUsed === true,
-          transactionCommitted:
-            parsedWrite?.txDiagnostics?.transactionCommitted === true,
+          transactionCommitted: parsedWrite?.txDiagnostics?.transactionCommitted === true,
+          transactionRolledBack: parsedWrite?.txDiagnostics?.transactionRolledBack === true,
           clientReleased:
-            parsedWrite?.txDiagnostics?.clientReleased === true,
+            parsedWrite?.txDiagnostics?.clientReleased === true
+              ? true
+              : parsedWrite?.txDiagnostics?.clientReleased === false
+                ? false
+                : null,
         };
       } catch (err) {
         txLifecycle = {
           transactionClientUsed:
             err?.txDiagnostics?.transactionClientUsed === true,
-          transactionCommitted:
-            err?.txDiagnostics?.transactionCommitted === true,
+          transactionCommitted: err?.txDiagnostics?.transactionCommitted === true,
+          transactionRolledBack: err?.txDiagnostics?.transactionRolledBack === true,
           clientReleased:
-            err?.txDiagnostics?.clientReleased === true,
+            err?.txDiagnostics?.clientReleased === true
+              ? true
+              : err?.txDiagnostics?.clientReleased === false
+                ? false
+                : null,
         };
         const classified = classifyPollerError(err);
         const backoffMs = backoffErrMs();

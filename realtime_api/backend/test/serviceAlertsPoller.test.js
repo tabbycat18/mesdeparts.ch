@@ -193,6 +193,80 @@ test("service alerts poller skips parsed write on unchanged 200 payload within w
   assert.equal(parsedWrites, 0);
 });
 
+test("service alerts poller tx lifecycle log reports success path with committed+released client", async () => {
+  const createLaServiceAlertsPoller = await loadPollerFactory();
+  const logs = [];
+  const poller = createLaServiceAlertsPoller({
+    token: "test-token",
+    fetchLike: async () => okResponse(Buffer.from("new-alerts-payload"), "etag-new"),
+    getRtCacheMetaLike: async () => ({
+      fetched_at: new Date(Date.now() - 120_000),
+      etag: "etag-old",
+      last_status: 200,
+      last_error: null,
+    }),
+    getRtCachePayloadShaLike: async () => null,
+    updateRtCacheStatusLike: async () => ({ updated: true, writeSkippedByLock: false }),
+    ensureRtCacheMetadataRowLike: async () => ({ inserted: false, writeSkippedByLock: false }),
+    setRtCachePayloadShaLike: async () => ({ updated: true, writeSkippedByLock: false }),
+    persistParsedServiceAlertsSnapshotLike: async () => ({
+      updated: true,
+      writeSkippedByLock: false,
+      txDiagnostics: {
+        transactionClientUsed: true,
+        transactionCommitted: true,
+        transactionRolledBack: false,
+        clientReleased: true,
+      },
+    }),
+    decodeFeedLike: () => ({ entity: [] }),
+    logLike: (entry) => logs.push(entry),
+  });
+
+  await poller.tick();
+  const lifecycle = logs.find(
+    (entry) => entry?.event === "service_alerts_poller_tx_client_lifecycle"
+  );
+  assert.equal(lifecycle?.transactionClientUsed, true);
+  assert.equal(lifecycle?.transactionCommitted, true);
+  assert.equal(lifecycle?.transactionRolledBack, false);
+  assert.equal(lifecycle?.clientReleased, true);
+  assert.equal(lifecycle?.lifecycleOk, true);
+});
+
+test("service alerts poller tx lifecycle log reports unchanged path with no tx client and lifecycleOk=true", async () => {
+  const createLaServiceAlertsPoller = await loadPollerFactory();
+  const payload = Buffer.from("same-alerts-payload");
+  const payloadSha = payloadSha256Hex(payload);
+  const logs = [];
+  const poller = createLaServiceAlertsPoller({
+    token: "test-token",
+    fetchLike: async () => okResponse(payload, "etag-same"),
+    getRtCacheMetaLike: async () => ({
+      fetched_at: new Date(Date.now() - 2_000),
+      etag: "etag-same",
+      last_status: 200,
+      last_error: null,
+    }),
+    getRtCachePayloadShaLike: async () => payloadSha,
+    updateRtCacheStatusLike: async () => ({ updated: true, writeSkippedByLock: false }),
+    ensureRtCacheMetadataRowLike: async () => ({ inserted: false, writeSkippedByLock: false }),
+    persistParsedServiceAlertsSnapshotLike: async () => ({ updated: true, writeSkippedByLock: false }),
+    decodeFeedLike: () => ({ entity: [] }),
+    logLike: (entry) => logs.push(entry),
+  });
+
+  await poller.tick();
+  const lifecycle = logs.find(
+    (entry) => entry?.event === "service_alerts_poller_tx_client_lifecycle"
+  );
+  assert.equal(lifecycle?.transactionClientUsed, false);
+  assert.equal(lifecycle?.transactionCommitted, null);
+  assert.equal(lifecycle?.transactionRolledBack, null);
+  assert.equal(lifecycle?.clientReleased, null);
+  assert.equal(lifecycle?.lifecycleOk, true);
+});
+
 test("service alerts poller treats advisory-lock parsed write skip as clean no-op", async () => {
   const createLaServiceAlertsPoller = await loadPollerFactory();
   let parsedWrites = 0;
