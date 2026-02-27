@@ -45,9 +45,11 @@ Use this map first to avoid chasing outdated paths:
 - Stationboard API orchestration: `realtime_api/backend/src/api/stationboard.js`
 - Canonical builder implementation: `realtime_api/backend/src/logic/buildStationboard.js`
 - Compatibility shim (re-export only): `realtime_api/backend/logic/buildStationboard.js`
-- Scoped RT cache merge input: `realtime_api/backend/src/rt/loadScopedRtFromCache.js`
-- Alerts cache input: `realtime_api/backend/src/rt/loadAlertsFromCache.js`
-- Shared feed cache/decode module: `realtime_api/backend/loaders/loadRealtime.js`
+- **Primary RT request path (parsed tables):** `realtime_api/backend/src/rt/loadScopedRtFromParsedTables.js`
+- Scoped RT cache/blob path (debug-only, `debug_rt=blob`): `realtime_api/backend/src/rt/loadScopedRtFromCache.js`
+- **Primary alerts request path (parsed table):** `realtime_api/backend/src/rt/loadAlertsFromParsedTables.js`
+- Alerts cache/blob path (debug-only, `debug_rt=blob`): `realtime_api/backend/src/rt/loadAlertsFromCache.js`
+- Blob/debug feed cache module (dead code for normal production): `realtime_api/backend/loaders/loadRealtime.js` — `loadRealtimeDelayIndex*` + `persistRtUpdates` functions in this file are never called from the active request handler
 - SQL runbook and ownership map: `realtime_api/backend/README_SQL.md`
 - Deep file-by-file explanations for logic/loaders/rt: `realtime_api/backend/README_src.md`
 
@@ -189,6 +191,22 @@ To reduce per-request DB pressure and poller write churn:
   - unchanged `200` payloads skip parsed snapshot rewrites when SHA-256 matches (`RT_CACHE_MIN_WRITE_INTERVAL_MS`, default `30000`)
   - frequent `304` status writes are throttled by the same interval
   - parsed snapshot + metadata writes use advisory xact lock per feed to avoid concurrent writer churn across poller replicas.
+
+### Known risks (confirmed by code inspection)
+
+**SHA write lock removed (fixed 2026-02-27):** The SHA write to `meta_kv` previously passed `writeLockId: FEED_WRITE_LOCK_ID`, which gated the write on `pg_try_advisory_xact_lock`. Since `meta_kv` is idempotent with `ON CONFLICT`, no lock is needed — all instances write the same SHA. The lock-skip path returned silently (`writeSkippedByLock: true`), making failures invisible. Fixed: lock removed, `.catch(() => {})` replaced with structured `poller_sha_write_warn` log. SHA writes confirmed healthy in production (updating every ~30 s with fresh hashes). Primary churn driver is genuine upstream feed changes, not broken dedup.
+
+Diagnose with:
+```sql
+SELECT key, value, updated_at
+FROM public.meta_kv
+WHERE key LIKE 'rt_cache_payload_sha256:%';
+```
+If `updated_at` is more than ~30 s stale during active polling, a SHA write failure has occurred.
+
+**`rt_updates` table and `persistRtUpdates()` are dead code:** `buildDelayIndex()` / `loadRealtimeDelayIndexOnce()` / `persistRtUpdates()` in `loaders/loadRealtime.js` are never imported from `server.js` or any active request handler. Only tests reference them. The `rt_updates` table (created dynamically if `persistRtUpdates` ever ran) is vestigial — not written to in production, safe to drop.
+
+**Retention DELETE unconditional:** `deleteOlderThanRetention()` inside `persistParsedTripUpdatesIncremental()` runs on every successful write call, even when 0 rows are pruned. 2 extra DELETE statements per tick, amplified when SHA silent failure forces every-tick upserts.
 
 ### Measurement checklist (network-bleed acceptance)
 

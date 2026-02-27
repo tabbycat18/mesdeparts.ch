@@ -627,9 +627,14 @@ export function createLaServiceAlertsPoller({
         return returnWithTxDiagnostics(INTERVAL_MS);
       }
       if (incomingPayloadSha) {
-        await setRtCachePayloadShaLike(feedKey, incomingPayloadSha, {
-          writeLockId: FEED_WRITE_LOCK_ID,
-        }).catch(() => {});
+        await setRtCachePayloadShaLike(feedKey, incomingPayloadSha).catch((err) =>
+          logLine("service_alerts_poller_sha_write_warn", {
+            extra: {
+              errorCode: String(err?.code || ""),
+              errorMessage: String(err?.message || err || "unknown"),
+            },
+          })
+        );
       }
       await persistStatusMetadata(cacheMeta, {
         status: 200,

@@ -25,7 +25,8 @@ The **poller** is a continuously-running background process that keeps the real-
                  │
  ┌───────────────▼──────────────────────────────────────────────────────────┐
  │  Neon PostgreSQL (shared DB)                                             │
- │  rt_cache              — raw protobuf blob + etag + last_status          │
+ │  rt_cache              — metadata only (fetched_at, etag, last_status,   │
+ │                          last_error); payload column is vestigial/NULL   │
  │  rt_trip_updates       — parsed trip-level delays                        │
  │  rt_stop_time_updates  — parsed stop-level delays                        │
  │  rt_service_alerts     — parsed alert entities (incl. informed_entities) │
@@ -72,11 +73,11 @@ The **poller** is a continuously-running background process that keeps the real-
 | [`realtime_api/backend/scripts/checkPollerHeartbeat.js`](realtime_api/backend/scripts/checkPollerHeartbeat.js) | **Health check.** Reads `rt_poller_heartbeat` and exits 0 (OK) or 2 (stale/missing). Thresholds: trip ≤ 90 s, alerts ≤ 300 s. |
 | [`realtime_api/backend/src/loaders/fetchTripUpdates.js`](realtime_api/backend/src/loaders/fetchTripUpdates.js) | Resolves API token; provides upstream URL constant `LA_GTFS_RT_TRIP_UPDATES_URL`. Used by both the poller and on-demand request path. |
 | [`realtime_api/backend/src/loaders/fetchServiceAlerts.js`](realtime_api/backend/src/loaders/fetchServiceAlerts.js) | Same as above for ServiceAlerts; also contains `normalizeAlertEntity()` with enum mappings, translation picker, and deduplication. |
-| [`realtime_api/backend/src/rt/persistParsedArtifacts.js`](realtime_api/backend/src/rt/persistParsedArtifacts.js) | Parses decoded feeds and upserts rows into `rt_tripupdates`/`rt_tripupdates_stop` (incremental) and `rt_servicealerts`/`rt_servicealerts_informed_entity` (snapshot). Batch sizes: 500 trip rows, 200 stop rows. |
+| [`realtime_api/backend/src/rt/persistParsedArtifacts.js`](realtime_api/backend/src/rt/persistParsedArtifacts.js) | Parses decoded feeds and upserts rows into `rt_trip_updates`/`rt_stop_time_updates` (incremental) and `rt_service_alerts` (snapshot). Batch sizes: 500 trip rows, 200 stop rows. Retention `DELETE` runs unconditionally on every successful write call (even when 0 rows are pruned). |
 | [`realtime_api/backend/src/db/rtCache.js`](realtime_api/backend/src/db/rtCache.js) | DB layer for `rt_cache` and `meta_kv`. Handles advisory lock acquisition/release, upsert of raw blobs, and SHA-256 comparison. Feed keys: `"la_tripupdates"`, `"la_servicealerts"`. |
 | [`realtime_api/backend/src/db/rtPollerHeartbeat.js`](realtime_api/backend/src/db/rtPollerHeartbeat.js) | Read/write helpers for `rt_poller_heartbeat`. Touched on every successful tick and every error. |
-| [`realtime_api/backend/loaders/loadRealtime.js`](realtime_api/backend/loaders/loadRealtime.js) | **Backend-side cache.** In-memory cache of the decoded feed (TTL 10–15 s). Used by the stationboard request path, not the poller. |
-| [`realtime_api/backend/src/api/stationboard.js`](realtime_api/backend/src/api/stationboard.js) | Stationboard orchestrator: loads static schedule, calls `loadRealtimeDelayIndexOnce()`, merges delays, attaches alerts. |
+| [`realtime_api/backend/loaders/loadRealtime.js`](realtime_api/backend/loaders/loadRealtime.js) | **Backend blob/debug cache only.** In-memory decoded feed cache (TTL 10–15 s). Only activated when `debug_rt=blob` query param is set. **Not the primary production RT path.** Exported functions `loadRealtimeDelayIndex*` and `persistRtUpdates` are **dead code in production** — never called from the active request handler. |
+| [`realtime_api/backend/src/api/stationboard.js`](realtime_api/backend/src/api/stationboard.js) | Stationboard orchestrator: loads static schedule, calls `createRequestScopedTripUpdatesLoaderLike()` (which uses `src/rt/loadScopedRtFromParsedTables.js` by default; blob path only when `debug_rt=blob`), merges delays, attaches alerts. |
 | [`realtime_api/edge/worker.js`](realtime_api/edge/worker.js) | Cloudflare Worker. Proxies all `api.mesdeparts.ch/*` to the Fly backend. Edge-caches `/api/stationboard` 15 s. Rate-limits per IP. |
 | [`realtime_api/edge/wrangler.toml`](realtime_api/edge/wrangler.toml) | Worker deployment config. Route: `api.mesdeparts.ch/*`. `RT_BACKEND_ORIGIN = "https://mesdeparts-ch.fly.dev"`. |
 | [`fly.poller.toml`](fly.poller.toml) | Fly.io config for the poller app (`mesdeparts-rt-poller`). Process: `npm run poller`. Region: `ams`. No HTTP service. |
@@ -169,7 +170,7 @@ The following patterns were searched across the entire repo and **not found** in
 | `onSchedule` / `on('scheduled')` | Not present. |
 | `bull` / job queue | Not present. No message queues of any kind. |
 | `refreshStationboard` | Not present. Equivalent is `refreshDepartures()` in frontend. |
-| `loadTripUpdates` | Not present. Equivalent is `fetchTripUpdates()` / `loadRealtimeDelayIndexOnce()`. |
+| `loadTripUpdates` | Not present. Equivalent is `fetchTripUpdates()` / `loadScopedRtFromParsedTables.js` (default parsed-table request path). |
 
 ---
 
@@ -187,13 +188,13 @@ The following patterns were searched across the entire repo and **not found** in
    - **Other error** → enter backoff (base 15 s, max 2 min; non-transient errors use 120 s base, 10 min max).
 5. **SHA-256 check** — compare hash of new payload to stored hash in `meta_kv`. Skip upsert if unchanged (dedup guard).
 6. **Acquire advisory lock** — `pg_try_advisory_xact_lock(7483921)`. If lock not acquired (another instance is writing), skip this write cycle; log a warning if lock-skip streak exceeds `RT_POLLER_LOCK_SKIP_WARN_STREAK` (default 6) or the cached payload is stale beyond `RT_POLLER_LOCK_SKIP_STALE_AGE_MS` (default 90 s).
-7. **Persist raw blob** — upsert into `rt_cache(feed_key, payload, fetched_at, etag, last_status)`.
+7. **Update cache metadata** — call `updateRtCacheStatus()` → writes `fetched_at`, `etag`, `last_status`, `last_error` to `rt_cache`. **No payload blob is written.** `rt_cache.payload` is `NULL` in production; `upsertRtCache` (blob upsert) is never called by the current poller.
 8. **Decode protobuf** — `GtfsRealtimeBindings.transit_realtime.FeedMessage.decode(payloadBytes)`.
 9. **Persist parsed data** — call `persistParsedTripUpdatesIncremental()`:
    - Batch-upsert trip rows into `rt_trip_updates` (500 rows/batch).
    - Batch-upsert stop rows into `rt_stop_time_updates` (200 rows/batch).
    - Prune rows older than `RT_PARSED_RETENTION_HOURS` (default 6 h).
-10. **Update payload SHA** — write new SHA-256 to `meta_kv`.
+10. **Update payload SHA** — write new SHA-256 to `meta_kv` via `setRtCachePayloadSha()`. **Risk:** this call has a bare `.catch(() => {})` (silent failure). If it fails, `meta_kv` stores a stale/null SHA; the next tick sees no matching SHA and fires a full incremental upsert even for an identical payload — potentially forcing upserts every 15 s instead of only on real changes.
 11. **Touch heartbeat** — `touchTripUpdatesHeartbeat({ at, instanceId })` → writes `tripupdates_updated_at` in `rt_poller_heartbeat`.
 12. **Sleep** — wait until next interval tick.
 
@@ -209,7 +210,9 @@ Steps 1–11 follow the same pattern with these differences:
 
 ### Backend read path (not the poller, but relevant context)
 
-On each `/api/stationboard` request, the backend calls `loadRealtimeDelayIndexOnce()` in [`loaders/loadRealtime.js`](realtime_api/backend/loaders/loadRealtime.js). This reads from the **parsed tables** (`rt_trip_updates`, `rt_stop_time_updates`) by default — **not** from `rt_cache` blobs. The in-memory decoded-feed cache has a TTL of 10 000–15 000 ms (`RT_DECODED_FEED_CACHE_MS`) to avoid hammering the DB on every request.
+On each `/api/stationboard` request, `src/api/stationboard.js` calls `createRequestScopedTripUpdatesLoaderLike()`, which uses [`src/rt/loadScopedRtFromParsedTables.js`](realtime_api/backend/src/rt/loadScopedRtFromParsedTables.js) as the default loader. This reads directly from `rt_trip_updates` + `rt_stop_time_updates` (scoped to the trip/stop IDs in the current board window) — **not** from `rt_cache` blobs.
+
+The blob path ([`loaders/loadRealtime.js`](realtime_api/backend/loaders/loadRealtime.js) → `getRtCache`) is only activated when the `debug_rt=blob` query param is set. Functions `loadRealtimeDelayIndexOnce()`, `loadRealtimeDelayIndex()`, `buildDelayIndex()`, and `persistRtUpdates()` in `loaders/loadRealtime.js` are **dead code in production** — never imported or called from `server.js` or any active request handler. The `rt_updates` table (created dynamically by `persistRtUpdates`) is likewise vestigial and not written to in normal operation.
 
 ---
 
@@ -414,12 +417,84 @@ GET /api/_dbinfo                           — DB schema info
 
 ---
 
+## Known issues / optimization backlog
+
+These findings were confirmed by direct code inspection and are documented here before any fixes are applied.
+
+### 1. SHA write lock was unnecessary — fixed
+
+**Files:** `realtime_api/backend/scripts/pollLaTripUpdates.js`, `pollLaServiceAlerts.js`
+
+**Status: fixed.** The original code:
+```js
+await setRtCachePayloadShaLike(feedKey, incomingPayloadSha, {
+  writeLockId: FEED_WRITE_LOCK_ID,
+}).catch(() => {});
+```
+
+Two problems:
+1. `writeLockId` was passed to the `meta_kv` SHA write, causing `pg_try_advisory_xact_lock` to gate the upsert. Since `meta_kv` uses `ON CONFLICT` and all poller instances would write the same SHA for the same payload, no lock is needed. If another instance held the lock (e.g., during concurrent redeploys), `writeSkippedByLock: true` was returned silently — no error thrown, return value discarded, SHA not written.
+2. `.catch(() => {})` would swallow genuine DB errors, making them invisible in logs.
+
+**Fixed to:**
+```js
+await setRtCachePayloadShaLike(feedKey, incomingPayloadSha).catch((err) =>
+  logLine("poller_sha_write_warn", {
+    extra: {
+      errorCode: String(err?.code || ""),
+      errorMessage: String(err?.message || err || "unknown"),
+    },
+  })
+);
+```
+
+**Measured (2026-02-27):** SHA writes were working correctly in production. `la_tripupdates` SHA updates every ~30 s with genuinely changing hash values — the upstream feed changes on nearly every tick. The dedup guard is healthy. The primary churn driver is real upstream data changes, not broken dedup.
+
+**Diagnosis query (for future reference):**
+```sql
+SELECT key, value, updated_at
+FROM public.meta_kv
+WHERE key LIKE 'rt_cache_payload_sha256:%';
+```
+If `updated_at` is >30 s stale during active polling, a SHA write failure has occurred.
+
+### 2. `rt_updates` / `persistRtUpdates` is dead code
+
+**File:** `realtime_api/backend/loaders/loadRealtime.js`
+
+`persistRtUpdates()`, `buildDelayIndex()`, `loadRealtimeDelayIndex()`, `loadRealtimeDelayIndexOnce()`, `loadRealtimeDelayIndexFromSharedCache()` are all exported but **never imported by `server.js` or any active request handler**. Only tests import them. The `rt_updates` table (created dynamically by `persistRtUpdates`) is not written to in normal operation.
+
+These functions and the `rt_updates` table are safe to drop in a future cleanup pass. They do not currently generate DB traffic.
+
+### 3. Retention DELETE runs unconditionally every tick
+
+**File:** `realtime_api/backend/src/rt/persistParsedArtifacts.js`
+
+`deleteOlderThanRetention()` is called inside every `persistParsedTripUpdatesIncremental()` invocation — even when the payload is unchanged or 0 rows are pruned. This means 2 extra SQL DELETE statements per successful tick, multiplied heavily if the SHA silent failure is active (forcing every-tick upserts).
+
+### 4. 30 s connection drop = backoff cycle pattern
+
+The reported "~2 min on, ~30 s off" pattern matches the poller's internal backoff behavior:
+- First upstream or DB error → `backoffErrMs()` = 15 s sleep.
+- Second consecutive error → 30 s sleep.
+- The loop resumes at the next normal tick interval after a successful fetch.
+
+This is expected behavior, not a poller bug. To diagnose whether drops are upstream-fetch errors or DB errors, filter Fly logs:
+```bash
+fly logs --app mesdeparts-rt-poller | grep -E 'fetch_error|db_error|tick_failed|supervisor_start|poller_runner_error'
+```
+
+---
+
 ## Assumptions / Unknowns
 
 - **Dockerfile for poller**: Both Fly apps (`mesdeparts-ch` and `mesdeparts-rt-poller`) build from the same root `Dockerfile` (no `[build]` section in either toml → Fly defaults to `./Dockerfile`). The Dockerfile `CMD ["npm", "start"]` is overridden only for the poller app by `fly.poller.toml [processes] app = "npm run poller"`. The two toml files do not interact — they are configs for independent apps. Minor inefficiency: the Dockerfile copies `realtime_api/frontend` into the poller image, which the poller never reads (harmless, slightly larger image). Not directly confirmed by a live Fly.io build log — **I cannot verify this from a build artifact.**
 - **Neon connection string name**: The heartbeat script checks for `DATABASE_URL` or `DATABASE_URL_POLLER`. Whether the poller Fly app uses `DATABASE_URL_POLLER` (a separate pooled URL) or the same `DATABASE_URL` as the backend is not confirmed from env/secrets config — **I cannot verify which is set in production Fly secrets.**
 - **GitHub Actions GTFS static refresh is separate**: `.github/workflows/gtfs_static_refresh.yml` runs hourly (`cron: "0 * * * *"`) and refreshes static GTFS tables, not the RT poller. It was initially missed in the first scan and is now documented in "Adjacent scheduled jobs" above.
 - **Cloudflare Pages deployment**: AGENTS.md states the frontend is served by Cloudflare Pages, "managed via Cloudflare dashboard (not in repo)". The exact Pages project name, build config, and deploy triggers are not in the repo — **I cannot verify these from the codebase.**
-- **`RT_POLLER_HEARTBEAT_ENABLED` semantics**: Name is confusing but logic is clear: `heartbeatEnabled = process.env.RT_POLLER_HEARTBEAT_ENABLED !== "0"`. Unset (undefined) → enabled. `"0"` → **disabled**. Any other value → enabled. Previous versions of this README had this backwards.
+- **`RT_POLLER_HEARTBEAT_ENABLED` semantics**: Name is confusing but logic is clear: `heartbeatEnabled = process.env.RT_POLLER_HEARTBEAT_ENABLED !== "0"`. Unset (undefined) → enabled. `"0"` → **disabled**. Any other value → enabled. **Confirmed** — logic verified in code.
 - **opendata.swiss API key quota**: The exact quota tier for the GTFS-RT token is not documented in the repo — **I cannot verify daily/hourly rate limits from the code.**
 - **Fly machine auto-scaling for poller**: `fly.poller.toml` does not specify `min_machines_running` or `auto_stop_machines`. Whether Fly keeps exactly one machine alive at all times or can scale to zero is not confirmed — **I cannot verify this without inspecting live Fly machine settings.**
+- **`rt_cache.payload` column** (**confirmed**): The current poller never calls `upsertRtCache`. The `rt_cache.payload` column is `NULL` in production. The blob path (`getRtCache`) is only ever triggered via `debug_rt=blob`. Safe to leave as-is or formally drop the column in a future migration.
+- **`rt_updates` table** (**confirmed dead code**): Dynamically created by `persistRtUpdates()` in `loaders/loadRealtime.js`, which is never called from production code. If the table exists in the DB it is vestigial and safe to drop.
+- **30 s gap** (**confirmed as backoff pattern**): See "Known issues / optimization backlog" §4.

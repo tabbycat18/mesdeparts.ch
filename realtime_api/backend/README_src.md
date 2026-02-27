@@ -423,13 +423,17 @@ Primary responsibilities:
 
 - `src/db/query.js` (7 lines)
   - Exports: `query(...)`, `db`
-- `src/db/rtCache.js` (135 lines)
+- `src/db/rtCache.js` (425 lines)
   - Exports:
     - `LA_TRIPUPDATES_FEED_KEY`
     - `LA_SERVICEALERTS_FEED_KEY`
-    - `upsertRtCache(...)`
-    - `getRtCache(...)`
-    - `getRtCacheMeta(...)`
+    - `upsertRtCache(...)` — writes payload blob; **never called in production** (blob write path disabled)
+    - `ensureRtCacheMetadataRow(...)`
+    - `updateRtCacheStatus(...)` — metadata-only UPDATE; called by pollers every tick
+    - `getRtCachePayloadSha(...)` — reads SHA from `meta_kv`; called by pollers for dedup
+    - `setRtCachePayloadSha(...)` — writes SHA to `meta_kv`; called by pollers after successful parse
+    - `getRtCache(...)` — reads full payload blob; **only called in `debug_rt=blob` path**
+    - `getRtCacheMeta(...)` — lightweight metadata SELECT (no payload)
 
 ### `src/debug`
 
@@ -498,9 +502,13 @@ Primary responsibilities:
 - `src/rt/fetchTripUpdates.js` (1 line)
   - Exports: re-export of `fetchTripUpdates` from `src/loaders/fetchTripUpdates.js`
 - `src/rt/loadAlertsFromCache.js` (149 lines)
-  - Exports: `loadAlertsFromCache(...)`
+  - Exports: `loadAlertsFromCache(...)` — blob/debug path; only active when `debug_rt=blob`
+- `src/rt/loadAlertsFromParsedTables.js`
+  - Exports: `loadAlertsFromParsedTables(...)` — **primary production alerts path**; reads from `rt_service_alerts` with scoped SQL predicates
 - `src/rt/loadScopedRtFromCache.js` (409 lines)
-  - Exports: `loadScopedRtFromCache(...)`
+  - Exports: `loadScopedRtFromCache(...)` — blob/debug path; only active when `debug_rt=blob`
+- `src/rt/loadScopedRtFromParsedTables.js`
+  - Exports: `loadScopedRtFromParsedTables(...)` — **primary production RT path**; reads from `rt_trip_updates` + `rt_stop_time_updates` scoped per trip/stop IDs; freshness threshold `STATIONBOARD_RT_FRESH_MAX_AGE_MS` (default 45 s)
 - `src/rt/tripUpdatesSummary.js` (1 line)
   - Exports: re-export of `summarizeTripUpdates` from `src/loaders/tripUpdatesSummary.js`
 

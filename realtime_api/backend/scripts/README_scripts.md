@@ -80,6 +80,7 @@ fly secrets set DATABASE_URL_POLLER="postgresql://...poller-url..." -a mesdepart
   - Scheduling is fixed-rate: sleep time subtracts tick execution time to avoid cadence drift (`effective wait = max(0, interval - tickDuration)`).
   - Has 429/error backoff logic.
   - Skips parsed snapshot rewrites when payload SHA-256 is unchanged (`poller_skip_write_unchanged`); may apply metadata-only status updates.
+  - **Risk:** SHA write (`setRtCachePayloadSha`) uses `.catch(() => {})` — silent failure breaks the dedup guard; next tick will treat payload as changed and fire a full incremental upsert. Check `meta_kv` freshness: `SELECT key, value, updated_at FROM public.meta_kv WHERE key LIKE 'rt_cache_payload_sha256:%';`
   - Uses advisory xact lock on parsed+metadata writes to avoid concurrent writer churn across duplicate pollers (`poller_write_locked_skip`).
   - Emits contention guardrail warning (`poller_write_lock_contention_warning`) when write-lock skips repeat beyond `RT_POLLER_LOCK_SKIP_WARN_STREAK` (default `6`) and cache age exceeds `RT_POLLER_LOCK_SKIP_STALE_AGE_MS` (default `90000` ms).
   - `poller_fetch_200` logs include parsed compaction metrics (`parsedTripRowsInserted`, `parsedStopRowsInserted`, snapshot/retention delete counts).

@@ -228,6 +228,18 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f sql/optimize_stop_search.sql
 - It is not part of the active refresh pipeline (`refreshGtfsIfNeeded.js`) and not required by request-path runtime.
 - Do not modify this file for current runtime behavior; use canonical SQL files under `sql/` and `src/sql/`.
 
+## Vestigial tables (confirmed dead code)
+
+### `rt_updates`
+
+- **Created dynamically** by `persistRtUpdates()` in `realtime_api/backend/loaders/loadRealtime.js` via a `CREATE TABLE IF NOT EXISTS` inside the function body.
+- `persistRtUpdates()` is never called from `server.js` or any active request handler. Only test files reference these dead-code exports.
+- If the `rt_updates` table exists in the DB, it is vestigial — not written to or read from in normal operation. It can be safely dropped:
+  ```sql
+  DROP TABLE IF EXISTS public.rt_updates;
+  ```
+- There is no provisioning SQL file for this table; it does not appear in any `sql/` file. Its existence in the DB would be the result of a historical test or experimental run of the dead code path.
+
 ## Search-change SQL verification gate
 
 After any stop-search SQL change:
