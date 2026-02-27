@@ -61,6 +61,73 @@ Static, dependency-free front-end for mesdeparts.ch. Everything in this folder i
 - If `config/network-map.json` fails to load (for example 404 on a misconfigured static deployment), logic falls back to an embedded default map so line/network colors still resolve.
 - When network detection is unresolved or line-specific classes are missing, both row badges and “Served by lines” chips probe available CSS line classes across known network palettes before falling back to deterministic generic tones.
 
+## How departure data is processed for the board
+
+This is the ordered sequence `logic.v*.js` and `ui.v*.js` follow after the API response arrives:
+
+```
+1. Fetch (logic.v*.js → refreshDepartures in main.v*.js)
+   GET /api/stationboard?stationId=...&limit=...&lang=...
+   Response: { departures[], rt{}, alerts{}, meta{} }
+
+2. Per-departure enrichment (logic.v*.js)
+   For each dep in departures[]:
+   a. Network detection (detectNetworkFromEntry):
+      - dep.operator matched against operatorPatterns in network-map.json   ← primary
+      - dep.route_id matched against routeIdPatterns                         ← secondary
+      - station name matched against stationPatterns                         ← last resort
+      → sets dep.network (e.g. "vbb", "tpg", "tl")
+   b. Delay computation:
+      - delayMin already set by backend; realtimeDeparture already ISO string
+      - frontend computes displayedDelayMin and status ("on-time"/"delay"/"cancelled")
+   c. Countdown:
+      - diff between realtimeDeparture (or scheduledDeparture) and now, in minutes
+      - updated every 5 s from cached data without re-fetching
+
+3. Filtering (logic.v*.js, applied before grouping)
+   Active filters checked in order:
+   - favorites-only: skip departures not in md_favorites_v1
+   - platform filter: skip if dep.platform ≠ selected platform
+   - line filter: skip if dep.line ≠ selected line
+   - train-service filter: skip specific IC/IR/RE/S services if toggled off
+   - 3 h horizon: departures beyond appState.HORIZON_MINUTES are dropped
+
+4. Sorting and grouping (logic.v*.js)
+   TRAINS (route_type 2 / long-distance): always chronological, single flat list.
+   BUSES (all other types):
+   - "by line" view (default): group departures by line number;
+     within each group, pick up to 2 destination branches and interleave
+     scheduled times so the next bus per branch is always at the top.
+     Groups are ordered by the earliest upcoming departure across both branches.
+   - "chronological" view: flat list sorted by dep_sec (scheduled seconds
+     since midnight), RT departure used for countdown display only.
+
+5. Rendering (ui.v*.js)
+   For each departure row:
+   a. Badge: busBadgeClass() builds the CSS class:
+      preferredNetworks = [dep.network, lineNetworks[line], lastBoardNetwork, currentNetwork]
+      inferStyledNetworkForLine() probes each network's classPrefix + line number
+      against the live CSS stylesheet — if background style exists, that class wins.
+      Falls back to deterministic vivid palette (generic tones) if no match.
+   b. Destination + delay chip: "+N min" shown in red when displayedDelayMin > 0.
+   c. Platform chip: shown when platform is known; highlighted if platformChanged.
+   d. Countdown: "Xm" or "now", refreshed every 5 s.
+   e. Alert column (bus only): rendered only when ≥1 row has a delay AND ≥1 row
+      has inline alert text — otherwise the column collapses to save space.
+```
+
+Summary of what comes from the backend vs what is computed frontend-side:
+| Field | Origin |
+| --- | --- |
+| `scheduledDeparture`, `realtimeDeparture`, `delayMin` | Backend (RT merge) |
+| `cancelled`, `platformChanged`, `platform` | Backend (RT merge) |
+| `operator` | Backend (gtfs_agency JOIN) |
+| `route_id`, `line`, `destination` | Backend (GTFS SQL) |
+| `dep.network` (for badge color) | Frontend (detectNetworkFromEntry) |
+| `displayedDelayMin`, `status`, countdown | Frontend (computed from backend fields) |
+| Grouping, sort order, filter application | Frontend (logic.v*.js) |
+| CSS class → badge color | Frontend (ui.v*.js + style.v*.css) |
+
 ## Running locally
 - Static server only; no bundler needed:
   ```sh

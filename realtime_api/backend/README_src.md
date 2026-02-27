@@ -30,6 +30,57 @@ This file documents the current `realtime_api/backend/src/` tree based on direct
    - `src/search/stopsSearch.js` is the stop-search engine.
    - `src/resolve/resolveStop.js` resolves station/stop identity and scope.
 
+## End-to-end departure pipeline (backend)
+
+This is the ordered sequence every stationboard request follows, from the database to the JSON response:
+
+```
+1. SQL query (src/sql/stationboard.sql)
+   ├── candidates CTE
+   │   Selects stop_times rows within the requested time window for the station's
+   │   stop_ids, JOINs gtfs_trips → gtfs_routes → gtfs_agency, filters to active
+   │   service days (calendar + calendar_dates), and reads LEFT JOIN gtfs_agency
+   │   to get agency_name alongside agency_id.
+   └── deduped CTE
+       DISTINCT ON (trip_id, stop_id, stop_sequence) — keeps only the earliest
+       dep_sec per trip×stop so duplicate rows from the stop_times fan-out are
+       eliminated before the merge pipeline sees them.
+       Final SELECT * ORDER BY dep_sec ASC LIMIT $4.
+
+2. buildStationboard.js (src/logic/buildStationboard.js)
+   ├── Receives raw SQL rows, sets departure fields:
+   │   operator = row.agency_name || row.agency_id (human-readable name preferred)
+   │   line = route_short_name, destination = trip_headsign, platform = stop_id suffix
+   ├── Loads scoped TripUpdates (parsed tables default, cache fallback)
+   ├── applyTripUpdates(): for each base row, finds the best delay match by
+   │   trip_id + stop_id (with Swiss platform variants :0 → numeric root),
+   │   writes realtimeDeparture, delayMin, cancelled, platformChanged
+   ├── applyAddedTrips(): injects ADDED RT trips as synthetic departure rows
+   └── attachAlerts() + synthesizeFromAlerts(): attaches alert snippets to
+       matching departures and generates any synthetic alert-sourced rows
+
+3. normalizeDeparture() (src/models/stationboard.js)
+   Strict allowlist — EVERY field that reaches the API must be explicitly listed
+   here. Strips anything not in the list. Converts types (text, boolean, integer,
+   nullable). This is where new fields (like operator) must be added to become
+   visible in the response.
+
+4. Response assembly (src/api/stationboard.js)
+   Wraps the normalized departures array in the full JSON envelope:
+   { departures, rt, alerts, banners, station, resolved, meta }
+   meta carries rtStatus, alertsStatus, responseMode, totalBackendMs, etc.
+   for frontend diagnostics.
+
+5. HTTP response (src/api/stationboardRoute.js)
+   Sets cache headers (no-store browser-side, short CDN-Cache-Control edge-side),
+   adds x-md-* diagnostic headers, returns 200 JSON (or 204 if since_rt unchanged).
+```
+
+Key invariants:
+- The SQL window is computed in Zurich timezone service-day seconds (`src/time/zurichTime.js`).
+- Departures already cancelled/suppressed at the SQL stage are never in the base rows; RT cancellation comes from TripUpdates in step 2.
+- `normalizeDeparture()` is the only place that shapes the outbound contract — changing a field there changes the API for all consumers.
+
 ## API deep dive (`src/api`)
 
 ### `src/api/stationboardRoute.js` (HTTP edge behavior)
