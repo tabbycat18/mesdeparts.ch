@@ -299,9 +299,10 @@ node scripts/checkPollerHeartbeat.js --trip-threshold-s 90 --alerts-threshold-s 
 # Deploy (or update) the dedicated poller app
 flyctl deploy --config fly.poller.toml
 
-# The poller app is: mesdeparts-rt-poller
-# It reuses the same root Dockerfile as the backend.
-# fly.poller.toml overrides CMD to: npm run poller
+# The poller app is: mesdeparts-rt-poller  (completely separate from mesdeparts-ch)
+# Both apps build from the same root Dockerfile (CMD defaults to npm start).
+# fly.poller.toml [processes] app = "npm run poller" overrides the Docker CMD
+# for this app only. fly.toml and fly.poller.toml do NOT interact.
 # There is NO HTTP service — it is a purely background process.
 
 # Set required secrets (one-time per app):
@@ -415,7 +416,7 @@ GET /api/_dbinfo                           — DB schema info
 
 ## Assumptions / Unknowns
 
-- **Dockerfile for poller**: There is no dedicated Dockerfile for the poller. Based on `fly.poller.toml` (no `[build]` section) and the AGENTS.md documentation, the poller reuses the root `Dockerfile`. The `[processes]` block in `fly.poller.toml` overrides the startup command to `npm run poller`. This is consistent with AGENTS.md § 10 but is not directly confirmed by a Fly.io build log — **I cannot verify this from a live build log.**
+- **Dockerfile for poller**: Both Fly apps (`mesdeparts-ch` and `mesdeparts-rt-poller`) build from the same root `Dockerfile` (no `[build]` section in either toml → Fly defaults to `./Dockerfile`). The Dockerfile `CMD ["npm", "start"]` is overridden only for the poller app by `fly.poller.toml [processes] app = "npm run poller"`. The two toml files do not interact — they are configs for independent apps. Minor inefficiency: the Dockerfile copies `realtime_api/frontend` into the poller image, which the poller never reads (harmless, slightly larger image). Not directly confirmed by a live Fly.io build log — **I cannot verify this from a build artifact.**
 - **Neon connection string name**: The heartbeat script checks for `DATABASE_URL` or `DATABASE_URL_POLLER`. Whether the poller Fly app uses `DATABASE_URL_POLLER` (a separate pooled URL) or the same `DATABASE_URL` as the backend is not confirmed from env/secrets config — **I cannot verify which is set in production Fly secrets.**
 - **GitHub Actions GTFS static refresh is separate**: `.github/workflows/gtfs_static_refresh.yml` runs hourly (`cron: "0 * * * *"`) and refreshes static GTFS tables, not the RT poller. It was initially missed in the first scan and is now documented in "Adjacent scheduled jobs" above.
 - **Cloudflare Pages deployment**: AGENTS.md states the frontend is served by Cloudflare Pages, "managed via Cloudflare dashboard (not in repo)". The exact Pages project name, build config, and deploy triggers are not in the repo — **I cannot verify these from the codebase.**
