@@ -105,6 +105,7 @@ If context is still missing after this order, then inspect code.
 - Reliable operator detection: use `operatorPatterns` in `network-map.json` matched against `dep.operator` (= `gtfs_agency.agency_name`, e.g. `"Bernmobil"`, `"TPG"`, `"TPN"`) — this works for ANY stop the operator serves, including suburbs not matched by station name.
 - `stationPatterns` in `network-map.json` is last-resort fallback (stop name contains "bern" etc.) — fails for suburbs like Köniz, Ostermundigen, Gümligen, Wabern.
 - Adding a new operator network: update `config/network-map.json` (operatorPatterns + palette), the inline `DEFAULT_NETWORK_MAP_CONFIG` in `logic.v*.js`, and `style.v*.css` (badge color rules `.line-{prefix}-{line_id}`).
+- **VBB (Bern city buses)**: agency_name in GTFS feed is `"Städtische Verkehrsbetriebe Bern"` (NOT "Bernmobil"). Network key is `vbb`, CSS prefix `line-vbb-`. operatorPatterns: `["städtische verkehrsbetriebe bern", "verkehrsbetriebe bern", "\\bsvb\\b"]`. 41 lines defined (3–631). stationPatterns covers suburbs: Köniz, Ostermundigen, Gümligen, Wabern, Liebefeld, Niederwangen, Bethlehem.
 
 ## 9) Documentation maintenance rule
 - For behavior changes, update docs in the same PR/commit:
