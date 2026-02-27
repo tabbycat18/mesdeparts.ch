@@ -233,7 +233,7 @@ On each `/api/stationboard` request, the backend calls `loadRealtimeDelayIndexOn
 | `RT_PARSED_RETENTION_HOURS` | No | `6` | How long to keep parsed rows in `rt_trip_updates` / `rt_stop_time_updates` | Fly secret / env |
 | `RT_POLLER_LOCK_SKIP_WARN_STREAK` | No | `6` | Warn after N consecutive lock-skip cycles | Fly secret / env |
 | `RT_POLLER_LOCK_SKIP_STALE_AGE_MS` | No | `90000` | Warn if skipped and cached payload is older than this | Fly secret / env |
-| `RT_POLLER_HEARTBEAT_ENABLED` | No | `"0"` (enabled) | Set to `"0"` to enable; any other value disables heartbeat writes | Fly secret / env |
+| `RT_POLLER_HEARTBEAT_ENABLED` | No | unset (enabled) | Heartbeat is enabled when unset or any value ≠ `"0"`. Set to `"0"` to **disable** heartbeat writes. Code: `!== "0"` | Fly secret / env |
 | `LA_GTFS_RT_URL` | No | Upstream default | Override TripUpdates upstream URL | Fly secret / env |
 | `LA_GTFS_SA_URL` | No | Upstream default | Override ServiceAlerts upstream URL | Fly secret / env |
 | `RT_UPSERT_BATCH_DEBUG` | No | — | Set `"1"` to log batch sizes during upsert | Fly secret / env |
@@ -420,6 +420,6 @@ GET /api/_dbinfo                           — DB schema info
 - **Neon connection string name**: The heartbeat script checks for `DATABASE_URL` or `DATABASE_URL_POLLER`. Whether the poller Fly app uses `DATABASE_URL_POLLER` (a separate pooled URL) or the same `DATABASE_URL` as the backend is not confirmed from env/secrets config — **I cannot verify which is set in production Fly secrets.**
 - **GitHub Actions GTFS static refresh is separate**: `.github/workflows/gtfs_static_refresh.yml` runs hourly (`cron: "0 * * * *"`) and refreshes static GTFS tables, not the RT poller. It was initially missed in the first scan and is now documented in "Adjacent scheduled jobs" above.
 - **Cloudflare Pages deployment**: AGENTS.md states the frontend is served by Cloudflare Pages, "managed via Cloudflare dashboard (not in repo)". The exact Pages project name, build config, and deploy triggers are not in the repo — **I cannot verify these from the codebase.**
-- **`RT_POLLER_HEARTBEAT_ENABLED` semantics**: The env var comment in the code says `"0"` means *enabled* (counter-intuitive naming). This is what the source code shows (`process.env.RT_POLLER_HEARTBEAT_ENABLED !== "0"` pattern would disable it). Double-check the source before changing this in production.
+- **`RT_POLLER_HEARTBEAT_ENABLED` semantics**: Name is confusing but logic is clear: `heartbeatEnabled = process.env.RT_POLLER_HEARTBEAT_ENABLED !== "0"`. Unset (undefined) → enabled. `"0"` → **disabled**. Any other value → enabled. Previous versions of this README had this backwards.
 - **opendata.swiss API key quota**: The exact quota tier for the GTFS-RT token is not documented in the repo — **I cannot verify daily/hourly rate limits from the code.**
 - **Fly machine auto-scaling for poller**: `fly.poller.toml` does not specify `min_machines_running` or `auto_stop_machines`. Whether Fly keeps exactly one machine alive at all times or can scale to zero is not confirmed — **I cannot verify this without inspecting live Fly machine settings.**
