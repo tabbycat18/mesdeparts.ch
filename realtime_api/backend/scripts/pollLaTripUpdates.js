@@ -17,7 +17,7 @@ import {
   setRtCachePayloadSha,
   updateRtCacheStatus,
 } from "../src/db/rtCache.js";
-import { persistParsedTripUpdatesIncremental } from "../src/rt/persistParsedArtifacts.js";
+import { persistParsedTripUpdatesIncremental, pruneRtTripUpdates } from "../src/rt/persistParsedArtifacts.js";
 import {
   touchPollerHeartbeatError,
   touchTripUpdatesHeartbeat,
@@ -55,6 +55,10 @@ const RT_LOCK_SKIP_WARN_STREAK = Math.max(
 const RT_LOCK_SKIP_WARN_AGE_MS = Math.max(
   30_000,
   Number(process.env.RT_POLLER_LOCK_SKIP_STALE_AGE_MS || "90000")
+);
+const RT_RETENTION_PRUNE_INTERVAL_MS = Math.max(
+  60_000,
+  Number(process.env.RT_RETENTION_PRUNE_INTERVAL_MS || "900000")
 );
 const FEED_KEY = LA_TRIPUPDATES_FEED_KEY;
 const FEED_WRITE_LOCK_ID = 7_483_921;
@@ -180,6 +184,8 @@ export function createLaTripUpdatesPoller({
   setRtCachePayloadShaLike = setRtCachePayloadSha,
   updateRtCacheStatusLike = updateRtCacheStatus,
   persistParsedTripUpdatesSnapshotLike = persistParsedTripUpdatesIncremental,
+  pruneRtTripUpdatesLike = pruneRtTripUpdates,
+  retentionPruneIntervalMs = RT_RETENTION_PRUNE_INTERVAL_MS,
   decodeFeedLike = decodeTripUpdatesFeed,
   touchTripUpdatesHeartbeatLike = touchTripUpdatesHeartbeat,
   touchPollerHeartbeatErrorLike = touchPollerHeartbeatError,
@@ -202,6 +208,7 @@ export function createLaTripUpdatesPoller({
   let lockSkipWarningEmitted = false;
   let lastSuccessfulPollAtMs = null;
   let lastTickTiming = null;
+  let lastRetentionPruneAtMs = Number(nowLike());
 
   function logLine(
     event,
@@ -681,17 +688,43 @@ export function createLaTripUpdatesPoller({
       lastSuccessfulPollAtMs = Number(nowLike());
       resetBackoffState();
       resetWriteLockSkipState();
+      const nowMsForPrune = Number(nowLike());
+      if (nowMsForPrune - lastRetentionPruneAtMs >= retentionPruneIntervalMs) {
+        const cutoff = new Date(nowMsForPrune - RT_PARSED_RETENTION_HOURS * 3600 * 1000);
+        try {
+          const pruneResult = await pruneRtTripUpdatesLike({ cutoff });
+          lastRetentionPruneAtMs = Number(nowLike());
+          logLine("poller_retention_prune", {
+            status: 200,
+            extra: {
+              retentionHours: RT_PARSED_RETENTION_HOURS,
+              cutoffISO: cutoff.toISOString(),
+              deletedTripRows: Number(pruneResult?.deletedTripRows || 0),
+              deletedStopRows: Number(pruneResult?.deletedStopRows || 0),
+              tripChunksRun: Number(pruneResult?.tripChunksRun || 0),
+              stopChunksRun: Number(pruneResult?.stopChunksRun || 0),
+            },
+          });
+        } catch (err) {
+          const classified = classifyPollerError(err);
+          logLine("poller_retention_prune_failed", {
+            status: 200,
+            extra: {
+              errorClass: classified.errorClass,
+              errorCode: classified.errorCode,
+              errorMessage: classified.errorMessage,
+            },
+          });
+        }
+      }
       logLine("poller_fetch_200", {
         status: 200,
         backoffMs: 0,
         lastFetchedAgeMs: 0,
         etagPresent: !!responseEtag,
         extra: {
-          retentionHours: RT_PARSED_RETENTION_HOURS,
           parsedTripRowsUpserted: Number(parsedWrite?.tripRows || 0),
           parsedStopRowsUpserted: Number(parsedWrite?.stopRows || 0),
-          parsedTripRowsDeletedByRetention: Number(parsedWrite?.deletedByRetentionTripRows || 0),
-          parsedStopRowsDeletedByRetention: Number(parsedWrite?.deletedByRetentionStopRows || 0),
           fetchHeadersMs: headersMs,
           fetchBodyMs: bodyReadMs,
           payloadBytes: payloadLength,
@@ -861,6 +894,7 @@ export function createLaTripUpdatesPoller({
       consecutiveWriteLockSkips,
       lockSkipWarningEmitted,
       lastSuccessfulPollAtMs,
+      lastRetentionPruneAtMs,
     }),
   };
 }

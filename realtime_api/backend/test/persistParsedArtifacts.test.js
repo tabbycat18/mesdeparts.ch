@@ -249,15 +249,9 @@ test("persistParsedTripUpdatesIncremental uses ON CONFLICT (trip_id, stop_sequen
   );
 });
 
-test("persistParsedTripUpdatesIncremental still runs retention deletes", async () => {
+test("persistParsedTripUpdatesIncremental does NOT run retention deletes (pruning externalized to pruneRtTripUpdates)", async () => {
   const { persistParsedTripUpdatesIncremental } = await loadPersistors();
   const { calls, poolLike } = makePoolLike((sql) => {
-    if (sql.includes("DELETE FROM public.rt_stop_time_updates") && sql.includes("WHERE updated_at <")) {
-      return { rows: [], rowCount: 3 };
-    }
-    if (sql.includes("DELETE FROM public.rt_trip_updates") && sql.includes("WHERE updated_at <")) {
-      return { rows: [], rowCount: 2 };
-    }
     if (sql.includes("INSERT INTO public.rt_trip_updates") && sql.includes("ON CONFLICT")) {
       return { rows: [], rowCount: 1 };
     }
@@ -280,14 +274,8 @@ test("persistParsedTripUpdatesIncremental still runs retention deletes", async (
         },
       ],
     },
-    { writeLockId: 7483921, retentionHours: 4, poolLike }
+    { writeLockId: 7483921, poolLike }
   );
-
-  assert.equal(result.deletedByRetentionStopRows, 3);
-  assert.equal(result.deletedByRetentionTripRows, 2);
-  assert.equal(result.tripRows, 1);
-  assert.equal(result.stopRows, 1);
-  assert.equal(result.retentionHours, 4);
 
   const retentionStopCalled = calls.some(
     (c) => c.sql.includes("DELETE FROM public.rt_stop_time_updates") && c.sql.includes("WHERE updated_at <")
@@ -295,8 +283,99 @@ test("persistParsedTripUpdatesIncremental still runs retention deletes", async (
   const retentionTripCalled = calls.some(
     (c) => c.sql.includes("DELETE FROM public.rt_trip_updates") && c.sql.includes("WHERE updated_at <")
   );
-  assert.equal(retentionStopCalled, true, "must run retention DELETE for rt_stop_time_updates");
-  assert.equal(retentionTripCalled, true, "must run retention DELETE for rt_trip_updates");
+  assert.equal(retentionStopCalled, false, "must NOT run retention DELETE for rt_stop_time_updates");
+  assert.equal(retentionTripCalled, false, "must NOT run retention DELETE for rt_trip_updates");
+  assert.equal(result.deletedByRetentionStopRows, undefined, "return value must not include deleted retention rows");
+  assert.equal(result.deletedByRetentionTripRows, undefined, "return value must not include deleted retention rows");
+  assert.equal(result.retentionHours, undefined, "return value must not include retentionHours");
+  assert.equal(result.tripRows, 1);
+  assert.equal(result.stopRows, 1);
+});
+
+// ─── pruneRtTripUpdates ───────────────────────────────────────────────────────
+
+test("pruneRtTripUpdates deletes rows older than cutoff in chunks from both tables", async () => {
+  const { pruneRtTripUpdates } = await loadPersistors();
+  const cutoff = new Date("2026-02-28T00:00:00Z");
+  const calls = [];
+  const poolLike = {
+    async connect() {
+      return {
+        async query(sql, params) {
+          calls.push({ sql: String(sql || "").trim(), params });
+          if (String(sql).includes("rt_trip_updates")) return { rowCount: 3 };
+          if (String(sql).includes("rt_stop_time_updates")) return { rowCount: 7 };
+          return { rowCount: 0 };
+        },
+        release() {},
+      };
+    },
+  };
+
+  const result = await pruneRtTripUpdates({ cutoff, poolLike });
+
+  assert.equal(result.deletedTripRows, 3);
+  assert.equal(result.deletedStopRows, 7);
+  assert.equal(result.tripChunksRun, 1);
+  assert.equal(result.stopChunksRun, 1);
+  assert.ok(calls.some((c) => c.sql.includes("rt_trip_updates") && c.sql.includes("updated_at")));
+  assert.ok(calls.some((c) => c.sql.includes("rt_stop_time_updates") && c.sql.includes("updated_at")));
+  assert.ok(calls.some((c) => c.params && c.params[0] === cutoff), "cutoff Date must be passed as query param");
+});
+
+test("pruneRtTripUpdates runs multiple chunks when rowCount equals chunkSize", async () => {
+  const { pruneRtTripUpdates, RT_PRUNE_CHUNK_SIZE } = await loadPersistors();
+  const cutoff = new Date("2026-02-28T00:00:00Z");
+  let tripCallCount = 0;
+  const poolLike = {
+    async connect() {
+      return {
+        async query(sql) {
+          if (String(sql).includes("rt_trip_updates")) {
+            tripCallCount++;
+            return { rowCount: tripCallCount === 1 ? RT_PRUNE_CHUNK_SIZE : 0 };
+          }
+          return { rowCount: 0 };
+        },
+        release() {},
+      };
+    },
+  };
+
+  const result = await pruneRtTripUpdates({ cutoff, poolLike, maxChunks: 5 });
+  assert.equal(result.tripChunksRun, 2);
+  assert.equal(result.deletedTripRows, RT_PRUNE_CHUNK_SIZE);
+});
+
+test("pruneRtTripUpdates caps at maxChunks even when table still has rows", async () => {
+  const { pruneRtTripUpdates, RT_PRUNE_CHUNK_SIZE } = await loadPersistors();
+  const cutoff = new Date("2026-02-28T00:00:00Z");
+  const poolLike = {
+    async connect() {
+      return {
+        async query() { return { rowCount: RT_PRUNE_CHUNK_SIZE }; },
+        release() {},
+      };
+    },
+  };
+
+  const result = await pruneRtTripUpdates({ cutoff, poolLike, maxChunks: 3 });
+  assert.equal(result.tripChunksRun, 3);
+  assert.equal(result.stopChunksRun, 3);
+  assert.equal(result.deletedTripRows, RT_PRUNE_CHUNK_SIZE * 3);
+  assert.equal(result.deletedStopRows, RT_PRUNE_CHUNK_SIZE * 3);
+});
+
+test("pruneRtTripUpdates throws on invalid cutoff", async () => {
+  const { pruneRtTripUpdates } = await loadPersistors();
+  await assert.rejects(
+    () => pruneRtTripUpdates({ cutoff: "not-a-date", poolLike: { connect: async () => ({}) } }),
+    /pruneRtTripUpdates: cutoff must be a valid Date/
+  );
+  await assert.rejects(
+    () => pruneRtTripUpdates({ cutoff: null, poolLike: { connect: async () => ({}) } }),
+    /pruneRtTripUpdates: cutoff must be a valid Date/
+  );
 });
 
 test("persistParsedTripUpdatesIncremental commits and releases client without leaking transaction", async () => {

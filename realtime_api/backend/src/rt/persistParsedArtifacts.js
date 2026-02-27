@@ -309,6 +309,21 @@ async function deleteOlderThanRetention(client, tableName, retentionHours) {
   return Number(res?.rowCount || 0);
 }
 
+async function deleteChunkOlderThan(client, tableName, cutoff, limit) {
+  const res = await client.query(
+    `
+      WITH doomed AS (
+        SELECT ctid FROM ${tableName}
+        WHERE updated_at < $1 LIMIT $2
+      )
+      DELETE FROM ${tableName}
+      WHERE ctid IN (SELECT ctid FROM doomed)
+    `,
+    [cutoff, limit]
+  );
+  return Number(res?.rowCount || 0);
+}
+
 async function insertTripRows(client, rows = []) {
   if (!rows.length) return;
   for (const group of chunk(rows, 500)) {
@@ -497,6 +512,43 @@ async function upsertStopRows(client, rows = []) {
   return { batchCount, maxBatchSize };
 }
 
+export const RT_PRUNE_CHUNK_SIZE = 10_000;
+export const RT_PRUNE_MAX_CHUNKS = 5;
+
+export async function pruneRtTripUpdates({
+  cutoff,
+  chunkSize = RT_PRUNE_CHUNK_SIZE,
+  maxChunks = RT_PRUNE_MAX_CHUNKS,
+  poolLike,
+} = {}) {
+  if (!(cutoff instanceof Date) || !Number.isFinite(cutoff.getTime())) {
+    throw new Error("pruneRtTripUpdates: cutoff must be a valid Date");
+  }
+  const poolToUse = poolLike || pool;
+  const client = await poolToUse.connect();
+  let deletedTripRows = 0;
+  let tripChunksRun = 0;
+  let deletedStopRows = 0;
+  let stopChunksRun = 0;
+  try {
+    while (tripChunksRun < maxChunks) {
+      const deleted = await deleteChunkOlderThan(client, "public.rt_trip_updates", cutoff, chunkSize);
+      deletedTripRows += deleted;
+      tripChunksRun++;
+      if (deleted < chunkSize) break;
+    }
+    while (stopChunksRun < maxChunks) {
+      const deleted = await deleteChunkOlderThan(client, "public.rt_stop_time_updates", cutoff, chunkSize);
+      deletedStopRows += deleted;
+      stopChunksRun++;
+      if (deleted < chunkSize) break;
+    }
+  } finally {
+    client.release();
+  }
+  return { deletedTripRows, deletedStopRows, tripChunksRun, stopChunksRun };
+}
+
 async function insertAlertRows(client, rows = []) {
   if (!rows.length) return;
   for (const group of chunk(rows, 300)) {
@@ -585,36 +637,21 @@ export async function persistParsedTripUpdatesSnapshot(
 
 export async function persistParsedTripUpdatesIncremental(
   feed,
-  { writeLockId, retentionHours, poolLike } = {}
+  { writeLockId, poolLike } = {}
 ) {
   const lockId = Number(writeLockId);
   if (!Number.isFinite(lockId)) {
     throw new Error("persist_parsed_trip_updates_missing_lock_id");
   }
-  const effectiveRetentionHours = resolveRetentionHours(retentionHours);
-
   const { tripRows, stopRows } = extractTripUpdatesRows(feed);
   return withAdvisoryWriteLock(lockId, async (client) => {
-    const deletedByRetentionStopRows = await deleteOlderThanRetention(
-      client,
-      "public.rt_stop_time_updates",
-      effectiveRetentionHours
-    );
-    const deletedByRetentionTripRows = await deleteOlderThanRetention(
-      client,
-      "public.rt_trip_updates",
-      effectiveRetentionHours
-    );
     const { batchCount: tripBatchCount, maxBatchSize: tripMaxBatchSize } =
       await upsertTripRows(client, tripRows);
     const { batchCount: stopBatchCount, maxBatchSize: stopMaxBatchSize } =
       await upsertStopRows(client, stopRows);
     return {
-      retentionHours: effectiveRetentionHours,
       tripRows: tripRows.length,
       stopRows: stopRows.length,
-      deletedByRetentionTripRows,
-      deletedByRetentionStopRows,
       tripBatchCount,
       tripMaxBatchSize,
       stopBatchCount,
