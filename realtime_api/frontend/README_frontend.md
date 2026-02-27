@@ -84,7 +84,7 @@ Static, dependency-free front-end for mesdeparts.ch. Everything in this folder i
 - This UI is now wired for `realtime_api/backend` API routes only.
 - It is not using the old `/locations` + `/stationboard` contract anymore.
 - RT merge/source-of-truth stays backend-side; frontend does not implement platform-vs-parent stop-id matching logic.
-- Each departure now includes `operator` = `gtfs_agency.agency_name` (e.g. `"Bernmobil"`, `"TPG"`, `"TPN"`). This is the authoritative source for `operatorPatterns` matching in `config/network-map.json`. It is resolved in the backend SQL via `LEFT JOIN gtfs_agency` and passed through `normalizeDeparture()` in `src/models/stationboard.js`.
+- Each departure now includes `operator` = `gtfs_agency.agency_name` (e.g. `"Städtische Verkehrsbetriebe Bern"`, `"TPG"`, `"TPN"`). This is the authoritative source for `operatorPatterns` matching in `config/network-map.json`. It is resolved in the backend SQL via `LEFT JOIN gtfs_agency ag ON ag.agency_id = r.agency_id` and passed through `normalizeDeparture()` in `src/models/stationboard.js`. Note: `agency_id` (e.g. `"827"`) is the internal numeric FK used only for the JOIN — do NOT use it in `operatorPatterns`; use `agency_name` instead.
 - For diagnostics only, backend `debug=1` exposes `debug.rt.tripUpdates` (including `rtEnabledForRequest`, `rtMetaReason`, scoped counters).
 
 ## Loading-hint state machine

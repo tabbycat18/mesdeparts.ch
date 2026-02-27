@@ -60,7 +60,7 @@ Primary responsibilities:
 - Build base board via `buildStationboard(...)` (static SQL first, then RT merge pipeline).
 - Prepare canonical response payload (`station`, `resolved`, `departures`, `banners`, `rt`, `alerts`).
 - Normalize departures through `src/models/stationboard.js` (`normalizeDeparture`).
-- Each departure includes `operator` = `agency_name` (human-readable, e.g. `"Bernmobil"`) from the `gtfs_agency` table join in stationboard SQL. Falls back to `agency_id` if name is absent. This field is used by the frontend `operatorPatterns` in `network-map.json` for line-badge network detection at any operator stop.
+- Each departure includes `operator` = `gtfs_agency.agency_name` (human-readable, e.g. `"Städtische Verkehrsbetriebe Bern"`, `"TPG"`) resolved via `LEFT JOIN gtfs_agency ag ON ag.agency_id = r.agency_id` in the stationboard SQL. Falls back to `agency_id` (numeric FK, e.g. `"827"`) if `agency_name` is absent. The frontend matches `dep.operator` against `operatorPatterns` in `network-map.json` for line-badge network detection — always use `agency_name`, not `agency_id`, in those patterns.
 - Attach alerts from parsed tables (`src/rt/loadAlertsFromParsedTables.js`) and merge alert effects (`attachAlerts`, `synthesizeFromAlerts`).
 - Keep blob-backed alerts loader (`src/rt/loadAlertsFromCache.js`) for explicit debug mode (`debug_rt=blob`) only.
 - Throttle request-path Service Alerts cache reads with an in-process TTL (`STATIONBOARD_ALERTS_REQUEST_CACHE_TTL_MS`, default 60s, clamped to minimum 60s) to avoid repeated alert-cache fetch/decode on frequent board refreshes.
