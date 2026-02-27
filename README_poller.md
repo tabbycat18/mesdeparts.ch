@@ -125,6 +125,55 @@ DB disconnect errors (PostgreSQL codes `57P01`–`57P03`, `08xxx`, `53300`, and 
 
 ---
 
+## Adjacent scheduled jobs (not the RT poller)
+
+### GitHub Actions — GTFS static refresh
+
+File: [`.github/workflows/gtfs_static_refresh.yml`](.github/workflows/gtfs_static_refresh.yml)
+
+This is a **separate, unrelated scheduler** triggered by a GitHub Actions cron. It refreshes the static GTFS schedule data (stops, routes, trips, stop_times), not the real-time feeds.
+
+| Property | Value |
+|---|---|
+| Trigger | `cron: "0 * * * *"` (every hour, at minute :00) + `workflow_dispatch` |
+| Concurrency | group `gtfs-refresh`, `cancel-in-progress: false` |
+| Script | `node scripts/refreshGtfsIfNeeded.js` |
+| Upstream URL | `https://data.opentransportdata.swiss/fr/dataset/timetable-2026-gtfs2020/permalink` |
+| Advisory lock | `GTFS_REFRESH_LOCK_ID = 7_483_920` (distinct from RT locks 7483921/7483922) |
+| GitHub secrets used | `NEON_DATABASE_URL`, `OPENTDATA_GTFS_RT_KEY`, `OPENTDATA_GTFS_SA_KEY` |
+| Post-step | SQL verification that `stop_search_index` materialized view is canonical and all 4 required indexes are valid |
+
+The script compares SHA-256 and ETag of the GTFS ZIP against the values stored in `meta_kv`. A full table cutover only runs when the ZIP has actually changed; otherwise it exits cleanly as a no-op. The `GTFS_STOP_SEARCH_REBUILD_MIN_INTERVAL_HOURS` env var (default 6 h) throttles search index rebuilds even when the data changes.
+
+### Frontend refresh loop
+
+The browser client (`realtime_api/frontend/v20260205-1.main.js`) runs its own **`setTimeout`-based refresh loop** (not `setInterval`). Each tick schedules the next via `scheduleNextRefresh()` → `setTimeout(fn, delayMs)`.
+
+| Constant | Value | Source |
+|---|---|---|
+| `REFRESH_DEPARTURES` | **15 000 ms** (base interval) | `v20260205-1.state.js:23` |
+| `FOLLOWUP_REFRESH_BASE_MS` | 3 000 ms (post-load follow-up) | `v20260205-1.main.js:73` |
+| `REFRESH_BACKOFF_STEPS_MS` | [2 000, 5 000, 10 000, 15 000] ms | `v20260205-1.main.js:76` |
+| `FULL_REFRESH_INTERVAL_MS` | 10 × 60 000 ms (force full reload) | `v20260205-1.main.js:228` |
+
+The loop skips scheduling when the tab is hidden (`document.hidden`). It is completely independent of the backend poller — it just polls the Cloudflare edge at `api.mesdeparts.ch/api/stationboard`.
+
+### Pattern scan results (confirmed absent)
+
+The following patterns were searched across the entire repo and **not found** in any active runtime code:
+
+| Pattern | Result |
+|---|---|
+| `setInterval` (backend/poller) | Not present. Pollers use Promise-based `sleep()` with `setTimeout`. |
+| `node-cron` / `cron(...)` | Not present. |
+| `RRULE` | Not present. |
+| `onSchedule` / `on('scheduled')` | Not present. |
+| `bull` / job queue | Not present. No message queues of any kind. |
+| `refreshStationboard` | Not present. Equivalent is `refreshDepartures()` in frontend. |
+| `loadTripUpdates` | Not present. Equivalent is `fetchTripUpdates()` / `loadRealtimeDelayIndexOnce()`. |
+
+---
+
 ## What it does step-by-step
 
 ### TripUpdates poller (every ~15 s)
@@ -369,7 +418,7 @@ GET /api/_dbinfo                           — DB schema info
 
 - **Dockerfile for poller**: There is no dedicated Dockerfile for the poller. Based on `fly.poller.toml` (no `[build]` section) and the AGENTS.md documentation, the poller reuses the root `Dockerfile`. The `[processes]` block in `fly.poller.toml` overrides the startup command to `npm run poller`. This is consistent with AGENTS.md § 10 but is not directly confirmed by a Fly.io build log — **I cannot verify this from a live build log.**
 - **Neon connection string name**: The heartbeat script checks for `DATABASE_URL` or `DATABASE_URL_POLLER`. Whether the poller Fly app uses `DATABASE_URL_POLLER` (a separate pooled URL) or the same `DATABASE_URL` as the backend is not confirmed from env/secrets config — **I cannot verify which is set in production Fly secrets.**
-- **No GitHub Actions schedules**: A search for `.github/workflows` found no files in the repo. There are no GitHub Actions cron triggers for polling — **I cannot verify whether any exist outside the repo (e.g., in a separate org workflow).**
+- **GitHub Actions GTFS static refresh is separate**: `.github/workflows/gtfs_static_refresh.yml` runs hourly (`cron: "0 * * * *"`) and refreshes static GTFS tables, not the RT poller. It was initially missed in the first scan and is now documented in "Adjacent scheduled jobs" above.
 - **Cloudflare Pages deployment**: AGENTS.md states the frontend is served by Cloudflare Pages, "managed via Cloudflare dashboard (not in repo)". The exact Pages project name, build config, and deploy triggers are not in the repo — **I cannot verify these from the codebase.**
 - **`RT_POLLER_HEARTBEAT_ENABLED` semantics**: The env var comment in the code says `"0"` means *enabled* (counter-intuitive naming). This is what the source code shows (`process.env.RT_POLLER_HEARTBEAT_ENABLED !== "0"` pattern would disable it). Double-check the source before changing this in production.
 - **opendata.swiss API key quota**: The exact quota tier for the GTFS-RT token is not documented in the repo — **I cannot verify daily/hourly rate limits from the code.**
