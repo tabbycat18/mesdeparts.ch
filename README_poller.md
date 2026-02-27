@@ -73,7 +73,7 @@ The **poller** is a continuously-running background process that keeps the real-
 | [`realtime_api/backend/scripts/checkPollerHeartbeat.js`](realtime_api/backend/scripts/checkPollerHeartbeat.js) | **Health check.** Reads `rt_poller_heartbeat` and exits 0 (OK) or 2 (stale/missing). Thresholds: trip ≤ 90 s, alerts ≤ 300 s. |
 | [`realtime_api/backend/src/loaders/fetchTripUpdates.js`](realtime_api/backend/src/loaders/fetchTripUpdates.js) | Resolves API token; provides upstream URL constant `LA_GTFS_RT_TRIP_UPDATES_URL`. Used by both the poller and on-demand request path. |
 | [`realtime_api/backend/src/loaders/fetchServiceAlerts.js`](realtime_api/backend/src/loaders/fetchServiceAlerts.js) | Same as above for ServiceAlerts; also contains `normalizeAlertEntity()` with enum mappings, translation picker, and deduplication. |
-| [`realtime_api/backend/src/rt/persistParsedArtifacts.js`](realtime_api/backend/src/rt/persistParsedArtifacts.js) | Parses decoded feeds and upserts rows into `rt_trip_updates`/`rt_stop_time_updates` (incremental) and `rt_service_alerts` (snapshot). Batch sizes: 500 trip rows, 200 stop rows. Retention `DELETE` runs unconditionally on every successful write call (even when 0 rows are pruned). |
+| [`realtime_api/backend/src/rt/persistParsedArtifacts.js`](realtime_api/backend/src/rt/persistParsedArtifacts.js) | Parses decoded feeds and upserts rows into `rt_trip_updates`/`rt_stop_time_updates` (incremental) and `rt_service_alerts` (snapshot). Batch sizes: 500 trip rows, 200 stop rows. Both incremental upserts use `WHERE IS DISTINCT FROM` guards — unchanged rows are true no-ops (no heap write, no WAL, no index update). Retention `DELETE` runs unconditionally on every successful write call (even when 0 rows are pruned). |
 | [`realtime_api/backend/src/db/rtCache.js`](realtime_api/backend/src/db/rtCache.js) | DB layer for `rt_cache` and `meta_kv`. Handles advisory lock acquisition/release, upsert of raw blobs, and SHA-256 comparison. Feed keys: `"la_tripupdates"`, `"la_servicealerts"`. |
 | [`realtime_api/backend/src/db/rtPollerHeartbeat.js`](realtime_api/backend/src/db/rtPollerHeartbeat.js) | Read/write helpers for `rt_poller_heartbeat`. Touched on every successful tick and every error. |
 | [`realtime_api/backend/loaders/loadRealtime.js`](realtime_api/backend/loaders/loadRealtime.js) | **Backend blob/debug cache only.** In-memory decoded feed cache (TTL 10–15 s). Only activated when `debug_rt=blob` query param is set. **Not the primary production RT path.** Exported functions `loadRealtimeDelayIndex*` and `persistRtUpdates` are **dead code in production** — never called from the active request handler. |
@@ -191,10 +191,10 @@ The following patterns were searched across the entire repo and **not found** in
 7. **Update cache metadata** — call `updateRtCacheStatus()` → writes `fetched_at`, `etag`, `last_status`, `last_error` to `rt_cache`. **No payload blob is written.** `rt_cache.payload` is `NULL` in production; `upsertRtCache` (blob upsert) is never called by the current poller.
 8. **Decode protobuf** — `GtfsRealtimeBindings.transit_realtime.FeedMessage.decode(payloadBytes)`.
 9. **Persist parsed data** — call `persistParsedTripUpdatesIncremental()`:
-   - Batch-upsert trip rows into `rt_trip_updates` (500 rows/batch).
-   - Batch-upsert stop rows into `rt_stop_time_updates` (200 rows/batch).
+   - Batch-upsert trip rows into `rt_trip_updates` (500 rows/batch) with `WHERE IS DISTINCT FROM` guard — unchanged rows are true no-ops (no heap write, no WAL, no index update).
+   - Batch-upsert stop rows into `rt_stop_time_updates` (200 rows/batch) with `WHERE IS DISTINCT FROM` guard on all 7 data columns — same no-op guarantee.
    - Prune rows older than `RT_PARSED_RETENTION_HOURS` (default 6 h).
-10. **Update payload SHA** — write new SHA-256 to `meta_kv` via `setRtCachePayloadSha()`. **Risk:** this call has a bare `.catch(() => {})` (silent failure). If it fails, `meta_kv` stores a stale/null SHA; the next tick sees no matching SHA and fires a full incremental upsert even for an identical payload — potentially forcing upserts every 15 s instead of only on real changes.
+10. **Update payload SHA** — write new SHA-256 to `meta_kv` via `setRtCachePayloadSha()`. Fixed (2026-02-27): unnecessary advisory lock removed, silent `.catch(() => {})` replaced with structured `poller_sha_write_warn` log. SHA writes confirmed healthy in production.
 11. **Touch heartbeat** — `touchTripUpdatesHeartbeat({ at, instanceId })` → writes `tripupdates_updated_at` in `rt_poller_heartbeat`.
 12. **Sleep** — wait until next interval tick.
 
@@ -470,7 +470,17 @@ These functions and the `rt_updates` table are safe to drop in a future cleanup 
 
 **File:** `realtime_api/backend/src/rt/persistParsedArtifacts.js`
 
-`deleteOlderThanRetention()` is called inside every `persistParsedTripUpdatesIncremental()` invocation — even when the payload is unchanged or 0 rows are pruned. This means 2 extra SQL DELETE statements per successful tick, multiplied heavily if the SHA silent failure is active (forcing every-tick upserts).
+`deleteOlderThanRetention()` is called inside every `persistParsedTripUpdatesIncremental()` invocation — even when the payload is unchanged or 0 rows are pruned. This means 2 extra SQL DELETE statements per successful tick. Still open.
+
+### 5. Upsert no-op guard — fixed (2026-02-27)
+
+**File:** `realtime_api/backend/src/rt/persistParsedArtifacts.js`
+
+Both `upsertTripRows` and `upsertStopRows` previously wrote every row on every tick regardless of whether the data had changed. Added `WHERE IS DISTINCT FROM` guards to both `ON CONFLICT DO UPDATE` clauses:
+- `rt_trip_updates`: guards `route_id`, `start_date`, `schedule_relationship`
+- `rt_stop_time_updates`: guards all 7 data columns (`stop_id`, `departure_delay`, `arrival_delay`, `departure_time_rt`, `arrival_time_rt`, `platform`, `schedule_relationship`)
+
+When the guard is false (all values identical), PostgreSQL skips the row entirely — no heap write, no WAL bytes, no index update. `updated_at` is only bumped on actual data changes, keeping it accurate as "last real change time".
 
 ### 4. 30 s connection drop = backoff cycle pattern
 

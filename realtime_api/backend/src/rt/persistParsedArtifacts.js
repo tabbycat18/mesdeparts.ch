@@ -420,6 +420,10 @@ async function upsertTripRows(client, rows = []) {
           start_date            = EXCLUDED.start_date,
           schedule_relationship = EXCLUDED.schedule_relationship,
           updated_at            = EXCLUDED.updated_at
+        WHERE
+          rt_trip_updates.route_id                IS DISTINCT FROM EXCLUDED.route_id
+          OR rt_trip_updates.start_date            IS DISTINCT FROM EXCLUDED.start_date
+          OR rt_trip_updates.schedule_relationship IS DISTINCT FROM EXCLUDED.schedule_relationship
       `,
       values
     );
@@ -478,6 +482,14 @@ async function upsertStopRows(client, rows = []) {
           platform              = EXCLUDED.platform,
           schedule_relationship = EXCLUDED.schedule_relationship,
           updated_at            = EXCLUDED.updated_at
+        WHERE
+          rt_stop_time_updates.stop_id                 IS DISTINCT FROM EXCLUDED.stop_id
+          OR rt_stop_time_updates.departure_delay       IS DISTINCT FROM EXCLUDED.departure_delay
+          OR rt_stop_time_updates.arrival_delay         IS DISTINCT FROM EXCLUDED.arrival_delay
+          OR rt_stop_time_updates.departure_time_rt     IS DISTINCT FROM EXCLUDED.departure_time_rt
+          OR rt_stop_time_updates.arrival_time_rt       IS DISTINCT FROM EXCLUDED.arrival_time_rt
+          OR rt_stop_time_updates.platform              IS DISTINCT FROM EXCLUDED.platform
+          OR rt_stop_time_updates.schedule_relationship IS DISTINCT FROM EXCLUDED.schedule_relationship
       `,
       values
     );

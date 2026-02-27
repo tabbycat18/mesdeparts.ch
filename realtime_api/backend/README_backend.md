@@ -206,7 +206,9 @@ If `updated_at` is more than ~30 s stale during active polling, a SHA write fail
 
 **`rt_updates` table and `persistRtUpdates()` are dead code:** `buildDelayIndex()` / `loadRealtimeDelayIndexOnce()` / `persistRtUpdates()` in `loaders/loadRealtime.js` are never imported from `server.js` or any active request handler. Only tests reference them. The `rt_updates` table (created dynamically if `persistRtUpdates` ever ran) is vestigial — not written to in production, safe to drop.
 
-**Retention DELETE unconditional:** `deleteOlderThanRetention()` inside `persistParsedTripUpdatesIncremental()` runs on every successful write call, even when 0 rows are pruned. 2 extra DELETE statements per tick, amplified when SHA silent failure forces every-tick upserts.
+**Retention DELETE unconditional:** `deleteOlderThanRetention()` inside `persistParsedTripUpdatesIncremental()` runs on every successful write call, even when 0 rows are pruned. 2 extra DELETE statements per tick. Still open.
+
+**`IS DISTINCT FROM` upsert guard added (fixed 2026-02-27):** Both trip and stop upserts in `persistParsedArtifacts.js` now include `WHERE IS DISTINCT FROM` guards on all mutable data columns. When upstream data hasn't changed, rows are true no-ops — no heap write, no WAL, no index update. `updated_at` only advances on actual data changes.
 
 ### Measurement checklist (network-bleed acceptance)
 
