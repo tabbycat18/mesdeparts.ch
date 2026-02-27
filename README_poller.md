@@ -26,10 +26,9 @@ The **poller** is a continuously-running background process that keeps the real-
  ┌───────────────▼──────────────────────────────────────────────────────────┐
  │  Neon PostgreSQL (shared DB)                                             │
  │  rt_cache              — raw protobuf blob + etag + last_status          │
- │  rt_tripupdates        — parsed trip-level delays                        │
- │  rt_tripupdates_stop   — parsed stop-level delays                        │
- │  rt_servicealerts      — parsed alert entities                           │
- │  rt_servicealerts_informed_entity  — alert→route/trip/stop mappings      │
+ │  rt_trip_updates       — parsed trip-level delays                        │
+ │  rt_stop_time_updates  — parsed stop-level delays                        │
+ │  rt_service_alerts     — parsed alert entities (incl. informed_entities) │
  │  rt_poller_heartbeat   — poller liveness timestamps                      │
  │  meta_kv               — payload SHA-256 change detection                │
  └──────────────────────────────────────────────┬───────────────────────────┘
@@ -191,8 +190,8 @@ The following patterns were searched across the entire repo and **not found** in
 7. **Persist raw blob** — upsert into `rt_cache(feed_key, payload, fetched_at, etag, last_status)`.
 8. **Decode protobuf** — `GtfsRealtimeBindings.transit_realtime.FeedMessage.decode(payloadBytes)`.
 9. **Persist parsed data** — call `persistParsedTripUpdatesIncremental()`:
-   - Batch-upsert trip rows into `rt_tripupdates` (500 rows/batch).
-   - Batch-upsert stop rows into `rt_tripupdates_stop` (200 rows/batch).
+   - Batch-upsert trip rows into `rt_trip_updates` (500 rows/batch).
+   - Batch-upsert stop rows into `rt_stop_time_updates` (200 rows/batch).
    - Prune rows older than `RT_PARSED_RETENTION_HOURS` (default 6 h).
 10. **Update payload SHA** — write new SHA-256 to `meta_kv`.
 11. **Touch heartbeat** — `touchTripUpdatesHeartbeat({ at, instanceId })` → writes `tripupdates_updated_at` in `rt_poller_heartbeat`.
@@ -205,12 +204,12 @@ Steps 1–11 follow the same pattern with these differences:
 - URL: `https://api.opentransportdata.swiss/la/gtfs-sa`
 - Feed key: `"la_servicealerts"`, advisory lock ID: `7483922`
 - Persistence strategy: **snapshot** (`persistParsedServiceAlertsSnapshot`) — deletes all existing alert rows then inserts fresh snapshot in a transaction. This avoids stale alert accumulation.
-- Tables written: `rt_servicealerts`, `rt_servicealerts_informed_entity`.
+- Table written: `rt_service_alerts` (informed entities stored as a JSONB column `informed_entities` within the same table, not a separate table).
 - Heartbeat: `touchAlertsHeartbeat()`.
 
 ### Backend read path (not the poller, but relevant context)
 
-On each `/api/stationboard` request, the backend calls `loadRealtimeDelayIndexOnce()` in [`loaders/loadRealtime.js`](realtime_api/backend/loaders/loadRealtime.js). This reads from the **parsed tables** (`rt_tripupdates`, `rt_tripupdates_stop`) by default — **not** from `rt_cache` blobs. The in-memory decoded-feed cache has a TTL of 10 000–15 000 ms (`RT_DECODED_FEED_CACHE_MS`) to avoid hammering the DB on every request.
+On each `/api/stationboard` request, the backend calls `loadRealtimeDelayIndexOnce()` in [`loaders/loadRealtime.js`](realtime_api/backend/loaders/loadRealtime.js). This reads from the **parsed tables** (`rt_trip_updates`, `rt_stop_time_updates`) by default — **not** from `rt_cache` blobs. The in-memory decoded-feed cache has a TTL of 10 000–15 000 ms (`RT_DECODED_FEED_CACHE_MS`) to avoid hammering the DB on every request.
 
 ---
 
@@ -231,7 +230,7 @@ On each `/api/stationboard` request, the backend calls `loadRealtimeDelayIndexOn
 | `GTFS_RT_FETCH_TIMEOUT_MS` | No | `8000` | HTTP fetch timeout for both feeds | Fly secret / env |
 | `GTFS_SA_FETCH_TIMEOUT_MS` | No | `GTFS_RT_FETCH_TIMEOUT_MS` | ServiceAlerts-specific fetch timeout | Fly secret / env |
 | `RT_CACHE_MIN_WRITE_INTERVAL_MS` | No | `30000` | Minimum time between blob writes to `rt_cache` | Fly secret / env |
-| `RT_PARSED_RETENTION_HOURS` | No | `6` | How long to keep parsed rows in `rt_tripupdates*` | Fly secret / env |
+| `RT_PARSED_RETENTION_HOURS` | No | `6` | How long to keep parsed rows in `rt_trip_updates` / `rt_stop_time_updates` | Fly secret / env |
 | `RT_POLLER_LOCK_SKIP_WARN_STREAK` | No | `6` | Warn after N consecutive lock-skip cycles | Fly secret / env |
 | `RT_POLLER_LOCK_SKIP_STALE_AGE_MS` | No | `90000` | Warn if skipped and cached payload is older than this | Fly secret / env |
 | `RT_POLLER_HEARTBEAT_ENABLED` | No | `"0"` (enabled) | Set to `"0"` to enable; any other value disables heartbeat writes | Fly secret / env |

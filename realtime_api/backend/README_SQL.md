@@ -21,6 +21,8 @@ This file documents SQL files used by the active realtime backend.
 | `sql/cleanup_old_after_swap.sql` | Drop `*_old` GTFS tables after successful cutover. | `refreshGtfsIfNeeded.js` | Non-fatal post-step |
 | `sql/create_rt_cache.sql` | Create `public.rt_cache` table for poller/API cache exchange. | Manual ops / provisioning | Critical for poller-only RT strategy |
 | `sql/create_rt_poller_heartbeat.sql` | Create `public.rt_poller_heartbeat` table for poller freshness/health tracking. | Manual ops / provisioning | Critical for stale-RT diagnostics |
+| `sql/add_alert_translations_jsonb.sql` | One-time migration: add `header_translations` + `description_translations` JSONB columns and two GIN indexes to `public.rt_service_alerts`. | Manual ops / migration | Applied once after initial table creation |
+| `sql/add_rt_upsert_unique_constraints.sql` | No-op checklist artifact: confirms `rt_trip_updates` and `rt_stop_time_updates` PKs already satisfy `ON CONFLICT` targets; no DDL runs. | Informational only | None |
 | `sql/optimize_stationboard.sql` | Backfill time-seconds columns + add stationboard indexes (non-concurrent). | Manual ops | Performance optimization |
 | `sql/optimize_stationboard_latency.sql` | Add low-lock concurrent latency indexes for stops/aliases/stoptimes. | Manual ops | Performance optimization |
 | `sql/legacy/schema_gtfs.sql` | Historical legacy schema/bootstrap SQL kept for archive/reference only. | Legacy audits only | Not in active runtime path |
@@ -134,6 +136,26 @@ Safe edit guidance for search SQL:
   - instance attribution (`instance_id`)
 - Used by `scripts/checkPollerHeartbeat.js` for fast stale-RT diagnostics.
 
+### `sql/add_alert_translations_jsonb.sql`
+
+- One-time migration applied to `public.rt_service_alerts`.
+- Adds two JSONB columns:
+  - `header_translations jsonb DEFAULT NULL` — full multi-language array `[{language, text}, ...]`
+  - `description_translations jsonb DEFAULT NULL` — same structure for description
+- Adds two GIN indexes:
+  - `idx_rt_service_alerts_header_translations`
+  - `idx_rt_service_alerts_description_translations`
+- Fallback behavior: if columns are NULL, consuming code falls back to the existing single-language `header_text` / `description_text` columns.
+- Safe to inspect before re-running: the `ALTER TABLE ... ADD COLUMN` will fail if columns already exist (uses plain `ADD COLUMN`, not `ADD COLUMN IF NOT EXISTS`); `CREATE INDEX IF NOT EXISTS` is safe to re-run.
+
+### `sql/add_rt_upsert_unique_constraints.sql`
+
+- Contains no executable DDL.
+- Documents that `rt_trip_updates` and `rt_stop_time_updates` already have PKs that serve as `ON CONFLICT` targets for incremental upsert:
+  - `rt_trip_updates PRIMARY KEY (trip_id)`
+  - `rt_stop_time_updates PRIMARY KEY (trip_id, stop_sequence)`
+- Kept as a deployment checklist artifact only. Safe to read; no-op to run.
+
 ### `sql/optimize_stationboard.sql`
 
 - Adds and backfills:
@@ -196,6 +218,7 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f sql/optimize_stop_search.sql
 | Stop-search normalization/index behavior | `sql/optimize_stop_search.sql` |
 | RT cache table shape | `sql/create_rt_cache.sql` |
 | Poller heartbeat/staleness table shape | `sql/create_rt_poller_heartbeat.sql` |
+| Service alert multi-language translation columns | `sql/add_alert_translations_jsonb.sql` |
 | Stationboard DB performance tuning | `sql/optimize_stationboard.sql`, `sql/optimize_stationboard_latency.sql` |
 | Runtime scheduled board selection logic | `src/sql/stationboard.sql` |
 
