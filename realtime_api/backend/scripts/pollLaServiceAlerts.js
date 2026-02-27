@@ -506,12 +506,44 @@ export function createLaServiceAlertsPoller({
       return returnWithTxDiagnostics(backoffMs);
     }
 
+    const headersMs = Math.round(performance.now() - fetchPerfStart);
     const responseEtag = toTextOrNull(response.headers.get("etag")) || currentEtag;
+    if (headersMs > 2000 && response.status !== 200) {
+      logLine("service_alerts_poller_fetch_slow", {
+        status: response.status,
+        lastFetchedAgeMs: currentAgeMs,
+        etagPresent: !!currentEtag,
+        extra: {
+          headersMs,
+          bodyReadMs: 0,
+          totalFetchMs: headersMs,
+          payloadBytes: null,
+          contentLength: toTextOrNull(response.headers.get("content-length")),
+        },
+      });
+    }
 
     if (response.status === 200) {
+      const bodyReadStart = performance.now();
       const payloadBytes = Buffer.from(await response.arrayBuffer());
+      const bodyReadMs = Math.round(performance.now() - bodyReadStart);
+      const payloadLength = payloadBytes.length;
       // fetchMs through body read; updated below after decode for changed payloads
       timing.fetchMs = Math.round(performance.now() - fetchPerfStart);
+      if (headersMs + bodyReadMs > 2000) {
+        logLine("service_alerts_poller_fetch_slow", {
+          status: 200,
+          lastFetchedAgeMs: currentAgeMs,
+          etagPresent: !!responseEtag,
+          extra: {
+            headersMs,
+            bodyReadMs,
+            totalFetchMs: headersMs + bodyReadMs,
+            payloadBytes: payloadLength,
+            contentLength: toTextOrNull(response.headers.get("content-length")),
+          },
+        });
+      }
       const incomingPayloadSha = payloadSha256Hex(payloadBytes);
       const existingPayloadSha = toTextOrNull(storedPayloadSha);
       const payloadUnchanged =
@@ -656,6 +688,9 @@ export function createLaServiceAlertsPoller({
           parsedAlertRowsInserted: Number(parsedWrite?.alertRows || 0),
           parsedAlertRowsDeletedBySnapshot: Number(parsedWrite?.deletedBySnapshotAlertRows || 0),
           parsedAlertRowsDeletedByRetention: Number(parsedWrite?.deletedByRetentionAlertRows || 0),
+          fetchHeadersMs: headersMs,
+          fetchBodyMs: bodyReadMs,
+          payloadBytes: payloadLength,
         },
       });
       return returnWithTxDiagnostics(INTERVAL_MS);
