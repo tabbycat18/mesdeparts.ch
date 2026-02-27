@@ -12,6 +12,7 @@
 - `realtime_api/backend/README_src.md`
 - `realtime_api/backend/scripts/README_scripts.md`
 - `realtime_api/docs/INDEX.md`
+- `README_poller.md` — end-to-end poller architecture, configuration, deploy & troubleshooting
 
 Loader/logic canonical docs:
 - Runtime map and quick links: `realtime_api/README_INDEX.md`
@@ -74,7 +75,7 @@ If context is still missing after this order, then inspect code.
 | Stationboard DB optimization SQL | `realtime_api/backend/sql/optimize_stationboard.sql`, `realtime_api/backend/sql/optimize_stationboard_latency.sql` |
 | Stationboard RT baseline diagnostics (DB churn + freshness + latency snapshot) | `realtime_api/backend/scripts/rtBaselineReport.mjs`, output `realtime_api/backend/docs/diagnostics/rt-baseline-*.json` and `rt-baseline-*.md` |
 | RT cache churn quick measurement (payload sizes/statements/activity) | `realtime_api/backend/scripts/measureRtCacheChurn.mjs`, docs in `realtime_api/backend/README_backend.md` |
-| Poll cadence/backoff | `realtime_api/backend/scripts/pollLaTripUpdates.js`, `realtime_api/backend/scripts/pollLaServiceAlerts.js` |
+| Poll cadence/backoff | `realtime_api/backend/scripts/pollLaTripUpdates.js`, `realtime_api/backend/scripts/pollLaServiceAlerts.js` (see also `README_poller.md`) |
 | Frontend polling/render behavior | `realtime_api/frontend/logic.v*.js`, `realtime_api/frontend/ui.v*.js`, `realtime_api/frontend/state.v*.js` |
 | Frontend refresh request coalescing (avoid parallel fetch bursts) | `realtime_api/frontend/v20260223-1.main.js` |
 | Frontend foreground refresh/resume drift catch-up + unattended-stall rescue + RT fetch diagnostics (`lastFetchAt`, `edgeCache`, `serverFetchedAt`) | `realtime_api/frontend/v20260223-1.main.js`, `realtime_api/frontend/v20260223-1.logic.js`, `realtime_api/frontend/v20260223-1.state.js` |
