@@ -51,6 +51,8 @@ function makeStationboardStub(calls) {
         cacheFetchedAt: null,
         cacheAgeMs: null,
         ageMs: null,
+        lastPollAt: null,
+        pollAgeMs: null,
         freshnessThresholdMs: 45000,
         ageSeconds: null,
         status: null,
@@ -91,12 +93,14 @@ function makeStationboardStub(calls) {
 
 function makeRtCacheMetaStub({
   fetchedAt = "2026-02-21T15:00:00.000Z",
+  lastSuccessfulPollAt = fetchedAt,
   lastStatus = 200,
   payloadBytes = 1024,
   hasPayload = true,
 } = {}) {
   return {
     fetched_at: fetchedAt,
+    last_successful_poll_at: lastSuccessfulPollAt,
     last_status: lastStatus,
     payload_bytes: payloadBytes,
     has_payload: hasPayload,
@@ -250,6 +254,8 @@ test("stationboard route does not conflict when params resolve to same canonical
   assert.equal(res.headers["x-md-rt-reason"], "missing");
   assert.equal(res.headers["x-md-rt-age-ms"], "-1");
   assert.equal(res.headers["x-md-rt-fetched-at"], "");
+  assert.equal(res.headers["x-md-rt-poll-age-ms"], "-1");
+  assert.equal(res.headers["x-md-rt-last-poll-at"], "");
   assert.equal(res.headers["x-md-rt-status"], "");
   assert.equal(typeof res.headers["x-md-instance"], "string");
   assert.ok(String(res.headers["x-md-instance"]).length > 0);
@@ -351,11 +357,13 @@ test("stationboard route returns 400 invalid_since_rt for malformed since_rt", a
 test("stationboard route returns 204 when since_rt is unchanged", async () => {
   const calls = [];
   const fetchedAt = "2026-02-21T16:00:00.000Z";
+  const lastPollAt = "2026-02-21T16:00:10.000Z";
   const handler = createRouteHandler({
     getStationboardLike: makeStationboardStub(calls),
     getRtCacheMetaLike: async () =>
       makeRtCacheMetaStub({
         fetchedAt,
+        lastSuccessfulPollAt: lastPollAt,
         lastStatus: 200,
         payloadBytes: 2048,
         hasPayload: true,
@@ -379,6 +387,8 @@ test("stationboard route returns 204 when since_rt is unchanged", async () => {
   assert.equal(res.headers["CDN-Cache-Control"] || res.headers["cdn-cache-control"], "public, max-age=2, stale-while-revalidate=4");
   assert.equal(res.headers["x-md-rt-reason"], "unchanged_since_rt");
   assert.equal(res.headers["x-md-rt-fetched-at"], fetchedAt);
+  assert.equal(res.headers["x-md-rt-last-poll-at"], lastPollAt);
+  assert.ok(Number(res.headers["x-md-rt-poll-age-ms"]) >= 0);
   assert.equal(res.headers["x-md-rt-status"], "200");
   assert.equal(calls.length, 0);
 });
@@ -386,6 +396,7 @@ test("stationboard route returns 204 when since_rt is unchanged", async () => {
 test("stationboard route returns 200 when since_rt is unchanged but if_board is missing", async () => {
   const calls = [];
   const fetchedAt = "2026-02-21T16:00:00.000Z";
+  const lastPollAt = "2026-02-21T16:00:15.000Z";
   const handler = createRouteHandler({
     getStationboardLike: async (input) => {
       calls.push(input);
@@ -399,6 +410,8 @@ test("stationboard route returns 200 when since_rt is unchanged but if_board is 
           fetchedAt,
           cacheFetchedAt: fetchedAt,
           cacheAgeMs: 1000,
+          lastPollAt,
+          pollAgeMs: 500,
           freshnessThresholdMs: 45000,
           ageSeconds: 1,
           status: 200,
@@ -424,6 +437,7 @@ test("stationboard route returns 200 when since_rt is unchanged but if_board is 
     getRtCacheMetaLike: async () =>
       makeRtCacheMetaStub({
         fetchedAt,
+        lastSuccessfulPollAt: lastPollAt,
         lastStatus: 200,
         payloadBytes: 2048,
         hasPayload: true,
@@ -443,6 +457,8 @@ test("stationboard route returns 200 when since_rt is unchanged but if_board is 
   });
   assert.equal(res.statusCode, 200);
   assert.equal(Array.isArray(res.body?.departures), true);
+  assert.equal(res.headers["x-md-rt-last-poll-at"], lastPollAt);
+  assert.equal(res.headers["x-md-rt-poll-age-ms"], "500");
   assert.equal(calls.length, 1);
 });
 

@@ -41,6 +41,9 @@ test("loadScopedRtFromParsedTables returns applied parsed index and ADDED rows",
     nowMs,
     scopeTripIds: ["trip-added-1"],
     scopeStopIds: ["8587387:0:A"],
+    getRtCacheMetaLike: async () => ({
+      last_successful_poll_at: new Date(nowMs - 2_000).toISOString(),
+    }),
     queryLike: makeQueryLike({
       stopRowsByTrip: [
         {
@@ -85,6 +88,9 @@ test("loadScopedRtFromParsedTables returns parsed_unavailable when parsed tables
   const out = await loadScopedRtFromParsedTables({
     enabled: true,
     scopeTripIds: ["trip-1"],
+    getRtCacheMetaLike: async () => ({
+      last_successful_poll_at: new Date().toISOString(),
+    }),
     queryLike: makeQueryLike({
       error: Object.assign(new Error("relation public.rt_stop_time_updates does not exist"), {
         code: "42P01",
@@ -106,6 +112,9 @@ test("loadScopedRtFromParsedTables returns stale_cache when parsed rows are too 
     nowMs,
     freshnessThresholdMs: 10_000,
     scopeTripIds: ["trip-1"],
+    getRtCacheMetaLike: async () => ({
+      last_successful_poll_at: new Date(nowMs - 70_000).toISOString(),
+    }),
     queryLike: makeQueryLike({
       stopRowsByTrip: [
         {
@@ -138,6 +147,7 @@ test("loadScopedRtFromParsedTables returns stale_cache when parsed rows are too 
   assert.equal(out.meta.reason, "stale_cache");
   assert.equal(out.meta.cacheStatus, "STALE");
   assert.equal(out.meta.rtSource, "parsed");
+  assert.equal(out.meta.freshnessAgeSource, "last_successful_poll");
 });
 
 test("loadScopedRtFromParsedTables stop-scope query stays on parsed tables and applies updated_at lookback", async () => {
@@ -151,6 +161,9 @@ test("loadScopedRtFromParsedTables stop-scope query stays on parsed tables and a
     scopeTripIds: [],
     scopeStopIds: ["8503000:0:1"],
     stopScopeLookbackMs: 30 * 60 * 1000,
+    getRtCacheMetaLike: async () => ({
+      last_successful_poll_at: new Date(nowMs - 1_000).toISOString(),
+    }),
     queryLike: async (sql, params) => {
       const query = String(sql || "");
       seenQueries.push(query);
@@ -195,4 +208,50 @@ test("loadScopedRtFromParsedTables stop-scope query stays on parsed tables and a
   assert.equal(out.meta.applied, true);
   assert.equal(out.meta.rtSource, "parsed");
   assert.equal(seenQueries.some((query) => query.toLowerCase().includes("from public.rt_cache")), false);
+});
+
+test("loadScopedRtFromParsedTables stays fresh when last write is old but last successful poll is recent", async () => {
+  const loadScopedRtFromParsedTables = await loadScopedRtFromParsedTablesFn();
+  const nowMs = Date.now();
+  const out = await loadScopedRtFromParsedTables({
+    enabled: true,
+    nowMs,
+    freshnessThresholdMs: 10_000,
+    scopeTripIds: ["trip-1"],
+    getRtCacheMetaLike: async () => ({
+      last_successful_poll_at: new Date(nowMs - 2_000).toISOString(),
+    }),
+    queryLike: makeQueryLike({
+      stopRowsByTrip: [
+        {
+          trip_id: "trip-1",
+          stop_id: "8503000:0:1",
+          stop_sequence: 3,
+          departure_delay: 60,
+          departure_time_rt: Math.floor((nowMs + 60_000) / 1000),
+          stop_schedule_relationship: "SCHEDULED",
+          stop_updated_at: new Date(nowMs - 70_000).toISOString(),
+          start_date: "20260225",
+          route_id: "R1",
+          trip_schedule_relationship: "SCHEDULED",
+          trip_updated_at: new Date(nowMs - 70_000).toISOString(),
+        },
+      ],
+      tripRows: [
+        {
+          trip_id: "trip-1",
+          route_id: "R1",
+          start_date: "20260225",
+          trip_schedule_relationship: "SCHEDULED",
+          trip_updated_at: new Date(nowMs - 70_000).toISOString(),
+        },
+      ],
+    }),
+  });
+
+  assert.equal(out.meta.applied, true);
+  assert.equal(out.meta.reason, "applied");
+  assert.equal(out.meta.freshnessAgeSource, "last_successful_poll");
+  assert.ok(Number.isFinite(out.meta.pollAgeMs) && out.meta.pollAgeMs < 10_000);
+  assert.ok(Number.isFinite(out.meta.cacheAgeMs) && out.meta.cacheAgeMs > 60_000);
 });

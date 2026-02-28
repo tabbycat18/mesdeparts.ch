@@ -43,6 +43,13 @@ function toNullableInt(value) {
   return Number.isFinite(out) ? Math.trunc(out) : null;
 }
 
+function toIsoOrNull(value) {
+  if (value == null) return null;
+  const ms = new Date(value).getTime();
+  if (!Number.isFinite(ms)) return null;
+  return new Date(ms).toISOString();
+}
+
 function rowToCacheRecord(row) {
   if (!row) return null;
   if (row.write_skipped_by_lock === true) {
@@ -75,11 +82,16 @@ function rowToCacheMeta(row) {
     has_payload: Number.isFinite(payloadBytes) ? payloadBytes > 0 : false,
     etag: row.etag || null,
     last_error: row.last_error || null,
+    last_successful_poll_at: toIsoOrNull(row.last_successful_poll_at),
   };
 }
 
 function payloadShaMetaKey(feedKey) {
   return `rt_cache_payload_sha256:${feedKey}`;
+}
+
+function lastSuccessfulPollMetaKey(feedKey) {
+  return `rt_cache_last_successful_poll_at:${feedKey}`;
 }
 
 export async function upsertRtCache(
@@ -390,6 +402,76 @@ export async function setRtCachePayloadSha(feed_key, sha256, options = {}) {
   };
 }
 
+export async function getRtCacheLastSuccessfulPollAt(feed_key) {
+  const feedKey = normalizeFeedKey(feed_key);
+  const result = await query(
+    `
+      SELECT value
+      FROM public.meta_kv
+      WHERE key = $1
+      LIMIT 1
+    `,
+    [lastSuccessfulPollMetaKey(feedKey)]
+  );
+  return toIsoOrNull(result.rows[0]?.value);
+}
+
+export async function setRtCacheLastSuccessfulPollAt(feed_key, at = new Date(), options = {}) {
+  const feedKey = normalizeFeedKey(feed_key);
+  const isoValue = toIsoOrNull(at);
+  if (!isoValue) return { updated: false, writeSkippedByLock: false };
+
+  const writeLockId = Number(options?.writeLockId);
+  const hasWriteLockId = Number.isFinite(writeLockId);
+  const values = [lastSuccessfulPollMetaKey(feedKey), isoValue];
+  const result = await query(
+    hasWriteLockId
+      ? `
+          WITH lock_state AS (
+            SELECT pg_try_advisory_xact_lock($3::bigint) AS acquired
+          ),
+          upserted AS (
+            INSERT INTO public.meta_kv (key, value, updated_at)
+            SELECT $1, $2, NOW()
+            FROM lock_state
+            WHERE acquired
+            ON CONFLICT (key)
+            DO UPDATE SET
+              value = EXCLUDED.value,
+              updated_at = NOW()
+            RETURNING 1 AS touched
+          )
+          SELECT
+            EXISTS (SELECT 1 FROM upserted) AS updated,
+            false AS write_skipped_by_lock
+          FROM lock_state
+          WHERE acquired
+          UNION ALL
+          SELECT
+            false AS updated,
+            true AS write_skipped_by_lock
+          FROM lock_state
+          WHERE NOT acquired
+          LIMIT 1
+        `
+      : `
+          INSERT INTO public.meta_kv (key, value, updated_at)
+          VALUES ($1, $2, NOW())
+          ON CONFLICT (key)
+          DO UPDATE SET
+            value = EXCLUDED.value,
+            updated_at = NOW()
+          RETURNING true AS updated, false AS write_skipped_by_lock
+        `,
+    hasWriteLockId ? [...values, Math.trunc(writeLockId)] : values
+  );
+  const row = result.rows[0] || {};
+  return {
+    updated: row.updated === true,
+    writeSkippedByLock: row.write_skipped_by_lock === true,
+  };
+}
+
 export async function getRtCache(feed_key) {
   const feedKey = normalizeFeedKey(feed_key);
   const result = await query(
@@ -409,16 +491,22 @@ export async function getRtCacheMeta(feed_key) {
   const result = await query(
     `
       SELECT
-        fetched_at,
-        last_status,
-        octet_length(payload) AS payload_bytes,
-        etag,
-        last_error
-      FROM public.rt_cache
-      WHERE feed_key = $1
+        c.fetched_at,
+        c.last_status,
+        octet_length(c.payload) AS payload_bytes,
+        c.etag,
+        c.last_error,
+        (
+          SELECT mk.value
+          FROM public.meta_kv mk
+          WHERE mk.key = $2
+          LIMIT 1
+        ) AS last_successful_poll_at
+      FROM public.rt_cache c
+      WHERE c.feed_key = $1
       LIMIT 1
     `,
-    [feedKey]
+    [feedKey, lastSuccessfulPollMetaKey(feedKey)]
   );
   return rowToCacheMeta(result.rows[0] || null);
 }

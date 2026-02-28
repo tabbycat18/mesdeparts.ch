@@ -160,10 +160,16 @@ function ensureRtMeta(raw) {
   const applied = src.applied === true;
   const reason = canonicalRtReason(text(src.reason), applied);
   const fetchedAt = text(src.cacheFetchedAt) || text(src.fetchedAt) || null;
+  const lastPollAt = text(src.lastPollAt) || text(src.lastSuccessfulPollAt) || null;
   const ageMs =
     toFiniteNumberOrNull(src.cacheAgeMs) ??
     (toFiniteNumberOrNull(src.ageSeconds) != null
       ? Math.max(0, Math.round(Number(src.ageSeconds) * 1000))
+      : null);
+  const pollAgeMs =
+    toFiniteNumberOrNull(src.pollAgeMs) ??
+    (toFiniteNumberOrNull(src.pollAgeSeconds) != null
+      ? Math.max(0, Math.round(Number(src.pollAgeSeconds) * 1000))
       : null);
   const freshnessThresholdMs = Math.max(
     5_000,
@@ -184,6 +190,12 @@ function ensureRtMeta(raw) {
     ageSeconds:
       toFiniteNumberOrNull(src.ageSeconds) ??
       (ageMs != null ? Math.max(0, Math.floor(ageMs / 1000)) : null),
+    lastPollAt,
+    lastSuccessfulPollAt: lastPollAt,
+    pollAgeMs,
+    pollAgeSeconds:
+      toFiniteNumberOrNull(src.pollAgeSeconds) ??
+      (pollAgeMs != null ? Math.max(0, Math.floor(pollAgeMs / 1000)) : null),
     freshnessThresholdMs,
     freshnessMaxAgeSeconds: Math.round(freshnessThresholdMs / 1000),
     cacheStatus: text(src.cacheStatus) || (applied ? "FRESH" : "MISS"),
@@ -315,6 +327,11 @@ function ensureTopLevelMeta(payload, { requestId, responseMode, totalBackendMs }
   const derivedMode = skippedSteps.length > 0 ? "degraded_static" : "full";
   const rtFetchedAt =
     text(metaRaw.rtFetchedAt) || text(normalized?.rt?.cacheFetchedAt) || text(normalized?.rt?.fetchedAt) || null;
+  const rtLastPollAt =
+    text(metaRaw.rtLastPollAt) ||
+    text(normalized?.rt?.lastPollAt) ||
+    text(normalized?.rt?.lastSuccessfulPollAt) ||
+    null;
   const alertsFetchedAt =
     text(metaRaw.alertsFetchedAt) ||
     text(normalized?.alerts?.cacheFetchedAt) ||
@@ -322,6 +339,12 @@ function ensureTopLevelMeta(payload, { requestId, responseMode, totalBackendMs }
     null;
   const rtCacheAgeMs =
     toFiniteNumberOrNull(metaRaw.rtCacheAgeMs) ?? toFiniteNumberOrNull(normalized?.rt?.cacheAgeMs);
+  const rtPollAgeMs =
+    toFiniteNumberOrNull(metaRaw.rtPollAgeMs) ??
+    toFiniteNumberOrNull(normalized?.rt?.pollAgeMs) ??
+    (toFiniteNumberOrNull(normalized?.rt?.pollAgeSeconds) != null
+      ? Math.max(0, Math.round(Number(normalized.rt.pollAgeSeconds) * 1000))
+      : null);
   const alertsCacheAgeMs =
     toFiniteNumberOrNull(metaRaw.alertsCacheAgeMs) ??
     toFiniteNumberOrNull(normalized?.alerts?.cacheAgeMs) ??
@@ -345,7 +368,9 @@ function ensureTopLevelMeta(payload, { requestId, responseMode, totalBackendMs }
       text(metaRaw.rtSource) ||
       (text(normalized?.rt?.rtSource) === "blob_fallback" ? "blob_fallback" : "parsed"),
     rtFetchedAt,
+    rtLastPollAt,
     rtCacheAgeMs,
+    rtPollAgeMs,
     alertsStatus: text(metaRaw.alertsStatus) || deriveAlertsStatus(normalized, skippedSteps),
     alertsSource:
       text(metaRaw.alertsSource) ||
@@ -364,13 +389,21 @@ function applyRtDiagnosticHeaders(res, payload, { cacheKey = "" } = {}) {
   const applied = rt.applied === true ? "1" : "0";
   const reason = canonicalRtReason(rt.reason, rt.applied === true);
   const ageMs = toFiniteNumberOrNull(rt.cacheAgeMs);
+  const pollAgeMs = toFiniteNumberOrNull(rt.pollAgeMs);
   const fetchedAt = text(rt.cacheFetchedAt) || text(rt.fetchedAt) || "";
+  const lastPollAt = text(rt.lastPollAt) || text(rt.lastSuccessfulPollAt) || "";
   const status = toFiniteNumberOrNull(rt.status) ?? toFiniteNumberOrNull(rt.lastStatus);
   const instanceId = text(rt.instance?.id) || ROUTE_INSTANCE_ID || `${os.hostname()}:${process.pid}`;
   setResponseHeader(res, "x-md-rt-applied", applied);
   setResponseHeader(res, "x-md-rt-reason", reason);
   setResponseHeader(res, "x-md-rt-age-ms", ageMs == null ? "-1" : String(Math.max(0, Math.round(ageMs))));
   setResponseHeader(res, "x-md-rt-fetched-at", fetchedAt || "");
+  setResponseHeader(
+    res,
+    "x-md-rt-poll-age-ms",
+    pollAgeMs == null ? "-1" : String(Math.max(0, Math.round(pollAgeMs)))
+  );
+  setResponseHeader(res, "x-md-rt-last-poll-at", lastPollAt || "");
   setResponseHeader(res, "x-md-rt-status", status == null ? "" : String(status));
   setResponseHeader(res, "x-md-instance", instanceId);
   if (cacheKey) setResponseHeader(res, "x-md-cache-key", cacheKey);
@@ -860,6 +893,14 @@ export function createStationboardRouteHandler({
         Number.isFinite(rtFetchedAtMs) && rtFetchedAtMs > 0
           ? Math.max(0, nowMs - rtFetchedAtMs)
           : null;
+      const rtLastPollAtMs = rtCacheMeta?.last_successful_poll_at
+        ? Number(new Date(rtCacheMeta.last_successful_poll_at).getTime())
+        : null;
+      const rtLastPollAtIso = toIsoOrNull(rtLastPollAtMs);
+      const rtPollAgeMs =
+        Number.isFinite(rtLastPollAtMs) && rtLastPollAtMs > 0
+          ? Math.max(0, nowMs - rtLastPollAtMs)
+          : null;
       const rtStatus =
         toFiniteNumberOrNull(rtCacheMeta?.last_status) ??
         (rtCacheMeta?.has_payload ? 200 : null);
@@ -877,10 +918,16 @@ export function createStationboardRouteHandler({
         setResponseHeader(res, "x-md-rt-applied", "0");
         setResponseHeader(res, "x-md-rt-reason", "unchanged_since_rt");
         setResponseHeader(res, "x-md-rt-fetched-at", rtFetchedAtIso || "");
+        setResponseHeader(res, "x-md-rt-last-poll-at", rtLastPollAtIso || "");
         setResponseHeader(
           res,
           "x-md-rt-age-ms",
           rtAgeMs == null ? "-1" : String(Math.max(0, Math.round(rtAgeMs)))
+        );
+        setResponseHeader(
+          res,
+          "x-md-rt-poll-age-ms",
+          rtPollAgeMs == null ? "-1" : String(Math.max(0, Math.round(rtPollAgeMs)))
         );
         setResponseHeader(res, "x-md-rt-status", rtStatus == null ? "" : String(rtStatus));
         setResponseHeader(

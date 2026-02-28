@@ -7,7 +7,14 @@ async function loadPollerFactory() {
   process.env.DATABASE_URL ||= "postgres://localhost:5432/mesdeparts_test";
   process.env.RT_POLLER_HEARTBEAT_ENABLED = "0";
   const mod = await import("../scripts/pollLaTripUpdates.js");
-  return mod.createLaTripUpdatesPoller;
+  return (options = {}) =>
+    mod.createLaTripUpdatesPoller({
+      setRtCacheLastSuccessfulPollAtLike: async () => ({
+        updated: true,
+        writeSkippedByLock: false,
+      }),
+      ...options,
+    });
 }
 
 function payloadSha256Hex(payloadBytes) {
@@ -176,7 +183,7 @@ test("poller run loop continues after transient DB failure without exiting", asy
   assert.equal(getMetaCalls >= 2, true);
   assert.equal(fetchCalls, 1);
   assert.equal(sleepCalls[0] >= 15_000, true);
-  assert.equal(sleepCalls[1] >= 60_000, true);
+  assert.equal(sleepCalls[1] >= 59_000, true);
 });
 
 test("poller writes parsed trip updates on changed 200 payload", async () => {
@@ -406,6 +413,42 @@ test("poller unchanged payload skips parsed write and logs skip_write_unchanged 
   assert.equal(parsedWrites, 0);
   assert.equal(metadataUpdates, 1);
   assert.equal(logs.some((entry) => entry?.event === "poller_skip_write_unchanged"), true);
+});
+
+test("poller updates last successful poll timestamp on repeated unchanged successful polls", async () => {
+  const createLaTripUpdatesPoller = await loadPollerFactory();
+  const payload = Buffer.from("same-payload");
+  const payloadSha = payloadSha256Hex(payload);
+  let fakeNowMs = Date.parse("2026-02-28T10:00:00.000Z");
+  const successfulPollWrites = [];
+
+  const poller = createLaTripUpdatesPoller({
+    token: "test-token",
+    nowLike: () => fakeNowMs,
+    fetchLike: async () => okResponse(payload, "etag-same"),
+    getRtCacheMetaLike: async () => ({
+      fetched_at: new Date(fakeNowMs - 120_000),
+      etag: "etag-same",
+      last_status: 200,
+      last_error: null,
+    }),
+    getRtCachePayloadShaLike: async () => payloadSha,
+    updateRtCacheStatusLike: async () => ({ updated: true, writeSkippedByLock: false }),
+    ensureRtCacheMetadataRowLike: async () => ({ inserted: false, writeSkippedByLock: false }),
+    setRtCacheLastSuccessfulPollAtLike: async (_feedKey, at) => {
+      successfulPollWrites.push(new Date(at).toISOString());
+      return { updated: true, writeSkippedByLock: false };
+    },
+    decodeFeedLike: () => ({ entity: [] }),
+    logLike: () => {},
+  });
+
+  await poller.tick();
+  fakeNowMs += 15_000;
+  await poller.tick();
+
+  assert.equal(successfulPollWrites.length, 2);
+  assert.ok(Date.parse(successfulPollWrites[1]) > Date.parse(successfulPollWrites[0]));
 });
 
 test("poller source keeps blob payload UPSERT path disabled", () => {

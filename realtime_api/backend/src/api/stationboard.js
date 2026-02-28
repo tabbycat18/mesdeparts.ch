@@ -845,10 +845,17 @@ function toRtTripUpdatesDebug(rtMeta, departureAuditRows) {
           : null,
     cacheStatus: String(base.cacheStatus || "MISS"),
     fetchedAtUtc: base.fetchedAt || base.fetchedAtUtc || null,
+    lastPollAtUtc:
+      String(base.lastPollAt || base.lastSuccessfulPollAt || "").trim() || null,
     ageSec: Number.isFinite(base.ageSeconds)
       ? Number(base.ageSeconds)
       : Number.isFinite(base.ageSec)
         ? Number(base.ageSec)
+        : null,
+    pollAgeSec: Number.isFinite(base.pollAgeSeconds)
+      ? Number(base.pollAgeSeconds)
+      : Number.isFinite(base.pollAgeMs)
+        ? Math.floor(Number(base.pollAgeMs) / 1000)
         : null,
     ttlSec: Number.isFinite(base.freshnessMaxAgeSeconds)
       ? Number(base.freshnessMaxAgeSeconds)
@@ -937,6 +944,8 @@ function buildRtResponseMeta(rtMetaRaw) {
   const reason = normalizeRtReason(rtMeta.reason, rtMeta.applied === true);
   const cacheFetchedAt =
     String(rtMeta.cacheFetchedAt || rtMeta.fetchedAt || "").trim() || null;
+  const lastPollAt =
+    String(rtMeta.lastPollAt || rtMeta.lastSuccessfulPollAt || "").trim() || null;
   const cacheAgeMs = Number.isFinite(rtMeta.cacheAgeMs)
     ? Number(rtMeta.cacheAgeMs)
     : Number.isFinite(rtMeta.ageMs)
@@ -944,6 +953,11 @@ function buildRtResponseMeta(rtMetaRaw) {
       : Number.isFinite(rtMeta.ageSeconds)
         ? Math.max(0, Number(rtMeta.ageSeconds) * 1000)
         : null;
+  const pollAgeMs = Number.isFinite(rtMeta.pollAgeMs)
+    ? Number(rtMeta.pollAgeMs)
+    : Number.isFinite(rtMeta.pollAgeSeconds)
+      ? Math.max(0, Number(rtMeta.pollAgeSeconds) * 1000)
+      : null;
   const freshnessThresholdMs = Number.isFinite(rtMeta.freshnessThresholdMs)
     ? Math.max(5_000, Number(rtMeta.freshnessThresholdMs))
     : Number.isFinite(rtMeta.freshnessMaxAgeSeconds)
@@ -977,6 +991,14 @@ function buildRtResponseMeta(rtMetaRaw) {
       ? Number(rtMeta.ageSeconds)
       : Number.isFinite(cacheAgeMs)
         ? Math.floor(cacheAgeMs / 1000)
+        : null,
+    lastPollAt,
+    lastSuccessfulPollAt: lastPollAt,
+    pollAgeMs,
+    pollAgeSeconds: Number.isFinite(rtMeta.pollAgeSeconds)
+      ? Number(rtMeta.pollAgeSeconds)
+      : Number.isFinite(pollAgeMs)
+        ? Math.floor(pollAgeMs / 1000)
         : null,
     freshnessThresholdMs,
     freshnessMaxAgeSeconds: Math.round(freshnessThresholdMs / 1000),
@@ -1678,10 +1700,17 @@ export async function getStationboard({
     const responseMode =
       skippedSteps.length > 0 || degradedMode ? "degraded_static" : "full";
     const rtFetchedAt = String(rtMeta.cacheFetchedAt || rtMeta.fetchedAt || "").trim() || null;
+    const rtLastPollAt =
+      String(rtMeta.lastPollAt || rtMeta.lastSuccessfulPollAt || "").trim() || null;
     const rtCacheAgeMs = Number.isFinite(Number(rtMeta.cacheAgeMs))
       ? Number(rtMeta.cacheAgeMs)
       : Number.isFinite(Number(rtMeta.ageMs))
         ? Number(rtMeta.ageMs)
+        : null;
+    const rtPollAgeMs = Number.isFinite(Number(rtMeta.pollAgeMs))
+      ? Number(rtMeta.pollAgeMs)
+      : Number.isFinite(Number(rtMeta.pollAgeSeconds))
+        ? Math.max(0, Number(rtMeta.pollAgeSeconds) * 1000)
         : null;
     const alertsFetchedAt =
       String(alertsMeta.cacheFetchedAt || alertsMeta.fetchedAt || "").trim() || null;
@@ -1703,7 +1732,9 @@ export async function getStationboard({
           ? rtMeta.rtSource
           : "parsed",
       rtFetchedAt,
+      rtLastPollAt,
       rtCacheAgeMs,
+      rtPollAgeMs,
       alertsStatus,
       alertsSource:
         alertsMeta.alertsSource === "parsed" || alertsMeta.alertsSource === "blob_fallback"

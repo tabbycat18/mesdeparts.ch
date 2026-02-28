@@ -74,6 +74,7 @@ fly secrets set DATABASE_URL_POLLER="postgresql://...poller-url..." -a mesdepart
 - `pollLaTripUpdates.js`
   - Polls LA GTFS-RT TripUpdates feed, decodes protobuf, writes parsed snapshots to `rt_trip_updates` + `rt_stop_time_updates`.
   - Writes lightweight feed metadata to `rt_cache` (`fetched_at`, `last_status`, `etag`, `last_error`) and payload SHA-256 to `meta_kv`.
+  - Persists `last_successful_poll_at` in `meta_kv` on every successful poll (including unchanged `200` and `304` ticks), so stationboard freshness tracks successful polling cadence rather than only last write time.
   - Does not execute `rt_cache.payload` UPSERT writes on poll ticks (blob write path is disabled).
   - Snapshot strategy: each successful parsed write replaces the previous parsed snapshot; retention compaction window is controlled by `RT_PARSED_RETENTION_HOURS` (default `6`).
   - Default interval: `GTFS_RT_POLL_INTERVAL_MS` (default `15000` ms).
@@ -85,7 +86,7 @@ fly secrets set DATABASE_URL_POLLER="postgresql://...poller-url..." -a mesdepart
   - Emits contention guardrail warning (`poller_write_lock_contention_warning`) when write-lock skips repeat beyond `RT_POLLER_LOCK_SKIP_WARN_STREAK` (default `6`) and cache age exceeds `RT_POLLER_LOCK_SKIP_STALE_AGE_MS` (default `90000` ms).
   - `poller_fetch_200` logs include parsed compaction metrics (`parsedTripRowsInserted`, `parsedStopRowsInserted`, snapshot/retention delete counts).
   - Runtime resilience: `runForever()` catches transient DB/network errors (for example `08006`, `57P01`, `ETIMEDOUT`, `ECONNRESET`), logs structured failure metadata, and retries with exponential backoff (`15s -> 30s -> 60s -> 120s` cap for transient errors).
-  - Tick logs include in-memory `lastSuccessfulPollAt` / `lastSuccessfulPollAgeMs`.
+  - Tick logs include in-memory `lastSuccessfulPollAt` / `lastSuccessfulPollAgeMs` (and persisted `last_successful_poll_at` write warnings if meta upsert fails).
   - On each successful parsed snapshot commit, updates `public.rt_poller_heartbeat.tripupdates_updated_at`.
   - On transient failures, updates `public.rt_poller_heartbeat.last_error` (non-fatal) so staleness/health can be checked quickly.
 

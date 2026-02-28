@@ -1,6 +1,7 @@
 import { performance } from "node:perf_hooks";
 
 import { query as dbQuery } from "../db/query.js";
+import { getRtCacheMeta, LA_TRIPUPDATES_FEED_KEY } from "../db/rtCache.js";
 
 const DEFAULT_RT_FRESH_MAX_AGE_MS = Math.max(
   5_000,
@@ -158,6 +159,11 @@ function makeEmptyMeta(nowMs, freshnessThresholdMs) {
     cacheFetchedAt: null,
     cacheAgeMs: null,
     ageSeconds: null,
+    lastPollAt: null,
+    lastSuccessfulPollAt: null,
+    pollAgeMs: null,
+    pollAgeSeconds: null,
+    freshnessAgeSource: "last_successful_poll",
     freshnessThresholdMs,
     freshnessMaxAgeSeconds: Math.round(freshnessThresholdMs / 1000),
     cacheStatus: "MISS",
@@ -338,6 +344,9 @@ export async function loadScopedRtFromParsedTables(options = {}) {
     Number(options.stopScopeLookbackMs || DEFAULT_RT_PARSED_STOP_SCOPE_LOOKBACK_MS)
   );
   const queryLike = typeof options.queryLike === "function" ? options.queryLike : dbQuery;
+  const getRtCacheMetaLike =
+    typeof options.getRtCacheMetaLike === "function" ? options.getRtCacheMetaLike : getRtCacheMeta;
+  const rtMetadataFeedKey = text(options.rtMetadataFeedKey) || LA_TRIPUPDATES_FEED_KEY;
   const scopeTripIds = uniqueValues(options.scopeTripIds || []);
   const scopeStopIds = expandStopIds(options.scopeStopIds || []);
 
@@ -446,10 +455,27 @@ export async function loadScopedRtFromParsedTables(options = {}) {
   const cacheAgeMs = Number.isFinite(latestUpdatedAtMs)
     ? Math.max(0, nowMs - latestUpdatedAtMs)
     : null;
+  let lastPollAt = null;
+  let pollAgeMs = null;
+  try {
+    const rtFeedMeta = await Promise.resolve(getRtCacheMetaLike(rtMetadataFeedKey));
+    lastPollAt = toIsoOrNull(
+      rtFeedMeta?.last_successful_poll_at || rtFeedMeta?.lastSuccessfulPollAt || null
+    );
+    const lastPollMs = parsedTimestampMs(lastPollAt);
+    pollAgeMs = Number.isFinite(lastPollMs) ? Math.max(0, nowMs - lastPollMs) : null;
+  } catch {}
+  const hasPollAge = Number.isFinite(pollAgeMs);
+  const freshnessAgeMs = hasPollAge ? Number(pollAgeMs) : cacheAgeMs;
   meta.fetchedAt = cacheFetchedAt;
   meta.cacheFetchedAt = cacheFetchedAt;
   meta.cacheAgeMs = Number.isFinite(cacheAgeMs) ? Math.round(cacheAgeMs) : null;
   meta.ageSeconds = Number.isFinite(cacheAgeMs) ? Math.floor(cacheAgeMs / 1000) : null;
+  meta.lastPollAt = lastPollAt;
+  meta.lastSuccessfulPollAt = lastPollAt;
+  meta.pollAgeMs = hasPollAge ? Math.round(Number(pollAgeMs)) : null;
+  meta.pollAgeSeconds = hasPollAge ? Math.floor(Number(pollAgeMs) / 1000) : null;
+  meta.freshnessAgeSource = hasPollAge ? "last_successful_poll" : "last_write";
   meta.scannedEntities = scannedRows;
   meta.entityCount = stopRows.length;
   meta.scopedStopUpdates = stopRows.length;
@@ -462,7 +488,7 @@ export async function loadScopedRtFromParsedTables(options = {}) {
     return { tripUpdates: EMPTY_PARSED_RT, meta };
   }
 
-  if (!Number.isFinite(cacheAgeMs) || cacheAgeMs > freshnessThresholdMs) {
+  if (!Number.isFinite(freshnessAgeMs) || freshnessAgeMs > freshnessThresholdMs) {
     meta.reason = "stale_cache";
     meta.cacheStatus = "STALE";
     meta.available = true;

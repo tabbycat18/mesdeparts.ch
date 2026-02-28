@@ -305,7 +305,7 @@ Primary responsibilities:
 Primary responsibilities:
 - Read scoped RT rows from parsed tables (`rt_stop_time_updates`, `rt_trip_updates`) using indexed predicates (`trip_id = ANY(...)` and stop-id fallback).
 - Build the in-memory merge structures consumed by `applyTripUpdates` (`byKey`, cancellations, stop status, trip flags, trip fallback, `addedTripStopUpdates`).
-- Enforce freshness threshold (`STATIONBOARD_RT_FRESH_MAX_AGE_MS`, default 45s) using parsed-table `updated_at`.
+- Enforce freshness threshold (`STATIONBOARD_RT_FRESH_MAX_AGE_MS`, default 45s) using poll age from `last_successful_poll_at` metadata (with parsed-table `updated_at` retained as last-write diagnostics).
 - Return `meta.rtSource = "parsed"` so stationboard can expose source selection in debug/top-level meta.
 
 ### `src/rt/loadScopedRtFromCache.js` (TripUpdates cache scope loader)
@@ -508,7 +508,8 @@ Primary responsibilities:
 - `src/rt/loadScopedRtFromCache.js` (409 lines)
   - Exports: `loadScopedRtFromCache(...)` — blob/debug path; only active when `debug_rt=blob`
 - `src/rt/loadScopedRtFromParsedTables.js`
-  - Exports: `loadScopedRtFromParsedTables(...)` — **primary production RT path**; reads from `rt_trip_updates` + `rt_stop_time_updates` scoped per trip/stop IDs; freshness threshold `STATIONBOARD_RT_FRESH_MAX_AGE_MS` (default 45 s)
+- Exports: `loadScopedRtFromParsedTables(...)` — **primary production RT path**; reads from `rt_trip_updates` + `rt_stop_time_updates` scoped per trip/stop IDs; freshness threshold `STATIONBOARD_RT_FRESH_MAX_AGE_MS` (default 45 s)
+  - Freshness age source is `last_successful_poll_at` (persisted by poller on every successful fetch, including unchanged/write-skip ticks); parsed `updated_at` remains exposed as write-age debug telemetry (`fetchedAt`/`cacheAgeMs`).
 - `src/rt/tripUpdatesSummary.js` (1 line)
   - Exports: re-export of `summarizeTripUpdates` from `src/loaders/tripUpdatesSummary.js`
 

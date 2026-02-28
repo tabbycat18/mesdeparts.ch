@@ -14,6 +14,7 @@ import {
   ensureRtCacheMetadataRow,
   getRtCacheMeta,
   getRtCachePayloadSha,
+  setRtCacheLastSuccessfulPollAt,
   setRtCachePayloadSha,
   updateRtCacheStatus,
 } from "../src/db/rtCache.js";
@@ -181,6 +182,7 @@ export function createLaTripUpdatesPoller({
   getRtCacheMetaLike = getRtCacheMeta,
   ensureRtCacheMetadataRowLike = ensureRtCacheMetadataRow,
   getRtCachePayloadShaLike = getRtCachePayloadSha,
+  setRtCacheLastSuccessfulPollAtLike = setRtCacheLastSuccessfulPollAt,
   setRtCachePayloadShaLike = setRtCachePayloadSha,
   updateRtCacheStatusLike = updateRtCacheStatus,
   persistParsedTripUpdatesSnapshotLike = persistParsedTripUpdatesIncremental,
@@ -333,6 +335,28 @@ export function createLaTripUpdatesPoller({
     } catch (err) {
       const classified = classifyPollerError(err);
       logLine("poller_heartbeat_write_failed", {
+        status: null,
+        backoffMs: 0,
+        lastFetchedAgeMs: null,
+        etagPresent: false,
+        extra: {
+          reconnecting: false,
+          errorClass: classified.errorClass,
+          errorCode: classified.errorCode,
+          errorMessage: classified.errorMessage,
+        },
+      });
+    }
+  }
+
+  async function markSuccessfulPoll() {
+    const pollAtMs = Number(nowLike());
+    lastSuccessfulPollAtMs = pollAtMs;
+    try {
+      await setRtCacheLastSuccessfulPollAtLike(feedKey, new Date(pollAtMs));
+    } catch (err) {
+      const classified = classifyPollerError(err);
+      logLine("poller_last_successful_poll_write_failed", {
         status: null,
         backoffMs: 0,
         lastFetchedAgeMs: null,
@@ -565,6 +589,7 @@ export function createLaTripUpdatesPoller({
             updateFetchedAt: true,
           });
           if (statusPersisted?.lockSkipped) {
+            await markSuccessfulPoll();
             resetBackoffState();
             logWriteLockSkip({
               status: 200,
@@ -574,7 +599,7 @@ export function createLaTripUpdatesPoller({
             return returnWithTxDiagnostics(INTERVAL_MS);
           }
         }
-        lastSuccessfulPollAtMs = Number(nowLike());
+        await markSuccessfulPoll();
         resetBackoffState();
         resetWriteLockSkipState();
         logLine("poller_skip_write_unchanged", {
@@ -660,6 +685,7 @@ export function createLaTripUpdatesPoller({
       }
 
       if (parsedWrite?.writeSkippedByLock === true) {
+        await markSuccessfulPoll();
         resetBackoffState();
         logWriteLockSkip({
           status: 200,
@@ -685,7 +711,7 @@ export function createLaTripUpdatesPoller({
         updateFetchedAt: true,
       });
       await writeSuccessHeartbeat();
-      lastSuccessfulPollAtMs = Number(nowLike());
+      await markSuccessfulPoll();
       resetBackoffState();
       resetWriteLockSkipState();
       const nowMsForPrune = Number(nowLike());
@@ -737,6 +763,7 @@ export function createLaTripUpdatesPoller({
       timing.fetchMs = Math.round(performance.now() - fetchPerfStart);
       timing.dbWriteMs = 0;
       if (Number.isFinite(currentAgeMs) && currentAgeMs < RT_CACHE_MIN_WRITE_INTERVAL_MS) {
+        await markSuccessfulPoll();
         resetBackoffState();
         resetWriteLockSkipState();
         logLine("poller_fetch_304_skip_write", {
@@ -756,6 +783,7 @@ export function createLaTripUpdatesPoller({
       });
       if (!persisted.updated) {
         if (persisted.lockSkipped) {
+          await markSuccessfulPoll();
           resetBackoffState();
           logWriteLockSkip({
             status: 304,
@@ -776,7 +804,7 @@ export function createLaTripUpdatesPoller({
       }
       resetBackoffState();
       resetWriteLockSkipState();
-      lastSuccessfulPollAtMs = Number(nowLike());
+      await markSuccessfulPoll();
       logLine("poller_fetch_304", {
         status: 304,
         backoffMs: 0,
