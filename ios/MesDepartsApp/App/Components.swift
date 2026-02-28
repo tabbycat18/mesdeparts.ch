@@ -55,9 +55,10 @@ struct SectionHeader: View {
 
 struct LinePill: View {
     let line: String
+    var isSelected: Bool = false
 
     var body: some View {
-        LinePillView(line: line)
+        LinePillView(line: line, isSelected: isSelected)
     }
 }
 
