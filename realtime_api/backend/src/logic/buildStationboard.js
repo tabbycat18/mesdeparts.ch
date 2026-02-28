@@ -6,6 +6,7 @@ import { pickPreferredMergedDeparture } from "../merge/pickPreferredDeparture.js
 import { createCancellationTracer } from "../debug/cancellationTrace.js";
 import { loadScopedRtFromParsedTables } from "../rt/loadScopedRtFromParsedTables.js";
 import { chooseDestinationLabel } from "./destinationLabel.js";
+import { extractSwissPublicLineFromRouteId } from "../util/routeLineLabel.js";
 import {
   addDaysToYmdInt,
   dateFromZurichServiceDateAndSeconds,
@@ -822,12 +823,14 @@ export async function buildStationboard(locationId, options = {}) {
     const rsn = String(routeShortName || "").trim();
     const tsn = String(row.trip_short_name || "").trim();
     const rowTags = [];
+    const publicLineFromRouteId = extractSwissPublicLineFromRouteId(routeId);
 
     let lineLabel =
       rsn ||
       tsn ||
       String(routeDesc || "").trim() ||
-      (routeId ? String(routeId) : "") ||
+      publicLineFromRouteId ||
+      (routeId ? String(routeId).trim() : "") ||
       (row.trip_id ? String(row.trip_id) : "");
 
     if (rsn && tsn) {

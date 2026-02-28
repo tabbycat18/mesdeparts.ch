@@ -6,6 +6,8 @@ struct BoardHeaderView: View {
     let updatedAt: Date?
     let freshnessLabel: String?
     let updatedLabel: String
+    let servedLines: [String]
+    let servedByLinesLabel: String
 
     var body: some View {
         BlueCard {
@@ -40,6 +42,21 @@ struct BoardHeaderView: View {
                     Text(freshnessLabel)
                         .font(.caption)
                         .foregroundStyle(MDDesignSystem.Colors.textSecondary)
+                }
+
+                if !servedLines.isEmpty {
+                    VStack(alignment: .leading, spacing: MDDesignSystem.Spacing.sm) {
+                        SectionHeader(title: servedByLinesLabel)
+
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: MDDesignSystem.Spacing.xs * 0.88) {
+                                ForEach(servedLines, id: \.self) { line in
+                                    LinePill(line: line)
+                                }
+                            }
+                            .padding(.vertical, MDDesignSystem.Spacing.xxs * 0.88)
+                        }
+                    }
                 }
             }
             .accessibilityElement(children: .combine)

@@ -14,6 +14,7 @@ import {
   parseApiDate,
   RT_HARD_CAP_MS,
   buildBoardContextKey,
+  getRtUiStatusFromStationboardPayload,
   getRtNoticeLevelFromStationboardPayload,
   isRtUnavailableFromStationboardPayload,
   shouldApplyIncomingBoard,
@@ -318,6 +319,90 @@ assert.equal(
 
 // RT unavailable notice source of truth: prefer meta.rtStatus, fallback to legacy rt fields.
 {
+  assert.deepEqual(
+    getRtUiStatusFromStationboardPayload({
+      meta: { rtStatus: "applied" },
+    }),
+    {
+      status: "available",
+      color: "green",
+      source: "meta",
+      rtStatus: "applied",
+    }
+  );
+  assert.deepEqual(
+    getRtUiStatusFromStationboardPayload({
+      meta: { rtStatus: "partial" },
+    }),
+    {
+      status: "partial",
+      color: "orange",
+      source: "meta",
+      rtStatus: "partial",
+    }
+  );
+  assert.deepEqual(
+    getRtUiStatusFromStationboardPayload({
+      meta: { rtStatus: "stale_cache" },
+    }),
+    {
+      status: "unavailable",
+      color: "red",
+      source: "meta",
+      rtStatus: "stale_cache",
+    }
+  );
+  assert.deepEqual(
+    getRtUiStatusFromStationboardPayload({
+      meta: { rtStatus: "WAT" },
+    }),
+    {
+      status: "unknown",
+      color: "gray",
+      source: "meta",
+      rtStatus: "wat",
+    }
+  );
+  assert.deepEqual(
+    getRtUiStatusFromStationboardPayload({
+      rt: { applied: true, reason: "missing_cache" },
+    }),
+    {
+      status: "available",
+      color: "green",
+      source: "rt",
+      rtStatus: "applied",
+    }
+  );
+  assert.deepEqual(
+    getRtUiStatusFromStationboardPayload({
+      rt: { applied: false, reason: "degraded" },
+    }),
+    {
+      status: "partial",
+      color: "orange",
+      source: "rt",
+      rtStatus: "degraded",
+    }
+  );
+  assert.deepEqual(
+    getRtUiStatusFromStationboardPayload({
+      rt: { applied: false, reason: "missing_cache" },
+    }),
+    {
+      status: "unavailable",
+      color: "red",
+      source: "rt",
+      rtStatus: "missing_cache",
+    }
+  );
+  assert.deepEqual(getRtUiStatusFromStationboardPayload({}), {
+    status: "unknown",
+    color: "gray",
+    source: "unknown",
+    rtStatus: null,
+  });
+
   assert.equal(
     getRtNoticeLevelFromStationboardPayload({
       meta: { rtStatus: "applied" },

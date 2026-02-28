@@ -125,23 +125,10 @@ private struct StationboardView: View {
                     subtitle: headerSubtitle,
                     updatedAt: viewModel.lastUpdatedAt,
                     freshnessLabel: viewModel.freshnessLabel,
-                    updatedLabel: appLabel(.updatedLabel, language: language)
+                    updatedLabel: appLabel(.updatedLabel, language: language),
+                    servedLines: viewModel.servedLines,
+                    servedByLinesLabel: appLabel(.servedByLines, language: language)
                 )
-
-                if !viewModel.servedLines.isEmpty {
-                    VStack(alignment: .leading, spacing: MDDesignSystem.Spacing.sm) {
-                        SectionHeader(title: appLabel(.servedByLines, language: language))
-
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: MDDesignSystem.Spacing.xs * 0.88) {
-                                ForEach(viewModel.servedLines, id: \.self) { line in
-                                    LinePill(line: line)
-                                }
-                            }
-                            .padding(.vertical, MDDesignSystem.Spacing.xxs * 0.88)
-                        }
-                    }
-                }
 
                 if viewModel.isLoading && viewModel.departures.isEmpty {
                     BlueCard {

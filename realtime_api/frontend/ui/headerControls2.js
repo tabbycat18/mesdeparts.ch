@@ -139,6 +139,7 @@ const state = {
   isSuggestionFetching: false,
   isBoardLoading: false,
   boardNoticeText: "",
+  boardNoticeKind: "",
   boardNoticeTone: "",
   boardNoticeTimer: null,
   threeDotsTipEl: null,
@@ -1184,7 +1185,16 @@ function syncHint() {
   if (!state.mountEl) return;
   const hint = state.mountEl.querySelector("#loading-hint");
   if (!hint) return;
-  hint.classList.remove("loading-hint--notice", "loading-hint--mild", "loading-hint--warning");
+  hint.classList.remove(
+    "loading-hint--notice",
+    "loading-hint--mild",
+    "loading-hint--warning",
+    "loading-hint--rt",
+    "loading-hint--rt-green",
+    "loading-hint--rt-orange",
+    "loading-hint--rt-red",
+    "loading-hint--rt-gray"
+  );
   if (state.isSuggestionFetching) {
     hint.textContent = t("searchLoading");
     hint.classList.add("is-visible");
@@ -1194,7 +1204,18 @@ function syncHint() {
   } else if (state.boardNoticeText) {
     hint.textContent = state.boardNoticeText;
     hint.classList.add("loading-hint--notice");
-    if (state.boardNoticeTone === "warning") {
+    if (state.boardNoticeKind === "rt") {
+      hint.classList.add("loading-hint--rt");
+      if (state.boardNoticeTone === "green") {
+        hint.classList.add("loading-hint--rt-green");
+      } else if (state.boardNoticeTone === "orange") {
+        hint.classList.add("loading-hint--rt-orange");
+      } else if (state.boardNoticeTone === "red") {
+        hint.classList.add("loading-hint--rt-red");
+      } else {
+        hint.classList.add("loading-hint--rt-gray");
+      }
+    } else if (state.boardNoticeTone === "warning") {
       hint.classList.add("loading-hint--warning");
     } else {
       hint.classList.add("loading-hint--mild");
@@ -2562,15 +2583,33 @@ export function setBoardLoadingHint(isLoading) {
   syncHint();
 }
 
-export function setBoardNoticeHint(text, { ttlMs = 0, tone = "mild" } = {}) {
+export function setBoardNoticeHint(text, { ttlMs = 0, tone = "mild", kind = "generic" } = {}) {
   if (!state.initialized) return;
   if (state.boardNoticeTimer) {
     clearTimeout(state.boardNoticeTimer);
     state.boardNoticeTimer = null;
   }
   state.boardNoticeText = String(text || "").trim();
-  state.boardNoticeTone =
-    state.boardNoticeText && tone === "warning" ? "warning" : state.boardNoticeText ? "mild" : "";
+  if (!state.boardNoticeText) {
+    state.boardNoticeKind = "";
+    state.boardNoticeTone = "";
+  } else if (String(kind || "").trim().toLowerCase() === "rt") {
+    const normalizedTone = String(tone || "").trim().toLowerCase();
+    state.boardNoticeKind = "rt";
+    if (
+      normalizedTone === "green" ||
+      normalizedTone === "orange" ||
+      normalizedTone === "red" ||
+      normalizedTone === "gray"
+    ) {
+      state.boardNoticeTone = normalizedTone;
+    } else {
+      state.boardNoticeTone = "gray";
+    }
+  } else {
+    state.boardNoticeKind = "generic";
+    state.boardNoticeTone = String(tone || "").trim().toLowerCase() === "warning" ? "warning" : "mild";
+  }
   syncHint();
   const ttl = Number(ttlMs);
   if (state.boardNoticeText && Number.isFinite(ttl) && ttl > 0) {

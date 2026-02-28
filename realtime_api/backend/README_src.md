@@ -50,7 +50,7 @@ This is the ordered sequence every stationboard request follows, from the databa
 2. buildStationboard.js (src/logic/buildStationboard.js)
    ├── Receives raw SQL rows, sets departure fields:
    │   operator = row.agency_name || row.agency_id (human-readable name preferred)
-   │   line = route_short_name, destination = trip_headsign (guarded: if it equals current station, fallback to route_long_name), platform = stop_id suffix
+   │   line = route_short_name (fallback extracts Swiss/OJP public line token from route_id such as `92-N5-D-j26-1` -> `N5`, `ojp:920N2:G:H:j26` -> `N2`), destination = trip_headsign (guarded: if it equals current station, fallback to route_long_name), platform = stop_id suffix
    ├── Loads scoped TripUpdates (parsed tables default, cache fallback)
    ├── applyTripUpdates(): for each base row, finds the best delay match by
    │   trip_id + stop_id (with Swiss platform variants :0 → numeric root),

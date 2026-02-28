@@ -2589,6 +2589,38 @@ body {
   line-height: 1.2;
 }
 
+.loading-hint.loading-hint--rt {
+  color: rgba(245, 247, 255, 0.66);
+}
+
+.loading-hint.loading-hint--rt::after {
+  content: "";
+  display: inline-block;
+  width: 0.56rem;
+  height: 0.56rem;
+  margin-left: 0.38rem;
+  border-radius: 999px;
+  vertical-align: middle;
+  background: var(--rt-status-dot, #96a0b7);
+  transform: translateY(-1px);
+}
+
+.loading-hint.loading-hint--rt-green {
+  --rt-status-dot: #2bcf74;
+}
+
+.loading-hint.loading-hint--rt-orange {
+  --rt-status-dot: #ff9f0a;
+}
+
+.loading-hint.loading-hint--rt-red {
+  --rt-status-dot: #ff5c5f;
+}
+
+.loading-hint.loading-hint--rt-gray {
+  --rt-status-dot: #96a0b7;
+}
+
 .loading-hint.loading-hint--mild {
   color: rgba(245, 247, 255, 0.78);
 }

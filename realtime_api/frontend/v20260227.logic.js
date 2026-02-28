@@ -1622,26 +1622,29 @@ const RT_NOTICE_LEVEL_NONE = "none";
 const RT_NOTICE_LEVEL_MILD = "mild";
 const RT_NOTICE_LEVEL_UNAVAILABLE = "unavailable";
 
-const RT_STATUS_MILD = new Set([
-  "disabled",
-  "skipped_budget",
-  "partial",
-  "mixed",
-  "degraded",
-]);
+const RT_UI_STATUS_AVAILABLE = "available";
+const RT_UI_STATUS_PARTIAL = "partial";
+const RT_UI_STATUS_UNAVAILABLE = "unavailable";
+const RT_UI_STATUS_UNKNOWN = "unknown";
 
-const RT_STATUS_UNAVAILABLE = new Set([
-  "stale_cache",
-  "missing_cache",
-  "guarded_error",
-  "error",
-  "stale",
-  "missing",
-  "unavailable",
-]);
+const RT_META_STATUS_PARTIAL = new Set(["partial", "degraded", "mixed"]);
+const RT_META_STATUS_UNAVAILABLE = new Set(["missing", "error", "stale", "unavailable"]);
+const RT_PARTIAL_TOKENS = ["partial", "mixed", "degrad"];
+const RT_UNAVAILABLE_TOKENS = ["stale", "missing", "error", "fail", "timeout", "unavailable"];
+
+const RT_UI_COLOR_BY_STATUS = Object.freeze({
+  [RT_UI_STATUS_AVAILABLE]: "green",
+  [RT_UI_STATUS_PARTIAL]: "orange",
+  [RT_UI_STATUS_UNAVAILABLE]: "red",
+  [RT_UI_STATUS_UNKNOWN]: "gray",
+});
+
+function normalizeRtSignal(value) {
+  return String(value || "").trim().toLowerCase();
+}
 
 function statusHasAnyToken(value, tokens) {
-  const text = String(value || "").trim().toLowerCase();
+  const text = normalizeRtSignal(value);
   if (!text) return false;
   for (const token of tokens) {
     if (text.includes(token)) return true;
@@ -1649,51 +1652,64 @@ function statusHasAnyToken(value, tokens) {
   return false;
 }
 
-export function getRtNoticeLevelFromStationboardPayload(payload) {
+function rtUiColorForStatus(status) {
+  return RT_UI_COLOR_BY_STATUS[status] || RT_UI_COLOR_BY_STATUS[RT_UI_STATUS_UNKNOWN];
+}
+
+function resolveRtUiStatusFromMeta(metaRtStatus) {
+  if (metaRtStatus === "applied") return RT_UI_STATUS_AVAILABLE;
+  if (RT_META_STATUS_PARTIAL.has(metaRtStatus)) return RT_UI_STATUS_PARTIAL;
+  if (RT_META_STATUS_UNAVAILABLE.has(metaRtStatus)) return RT_UI_STATUS_UNAVAILABLE;
+  if (statusHasAnyToken(metaRtStatus, RT_PARTIAL_TOKENS)) return RT_UI_STATUS_PARTIAL;
+  if (statusHasAnyToken(metaRtStatus, RT_UNAVAILABLE_TOKENS)) return RT_UI_STATUS_UNAVAILABLE;
+  return RT_UI_STATUS_UNKNOWN;
+}
+
+function resolveRtUiStatusFromRt(rtApplied, rtReason) {
+  if (rtApplied === true) return RT_UI_STATUS_AVAILABLE;
+  if (rtReason === "fresh" || rtReason === "applied") return RT_UI_STATUS_AVAILABLE;
+  if (statusHasAnyToken(rtReason, RT_PARTIAL_TOKENS)) return RT_UI_STATUS_PARTIAL;
+  if (statusHasAnyToken(rtReason, RT_UNAVAILABLE_TOKENS)) return RT_UI_STATUS_UNAVAILABLE;
+  return RT_UI_STATUS_UNKNOWN;
+}
+
+export function getRtUiStatusFromStationboardPayload(payload) {
   const data = payload && typeof payload === "object" ? payload : {};
   const meta = data.meta && typeof data.meta === "object" ? data.meta : null;
-  const metaRtStatus = String(meta?.rtStatus || "").trim().toLowerCase();
+  const metaRtStatus = normalizeRtSignal(meta?.rtStatus);
   if (metaRtStatus) {
-    if (metaRtStatus === "applied") return RT_NOTICE_LEVEL_NONE;
-    if (RT_STATUS_MILD.has(metaRtStatus)) return RT_NOTICE_LEVEL_MILD;
-    if (RT_STATUS_UNAVAILABLE.has(metaRtStatus)) return RT_NOTICE_LEVEL_UNAVAILABLE;
-    if (statusHasAnyToken(metaRtStatus, ["partial", "mixed", "degrad", "skipped", "disable"])) {
-      return RT_NOTICE_LEVEL_MILD;
-    }
-    if (
-      statusHasAnyToken(metaRtStatus, [
-        "stale",
-        "missing",
-        "error",
-        "fail",
-        "timeout",
-        "unavailable",
-      ])
-    ) {
-      return RT_NOTICE_LEVEL_UNAVAILABLE;
-    }
-    // Unknown rtStatus from backend: keep a soft notice, not a hard failure warning.
-    return RT_NOTICE_LEVEL_MILD;
+    const status = resolveRtUiStatusFromMeta(metaRtStatus);
+    return {
+      status,
+      color: rtUiColorForStatus(status),
+      source: "meta",
+      rtStatus: metaRtStatus,
+    };
   }
 
   const rt = data.rt && typeof data.rt === "object" ? data.rt : {};
-  if (rt.applied === true) return RT_NOTICE_LEVEL_NONE;
-  const reason = String(rt.reason || "").trim().toLowerCase();
-  if (!reason) return RT_NOTICE_LEVEL_MILD;
-  if (reason === "fresh" || reason === "applied") return RT_NOTICE_LEVEL_NONE;
-  if (
-    statusHasAnyToken(reason, ["stale", "missing", "error", "fail", "timeout", "unavailable"])
-  ) {
-    return RT_NOTICE_LEVEL_UNAVAILABLE;
-  }
-  if (statusHasAnyToken(reason, ["partial", "mixed", "degrad", "skipped", "disable"])) {
-    return RT_NOTICE_LEVEL_MILD;
-  }
+  const rtApplied = rt.applied === true;
+  const rtReason = normalizeRtSignal(rt.reason);
+  const status = resolveRtUiStatusFromRt(rtApplied, rtReason);
+  const source = rtApplied || rtReason ? "rt" : "unknown";
+  const rtStatus = rtApplied ? "applied" : rtReason || null;
+  return {
+    status,
+    color: rtUiColorForStatus(status),
+    source,
+    rtStatus,
+  };
+}
+
+export function getRtNoticeLevelFromStationboardPayload(payload) {
+  const ui = getRtUiStatusFromStationboardPayload(payload);
+  if (ui.status === RT_UI_STATUS_AVAILABLE) return RT_NOTICE_LEVEL_NONE;
+  if (ui.status === RT_UI_STATUS_UNAVAILABLE) return RT_NOTICE_LEVEL_UNAVAILABLE;
   return RT_NOTICE_LEVEL_MILD;
 }
 
 export function isRtUnavailableFromStationboardPayload(payload) {
-  return getRtNoticeLevelFromStationboardPayload(payload) !== RT_NOTICE_LEVEL_NONE;
+  return getRtUiStatusFromStationboardPayload(payload).status !== RT_UI_STATUS_AVAILABLE;
 }
 
 export function shouldApplyIncomingBoard(

@@ -1238,6 +1238,36 @@ const TRANSLATIONS = {
     it: "Dati in tempo reale momentaneamente non disponibili",
     en: "Realtime data currently unavailable",
   },
+  rtStatusAvailable: {
+    fr: "RT: disponible",
+    de: "RT: verfuegbar",
+    it: "RT: disponibile",
+    en: "RT: available",
+  },
+  rtStatusPartial: {
+    fr: "RT: partiel",
+    de: "RT: teilweise",
+    it: "RT: parziale",
+    en: "RT: partial",
+  },
+  rtStatusUnavailable: {
+    fr: "RT: indisponible",
+    de: "RT: nicht verfuegbar",
+    it: "RT: non disponibile",
+    en: "RT: unavailable",
+  },
+  rtStatusUnknown: {
+    fr: "RT: inconnu",
+    de: "RT: unbekannt",
+    it: "RT: sconosciuto",
+    en: "RT: unknown",
+  },
+  rtStatusLabel: {
+    fr: "Live data :",
+    de: "Live data :",
+    it: "Live data :",
+    en: "Live data :",
+  },
 };
 
 let currentLang = "fr";

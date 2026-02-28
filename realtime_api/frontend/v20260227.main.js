@@ -27,7 +27,7 @@ import {
   isTransientFetchError,
   RT_HARD_CAP_MS,
   buildBoardContextKey,
-  getRtNoticeLevelFromStationboardPayload,
+  getRtUiStatusFromStationboardPayload,
   parseBoardContextKey,
   shouldApplyIncomingBoard,
 } from "./v20260227.logic.js";
@@ -225,6 +225,7 @@ let consecutive204Count = 0;
 let lastFullRefreshAt = 0;
 let lastForegroundRefreshAt = 0;
 let lastUnattendedRescueAt = 0;
+let lastRtUiStatusSignature = "";
 const FULL_REFRESH_INTERVAL_MS = 10 * 60 * 1000; // Force full refresh every 10 minutes
 const MAX_CONSECUTIVE_204S = 5; // Force full refresh after 5 consecutive 204s
 
@@ -330,17 +331,41 @@ function setEmbedAwareNoticeHint(text, options) {
 }
 
 function rtNoticeFromPayload(payload) {
-  const level = getRtNoticeLevelFromStationboardPayload(payload);
-  if (level === "none") return { text: "", tone: "mild" };
-  if (level === "unavailable") {
-    return { text: t("rtTemporarilyUnavailable"), tone: "warning" };
+  const ui = getRtUiStatusFromStationboardPayload(payload);
+  switch (ui.status) {
+    case "available":
+      return { text: t("rtStatusLabel"), tone: "green", ...ui };
+    case "partial":
+      return { text: t("rtStatusLabel"), tone: "orange", ...ui };
+    case "unavailable":
+      return { text: t("rtStatusLabel"), tone: "red", ...ui };
+    default:
+      return { text: t("rtStatusLabel"), tone: "gray", ...ui };
   }
-  return { text: t("rtPartiallyAvailable"), tone: "mild" };
 }
 
-function applyRtNoticeFromPayload(payload) {
+function applyRtNoticeFromPayload(payload, context = {}) {
   const notice = rtNoticeFromPayload(payload);
-  setEmbedAwareNoticeHint(notice.text, { tone: notice.tone });
+  setEmbedAwareNoticeHint(notice.text, { kind: "rt", tone: notice.tone });
+
+  const stationId = String(context.stationId || appState.stationId || payload?.station?.id || "").trim() || "-";
+  const stationName =
+    String(context.stationName || appState.STATION || payload?.station?.name || "").trim() || "-";
+  const httpStatus = Number.isFinite(Number(context.httpStatus))
+    ? Number(context.httpStatus)
+    : Number.isFinite(Number(payload?.__status))
+      ? Number(payload.__status)
+      : null;
+  const signature = `${stationId}|${notice.status}`;
+  if (signature !== lastRtUiStatusSignature) {
+    lastRtUiStatusSignature = signature;
+    // eslint-disable-next-line no-console
+    console.debug(
+      `[RT] status=${notice.status} color=${notice.color} source=${notice.source} rtStatus=${
+        notice.rtStatus || "-"
+      } http=${httpStatus || "?"} stationId=${stationId} station=${stationName}`
+    );
+  }
 }
 
 function clearBoardForStationChange() {
@@ -360,6 +385,7 @@ function clearBoardForStationChange() {
   appState.lastStationboardHttpStatus = null;
   lastForegroundRefreshAt = 0;
   lastUnattendedRescueAt = 0;
+  lastRtUiStatusSignature = "";
   setEmbedAwareNoticeHint("");
   updateRtDebugOverlay();
 
@@ -812,7 +838,11 @@ async function refreshDepartures({
         });
       }
       // Keep warning state in sync on 204 by recomputing from last rendered payload.
-      applyRtNoticeFromPayload(lastStationboardData || data);
+      applyRtNoticeFromPayload(lastStationboardData || data, {
+        httpStatus: Number(data?.__status) || 204,
+        stationId: requestStationId,
+        stationName: requestStation,
+      });
       refreshSucceeded = true;
       publishEmbedState();
       return;
@@ -852,7 +882,11 @@ async function refreshDepartures({
             : nowMs,
         reason: String(data?.rt?.reason || "stale_or_unavailable"),
       };
-      applyRtNoticeFromPayload(data);
+      applyRtNoticeFromPayload(data, {
+        httpStatus: data?.__status || 200,
+        stationId: requestStationId,
+        stationName: requestStation,
+      });
       refreshSucceeded = true;
       publishEmbedState();
       return;
@@ -883,7 +917,11 @@ async function refreshDepartures({
         reason: String(data?.rt?.reason || "scheduled_only"),
       };
     }
-    applyRtNoticeFromPayload(data);
+    applyRtNoticeFromPayload(data, {
+      httpStatus: data?.__status || 200,
+      stationId: requestStationId,
+      stationName: requestStation,
+    });
     // Reset consecutive 204 counter on successful response
     if (consecutive204Count > 0 && DEBUG_RT_CLIENT) {
       // eslint-disable-next-line no-console
@@ -935,7 +973,11 @@ async function refreshDepartures({
         const retryRows = buildDeparturesGrouped(retryData, appState.viewMode);
         if (retryRows && retryRows.length) {
           lastStationboardData = retryData;
-          applyRtNoticeFromPayload(retryData);
+          applyRtNoticeFromPayload(retryData, {
+            httpStatus: retryData?.__status || 200,
+            stationId: requestStationId,
+            stationName: requestStation,
+          });
           updateHeaderControls2();
           renderServiceBanners(retryData?.banners || []);
           renderDepartures(retryRows);
@@ -966,7 +1008,11 @@ async function refreshDepartures({
           if (isStaleRequest()) return;
           const freshRows = buildDeparturesGrouped(freshData, appState.viewMode);
           lastStationboardData = freshData;
-          applyRtNoticeFromPayload(freshData);
+          applyRtNoticeFromPayload(freshData, {
+            httpStatus: freshData?.__status || 200,
+            stationId: requestStationId,
+            stationName: requestStation,
+          });
           updateHeaderControls2();
           renderServiceBanners(freshData?.banners || []);
           renderDepartures(freshRows);
@@ -995,7 +1041,11 @@ async function refreshDepartures({
         const directRows = buildDeparturesGrouped(directData, appState.viewMode);
         lastStationboardData = directData;
         staleBoardEmptySince = directRows && directRows.length ? null : staleBoardEmptySince;
-        applyRtNoticeFromPayload(directData);
+        applyRtNoticeFromPayload(directData, {
+          httpStatus: directData?.__status || 200,
+          stationId: requestStationId,
+          stationName: requestStation,
+        });
         updateHeaderControls2();
         renderServiceBanners(directData?.banners || []);
         renderDepartures(directRows);
@@ -1024,7 +1074,11 @@ async function refreshDepartures({
         if (Array.isArray(directData?.stationboard) && directData.stationboard.length > 0) {
           lastNonEmptyStationboardAt = Date.now();
         }
-        applyRtNoticeFromPayload(directData);
+        applyRtNoticeFromPayload(directData, {
+          httpStatus: directData?.__status || 200,
+          stationId: requestStationId,
+          stationName: requestStation,
+        });
         updateHeaderControls2();
         renderServiceBanners(directData?.banners || []);
         renderDepartures(directRows);
