@@ -1618,19 +1618,82 @@ function isRtAppliedPayload(payload) {
   return payload?.rt?.applied === true;
 }
 
-export function isRtUnavailableFromStationboardPayload(payload) {
+const RT_NOTICE_LEVEL_NONE = "none";
+const RT_NOTICE_LEVEL_MILD = "mild";
+const RT_NOTICE_LEVEL_UNAVAILABLE = "unavailable";
+
+const RT_STATUS_MILD = new Set([
+  "disabled",
+  "skipped_budget",
+  "partial",
+  "mixed",
+  "degraded",
+]);
+
+const RT_STATUS_UNAVAILABLE = new Set([
+  "stale_cache",
+  "missing_cache",
+  "guarded_error",
+  "error",
+  "stale",
+  "missing",
+  "unavailable",
+]);
+
+function statusHasAnyToken(value, tokens) {
+  const text = String(value || "").trim().toLowerCase();
+  if (!text) return false;
+  for (const token of tokens) {
+    if (text.includes(token)) return true;
+  }
+  return false;
+}
+
+export function getRtNoticeLevelFromStationboardPayload(payload) {
   const data = payload && typeof payload === "object" ? payload : {};
   const meta = data.meta && typeof data.meta === "object" ? data.meta : null;
   const metaRtStatus = String(meta?.rtStatus || "").trim().toLowerCase();
   if (metaRtStatus) {
-    return metaRtStatus !== "applied";
+    if (metaRtStatus === "applied") return RT_NOTICE_LEVEL_NONE;
+    if (RT_STATUS_MILD.has(metaRtStatus)) return RT_NOTICE_LEVEL_MILD;
+    if (RT_STATUS_UNAVAILABLE.has(metaRtStatus)) return RT_NOTICE_LEVEL_UNAVAILABLE;
+    if (statusHasAnyToken(metaRtStatus, ["partial", "mixed", "degrad", "skipped", "disable"])) {
+      return RT_NOTICE_LEVEL_MILD;
+    }
+    if (
+      statusHasAnyToken(metaRtStatus, [
+        "stale",
+        "missing",
+        "error",
+        "fail",
+        "timeout",
+        "unavailable",
+      ])
+    ) {
+      return RT_NOTICE_LEVEL_UNAVAILABLE;
+    }
+    // Unknown rtStatus from backend: keep a soft notice, not a hard failure warning.
+    return RT_NOTICE_LEVEL_MILD;
   }
 
   const rt = data.rt && typeof data.rt === "object" ? data.rt : {};
-  if (rt.applied === true) return false;
+  if (rt.applied === true) return RT_NOTICE_LEVEL_NONE;
   const reason = String(rt.reason || "").trim().toLowerCase();
-  if (reason === "fresh") return false;
-  return true;
+  if (!reason) return RT_NOTICE_LEVEL_MILD;
+  if (reason === "fresh" || reason === "applied") return RT_NOTICE_LEVEL_NONE;
+  if (
+    statusHasAnyToken(reason, ["stale", "missing", "error", "fail", "timeout", "unavailable"])
+  ) {
+    return RT_NOTICE_LEVEL_UNAVAILABLE;
+  }
+  if (statusHasAnyToken(reason, ["partial", "mixed", "degrad", "skipped", "disable"])) {
+    return RT_NOTICE_LEVEL_MILD;
+  }
+  return RT_NOTICE_LEVEL_MILD;
+}
+
+export function isRtUnavailableFromStationboardPayload(payload) {
+  return getRtNoticeLevelFromStationboardPayload(payload) !== RT_NOTICE_LEVEL_NONE;
 }
 
 export function shouldApplyIncomingBoard(

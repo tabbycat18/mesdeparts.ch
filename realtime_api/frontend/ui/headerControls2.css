@@ -329,10 +329,10 @@
 .hc2__controls {
   position: relative;
   display: grid;
-  gap: 10px;
-  padding: 12px;
-  padding-right: 14px;
-  border-radius: 16px;
+  gap: 8px;
+  padding: 9px;
+  padding-right: 10px;
+  border-radius: 14px;
   border: 1px solid rgba(255, 255, 255, 0.18);
   background:
     linear-gradient(120deg, rgba(3, 18, 90, 0.84), rgba(0, 31, 125, 0.68)),
@@ -371,13 +371,20 @@
   --hc2-search-actions-pad-inline: 10px;
   --hc2-search-actions-pill-width: 22px;
   --hc2-search-actions-width: calc(
-    (var(--hc2-search-actions-pill-width) * 3) +
-    (var(--hc2-search-actions-gap) * 2)
+    (var(--hc2-search-actions-pill-width) * 2) +
+    (var(--hc2-search-actions-gap) * 1)
   );
   min-height: 44px;
   position: relative;
   display: block;
   padding: 0;
+}
+
+.hc2__topRow--search {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
 }
 
 .hc2__searchIcon {
@@ -450,6 +457,10 @@
   background: transparent;
   border-color: transparent;
   transform: none;
+}
+
+.hc2__searchFavorite {
+  flex: 0 0 auto;
 }
 
 .hc2__topControls {

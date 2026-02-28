@@ -1226,6 +1226,12 @@ const TRANSLATIONS = {
     it: "Aggiornamento…",
     en: "Refreshing…",
   },
+  rtPartiallyAvailable: {
+    fr: "Données live partielles",
+    de: "Live-Daten teilweise verfuegbar",
+    it: "Dati in tempo reale parziali",
+    en: "Realtime data partially available",
+  },
   rtTemporarilyUnavailable: {
     fr: "Données live momentanément indisponibles",
     de: "Live-Daten momentan nicht verfuegbar",

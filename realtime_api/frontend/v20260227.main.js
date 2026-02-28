@@ -27,7 +27,7 @@ import {
   isTransientFetchError,
   RT_HARD_CAP_MS,
   buildBoardContextKey,
-  isRtUnavailableFromStationboardPayload,
+  getRtNoticeLevelFromStationboardPayload,
   parseBoardContextKey,
   shouldApplyIncomingBoard,
 } from "./v20260227.logic.js";
@@ -327,6 +327,20 @@ function setEmbedAwareNoticeHint(text, options) {
   appState.boardNoticeHint = notice;
   setBoardNoticeHint(notice, options);
   publishEmbedState();
+}
+
+function rtNoticeFromPayload(payload) {
+  const level = getRtNoticeLevelFromStationboardPayload(payload);
+  if (level === "none") return { text: "", tone: "mild" };
+  if (level === "unavailable") {
+    return { text: t("rtTemporarilyUnavailable"), tone: "warning" };
+  }
+  return { text: t("rtPartiallyAvailable"), tone: "mild" };
+}
+
+function applyRtNoticeFromPayload(payload) {
+  const notice = rtNoticeFromPayload(payload);
+  setEmbedAwareNoticeHint(notice.text, { tone: notice.tone });
 }
 
 function clearBoardForStationChange() {
@@ -797,6 +811,8 @@ async function refreshDepartures({
           willForceRefreshNext: consecutive204Count >= MAX_CONSECUTIVE_204S,
         });
       }
+      // Keep warning state in sync on 204 by recomputing from last rendered payload.
+      applyRtNoticeFromPayload(lastStationboardData || data);
       refreshSucceeded = true;
       publishEmbedState();
       return;
@@ -825,8 +841,6 @@ async function refreshDepartures({
       },
       nowMs
     );
-    const rtUnavailable = isRtUnavailableFromStationboardPayload(data);
-
     if (!decision.apply) {
       appState.boardContextKey = nextContextKey || appState.boardContextKey || null;
       appState.rtUiStatus = {
@@ -838,7 +852,7 @@ async function refreshDepartures({
             : nowMs,
         reason: String(data?.rt?.reason || "stale_or_unavailable"),
       };
-      setEmbedAwareNoticeHint(rtUnavailable ? t("rtTemporarilyUnavailable") : "");
+      applyRtNoticeFromPayload(data);
       refreshSucceeded = true;
       publishEmbedState();
       return;
@@ -869,7 +883,7 @@ async function refreshDepartures({
         reason: String(data?.rt?.reason || "scheduled_only"),
       };
     }
-    setEmbedAwareNoticeHint(rtUnavailable ? t("rtTemporarilyUnavailable") : "");
+    applyRtNoticeFromPayload(data);
     // Reset consecutive 204 counter on successful response
     if (consecutive204Count > 0 && DEBUG_RT_CLIENT) {
       // eslint-disable-next-line no-console
@@ -921,6 +935,7 @@ async function refreshDepartures({
         const retryRows = buildDeparturesGrouped(retryData, appState.viewMode);
         if (retryRows && retryRows.length) {
           lastStationboardData = retryData;
+          applyRtNoticeFromPayload(retryData);
           updateHeaderControls2();
           renderServiceBanners(retryData?.banners || []);
           renderDepartures(retryRows);
@@ -951,6 +966,7 @@ async function refreshDepartures({
           if (isStaleRequest()) return;
           const freshRows = buildDeparturesGrouped(freshData, appState.viewMode);
           lastStationboardData = freshData;
+          applyRtNoticeFromPayload(freshData);
           updateHeaderControls2();
           renderServiceBanners(freshData?.banners || []);
           renderDepartures(freshRows);
@@ -979,6 +995,7 @@ async function refreshDepartures({
         const directRows = buildDeparturesGrouped(directData, appState.viewMode);
         lastStationboardData = directData;
         staleBoardEmptySince = directRows && directRows.length ? null : staleBoardEmptySince;
+        applyRtNoticeFromPayload(directData);
         updateHeaderControls2();
         renderServiceBanners(directData?.banners || []);
         renderDepartures(directRows);
@@ -1007,6 +1024,7 @@ async function refreshDepartures({
         if (Array.isArray(directData?.stationboard) && directData.stationboard.length > 0) {
           lastNonEmptyStationboardAt = Date.now();
         }
+        applyRtNoticeFromPayload(directData);
         updateHeaderControls2();
         renderServiceBanners(directData?.banners || []);
         renderDepartures(directRows);

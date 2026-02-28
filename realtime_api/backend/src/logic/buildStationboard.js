@@ -5,6 +5,7 @@ import { applyAddedTrips } from "../merge/applyAddedTrips.js";
 import { pickPreferredMergedDeparture } from "../merge/pickPreferredDeparture.js";
 import { createCancellationTracer } from "../debug/cancellationTrace.js";
 import { loadScopedRtFromParsedTables } from "../rt/loadScopedRtFromParsedTables.js";
+import { chooseDestinationLabel } from "./destinationLabel.js";
 import {
   addDaysToYmdInt,
   dateFromZurichServiceDateAndSeconds,
@@ -870,7 +871,11 @@ export async function buildStationboard(locationId, options = {}) {
       continue;
     }
 
-    const destination = row.trip_headsign || routeLongName || stationName;
+    const destination = chooseDestinationLabel({
+      tripHeadsign: row.trip_headsign,
+      routeLongName,
+      stationName,
+    });
 
     const scheduledTimeStr = row.departure_time || row.arrival_time || row.time_str;
     const depSecRaw = Number(row.dep_sec);

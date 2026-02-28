@@ -2583,6 +2583,20 @@ body {
   display: block;
 }
 
+.loading-hint.loading-hint--notice {
+  font-style: normal;
+  font-size: 0.76rem;
+  line-height: 1.2;
+}
+
+.loading-hint.loading-hint--mild {
+  color: rgba(245, 247, 255, 0.78);
+}
+
+.loading-hint.loading-hint--warning {
+  color: #ffd369;
+}
+
 /* Quick controls: view segmented + filters + favorites */
 .quick-controls {
   display: flex;

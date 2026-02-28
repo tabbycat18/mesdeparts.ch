@@ -139,6 +139,7 @@ const state = {
   isSuggestionFetching: false,
   isBoardLoading: false,
   boardNoticeText: "",
+  boardNoticeTone: "",
   boardNoticeTimer: null,
   threeDotsTipEl: null,
   threeDotsTipVisible: false,
@@ -297,28 +298,28 @@ function createTemplate() {
                     <circle cx="12" cy="10" r="2.4" fill="currentColor" />
                   </svg>
                 </button>
-                <button
-                  id="favorites-only-toggle"
-                  class="hc2__actionBtn hc2__pillControl"
-                  data-action="favorites"
-                  type="button"
-                  aria-label="${t("filterFavoritesTitle")}"
-                  aria-expanded="false"
-                  aria-controls="favorites-popover"
-                >
-                  <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-                    <path
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="1.8"
-                      stroke-linejoin="round"
-                      d="M6 4h12a1 1 0 0 1 1 1v15l-7-3-7 3V5a1 1 0 0 1 1-1Z"
-                    />
-                  </svg>
-                  <span id="favorites-only-label" class="sr-only">${t("filterFavoritesLabel")}</span>
-                </button>
               </div>
             </div>
+            <button
+              id="favorites-only-toggle"
+              class="hc2__actionBtn hc2__pillControl hc2__searchFavorite"
+              data-action="favorites"
+              type="button"
+              aria-label="${t("filterFavoritesTitle")}"
+              aria-expanded="false"
+              aria-controls="favorites-popover"
+            >
+              <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                <path
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linejoin="round"
+                  d="M6 4h12a1 1 0 0 1 1 1v15l-7-3-7 3V5a1 1 0 0 1 1-1Z"
+                />
+              </svg>
+              <span id="favorites-only-label" class="sr-only">${t("filterFavoritesLabel")}</span>
+            </button>
           </div>
 
           <div class="hc2__topRow hc2__topRow--secondary">
@@ -1183,6 +1184,7 @@ function syncHint() {
   if (!state.mountEl) return;
   const hint = state.mountEl.querySelector("#loading-hint");
   if (!hint) return;
+  hint.classList.remove("loading-hint--notice", "loading-hint--mild", "loading-hint--warning");
   if (state.isSuggestionFetching) {
     hint.textContent = t("searchLoading");
     hint.classList.add("is-visible");
@@ -1191,6 +1193,12 @@ function syncHint() {
     hint.classList.add("is-visible");
   } else if (state.boardNoticeText) {
     hint.textContent = state.boardNoticeText;
+    hint.classList.add("loading-hint--notice");
+    if (state.boardNoticeTone === "warning") {
+      hint.classList.add("loading-hint--warning");
+    } else {
+      hint.classList.add("loading-hint--mild");
+    }
     hint.classList.add("is-visible");
   } else {
     hint.textContent = "";
@@ -1895,6 +1903,27 @@ function setServedLineSelection(lineId) {
   renderFiltersSheet();
 }
 
+function isDualBoardContext() {
+  const root = document.documentElement;
+  const body = document.body;
+  const path = String(window.location.pathname || "").toLowerCase();
+  if (path === "/dual-board.html" || path.endsWith("/dual-board.html")) {
+    return true;
+  }
+
+  const isEmbedded = typeof window !== "undefined" && window.parent !== window;
+  const hasDualModeClass =
+    root?.classList?.contains("dual-mode") || body?.classList?.contains("dual-mode");
+
+  try {
+    const params = new URLSearchParams(window.location.search || "");
+    const hasDualParam = params.get("dual") === "1";
+    return isEmbedded && (hasDualModeClass || hasDualParam);
+  } catch {
+    return isEmbedded && hasDualModeClass;
+  }
+}
+
 function renderServedLinesChips() {
   const wrap = state.refs.servedLinesWrap;
   const label = state.refs.servedLinesLabel;
@@ -1906,8 +1935,8 @@ function renderServedLinesChips() {
   const active = selection === "ALL" ? new Set() : new Set(selection);
 
   label.textContent = t("servedByLines");
-  const isDualBoard = document.documentElement.classList.contains("dual-embed") || document.body.classList.contains("dual-embed");
-  const shouldHide = lines.length === 0 || !!appState.lastBoardIsTrain || isDualBoard;
+  const hasBusBoard = !!appState.lastBoardHasBus && !appState.lastBoardIsTrain;
+  const shouldHide = lines.length === 0 || !hasBusBoard || isDualBoardContext();
   wrap.hidden = shouldHide;
 
   // Hide for train stations and dual board: use inline style to ensure it overrides any CSS
@@ -2533,13 +2562,15 @@ export function setBoardLoadingHint(isLoading) {
   syncHint();
 }
 
-export function setBoardNoticeHint(text, { ttlMs = 0 } = {}) {
+export function setBoardNoticeHint(text, { ttlMs = 0, tone = "mild" } = {}) {
   if (!state.initialized) return;
   if (state.boardNoticeTimer) {
     clearTimeout(state.boardNoticeTimer);
     state.boardNoticeTimer = null;
   }
   state.boardNoticeText = String(text || "").trim();
+  state.boardNoticeTone =
+    state.boardNoticeText && tone === "warning" ? "warning" : state.boardNoticeText ? "mild" : "";
   syncHint();
   const ttl = Number(ttlMs);
   if (state.boardNoticeText && Number.isFinite(ttl) && ttl > 0) {

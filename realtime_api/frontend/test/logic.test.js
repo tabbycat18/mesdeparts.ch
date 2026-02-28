@@ -14,6 +14,7 @@ import {
   parseApiDate,
   RT_HARD_CAP_MS,
   buildBoardContextKey,
+  getRtNoticeLevelFromStationboardPayload,
   isRtUnavailableFromStationboardPayload,
   shouldApplyIncomingBoard,
   shouldHoldRtDowngrade,
@@ -317,6 +318,67 @@ assert.equal(
 
 // RT unavailable notice source of truth: prefer meta.rtStatus, fallback to legacy rt fields.
 {
+  assert.equal(
+    getRtNoticeLevelFromStationboardPayload({
+      meta: { rtStatus: "applied" },
+    }),
+    "none"
+  );
+  assert.equal(
+    getRtNoticeLevelFromStationboardPayload({
+      meta: { rtStatus: "skipped_budget" },
+    }),
+    "mild"
+  );
+  assert.equal(
+    getRtNoticeLevelFromStationboardPayload({
+      meta: { rtStatus: "disabled" },
+    }),
+    "mild"
+  );
+  assert.equal(
+    getRtNoticeLevelFromStationboardPayload({
+      meta: { rtStatus: "missing_cache" },
+    }),
+    "unavailable"
+  );
+  assert.equal(
+    getRtNoticeLevelFromStationboardPayload({
+      meta: { rtStatus: "stale_cache" },
+    }),
+    "unavailable"
+  );
+  assert.equal(
+    getRtNoticeLevelFromStationboardPayload({
+      meta: { rtStatus: "guarded_error" },
+    }),
+    "unavailable"
+  );
+  assert.equal(
+    getRtNoticeLevelFromStationboardPayload({
+      meta: { rtStatus: "WAT" },
+    }),
+    "mild"
+  );
+  assert.equal(
+    getRtNoticeLevelFromStationboardPayload({
+      rt: { applied: false, reason: "fresh" },
+    }),
+    "none"
+  );
+  assert.equal(
+    getRtNoticeLevelFromStationboardPayload({
+      rt: { applied: false, reason: "stale_cache" },
+    }),
+    "unavailable"
+  );
+  assert.equal(
+    getRtNoticeLevelFromStationboardPayload({
+      rt: { applied: false, reason: "degraded" },
+    }),
+    "mild"
+  );
+
   assert.equal(
     isRtUnavailableFromStationboardPayload({
       meta: { rtStatus: "applied" },
