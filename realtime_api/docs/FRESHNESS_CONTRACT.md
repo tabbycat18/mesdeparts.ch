@@ -11,7 +11,7 @@ Scope:
 
 ### 1.1 Polling interval targets (current runtime)
 
-- Web target: `15s` (`REFRESH_DEPARTURES = 15_000` in `frontend/v20260205-1.state.js`)
+- Web target: `15s` (`REFRESH_DEPARTURES = 15_000` in `frontend/v20260227.state.js`)
 - iOS target: `~20s` with small jitter in `ios/MesDepartsApp` (view-driven polling loop).
 
 Contract rule:

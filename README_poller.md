@@ -57,7 +57,7 @@ The **poller** is a continuously-running background process that keeps the real-
  ┌──────────────────────────────────────────────────────────────────────────┐
  │  Browser client  /  mesdeparts.ch frontend                               │
  │  Served by Cloudflare Pages (static files from realtime_api/frontend/)  │
- │  v20260223-1.main.js — refresh loop calling api.mesdeparts.ch/api/       │
+ │  v20260227.main.js — refresh loop calling api.mesdeparts.ch/api/       │
  └──────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -147,14 +147,14 @@ The script compares SHA-256 and ETag of the GTFS ZIP against the values stored i
 
 ### Frontend refresh loop
 
-The browser client (`realtime_api/frontend/v20260205-1.main.js`) runs its own **`setTimeout`-based refresh loop** (not `setInterval`). Each tick schedules the next via `scheduleNextRefresh()` → `setTimeout(fn, delayMs)`.
+The browser client (`realtime_api/frontend/v20260227.main.js`) runs its own **`setTimeout`-based refresh loop** (not `setInterval`). Each tick schedules the next via `scheduleNextRefresh()` → `setTimeout(fn, delayMs)`.
 
 | Constant | Value | Source |
 |---|---|---|
-| `REFRESH_DEPARTURES` | **15 000 ms** (base interval) | `v20260205-1.state.js:23` |
-| `FOLLOWUP_REFRESH_BASE_MS` | 3 000 ms (post-load follow-up) | `v20260205-1.main.js:73` |
-| `REFRESH_BACKOFF_STEPS_MS` | [2 000, 5 000, 10 000, 15 000] ms | `v20260205-1.main.js:76` |
-| `FULL_REFRESH_INTERVAL_MS` | 10 × 60 000 ms (force full reload) | `v20260205-1.main.js:228` |
+| `REFRESH_DEPARTURES` | **15 000 ms** (base interval) | `v20260227.state.js:23` |
+| `FOLLOWUP_REFRESH_BASE_MS` | 3 000 ms (post-load follow-up) | `v20260227.main.js:73` |
+| `REFRESH_BACKOFF_STEPS_MS` | [2 000, 5 000, 10 000, 15 000] ms | `v20260227.main.js:76` |
+| `FULL_REFRESH_INTERVAL_MS` | 10 × 60 000 ms (force full reload) | `v20260227.main.js:228` |
 
 The loop skips scheduling when the tab is hidden (`document.hidden`). It is completely independent of the backend poller — it just polls the Cloudflare edge at `api.mesdeparts.ch/api/stationboard`.
 

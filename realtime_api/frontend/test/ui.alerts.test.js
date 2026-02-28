@@ -10,7 +10,7 @@ import {
   resolveDepartureAlertsForLineBadge,
   shouldShowBusLineAlertColumn,
   shouldIgnoreJourneyError,
-} from "../v20260205-1.ui.js";
+} from "../v20260227.ui.js";
 
 class FakeClassList {
   constructor() {

@@ -1,4 +1,4 @@
-# Freshness Parity Report (Web `v20260205-1` vs iOS SwiftUI)
+# Freshness Parity Report (Web `v20260227` vs iOS SwiftUI)
 
 Date: 2026-02-26
 
@@ -7,7 +7,7 @@ Status note (2026-02-26):
 - `ios/MesDepartsIOSApp` is legacy and should not be used for runtime/build validation.
 
 Scope compared:
-- Web: `realtime_api/frontend/v20260205-1.main.js`, `realtime_api/frontend/v20260205-1.logic.js`, `realtime_api/frontend/v20260205-1.state.js`
+- Web: `realtime_api/frontend/v20260227.main.js`, `realtime_api/frontend/v20260227.logic.js`, `realtime_api/frontend/v20260227.state.js`
 - iOS app: `ios/MesDepartsApp/App/MesDepartsAppApp.swift`, `ios/MesDepartsApp/App/ContentView.swift`
 - iOS networking: `ios/MesDepartsCore/Sources/MesDepartsCore/API/StationboardAPI.swift`, `ios/MesDepartsCore/Sources/MesDepartsCore/API/HTTPClient.swift`
 
@@ -51,7 +51,7 @@ stateDiagram-v2
 ### 1.2 Web invariants (enforced in code)
 
 - Single in-flight board request gate:
-  - `refreshInFlight` + `pendingRefreshRequest` in `refreshDepartures(...)` (`v20260205-1.main.js`).
+  - `refreshInFlight` + `pendingRefreshRequest` in `refreshDepartures(...)` (`v20260227.main.js`).
 - Foreground-only ownership of loading hint:
   - `showLoadingHint` controls `setEmbedAwareLoadingHint(true/false)`.
   - Scheduler calls always pass `showLoadingHint=false`.
@@ -61,7 +61,7 @@ stateDiagram-v2
 - Stale/superseded response cannot apply:
   - `requestSeq` + station/language snapshot + `isStaleRequest()` guard.
 - RT anti-downgrade hold is explicit:
-  - `shouldApplyIncomingBoard(...)` in `v20260205-1.logic.js` keeps last RT snapshot unless forced context change or hard-cap exceeded.
+  - `shouldApplyIncomingBoard(...)` in `v20260227.logic.js` keeps last RT snapshot unless forced context change or hard-cap exceeded.
 - Cadence is bounded and jittered:
   - `REFRESH_DEPARTURES=15000`, `jitteredDelayMs(...)`, scheduler hidden-tab gating, and focus/visibility catch-up.
 - Stationboard fetch bypasses browser cache:
@@ -112,14 +112,14 @@ stateDiagram-v2
 
 | Mechanism | Web reference | iOS reference | Verdict | Notes / required change |
 | --- | --- | --- | --- | --- |
-| Poll scheduling + jitter | `scheduleNextRefresh`, `jitteredDelayMs`, `REFRESH_DEPARTURES` in `v20260205-1.main.js` + `v20260205-1.state.js` | `pollInterval`, `jitteredPollDelay`, `scheduleNextPoll` in `StationboardViewModel` | Equivalent | Both run ~15s with small signed jitter and one-shot rescheduling. |
-| Foreground/background gating | `handleVisibilityChange`, `handleWindowFocus`, `document.hidden` checks in `v20260205-1.main.js` | `scenePhase` handling in `StationboardView` + `startPolling`/`stopPolling` in `StationboardViewModel` | Equivalent | Both pause in background and trigger immediate foreground refresh. |
+| Poll scheduling + jitter | `scheduleNextRefresh`, `jitteredDelayMs`, `REFRESH_DEPARTURES` in `v20260227.main.js` + `v20260227.state.js` | `pollInterval`, `jitteredPollDelay`, `scheduleNextPoll` in `StationboardViewModel` | Equivalent | Both run ~15s with small signed jitter and one-shot rescheduling. |
+| Foreground/background gating | `handleVisibilityChange`, `handleWindowFocus`, `document.hidden` checks in `v20260227.main.js` | `scenePhase` handling in `StationboardView` + `startPolling`/`stopPolling` in `StationboardViewModel` | Equivalent | Both pause in background and trigger immediate foreground refresh. |
 | In-flight coalescing | `refreshInFlight` + `pendingRefreshRequest` + queued dispatch in `refreshDepartures` | `isRequestInFlight` + `pendingRefreshRequested` + follow-up launch in `fetchNow` defer | Equivalent | Single follow-up request is collapsed while one fetch is active. |
 | Superseded/stale response handling | `requestSeq` snapshot + `isStaleRequest()` in `refreshDepartures` | `requestGeneration` + `fetchStopID` checks in `fetchNow` | Equivalent | Superseded responses are ignored before UI state mutation. |
-| Stop switch stale UI prevention | `clearBoardForStationChange()` in `v20260205-1.main.js` | `openStop(...)` now clears board via `clearBoardForStopChange()` | Equivalent (after fix) | iOS patch added immediate board clear on stop change to prevent previous-stop rows. |
+| Stop switch stale UI prevention | `clearBoardForStationChange()` in `v20260227.main.js` | `openStop(...)` now clears board via `clearBoardForStopChange()` | Equivalent (after fix) | iOS patch added immediate board clear on stop change to prevent previous-stop rows. |
 | Loading hint ownership / clearing | `showLoadingHint` + `setEmbedAwareLoadingHint(false)` before early returns in `finally` (`refreshDepartures`) | `isLoading` managed in `fetchNow` defer, visible spinner only on empty board in `StationboardView` | Acceptable platform difference | Same safety property (loading state cleared on all paths), but iOS has no distinct embed hint channel. |
-| RT anti-downgrade (keep last RT snapshot) | `shouldApplyIncomingBoard(...)` in `v20260205-1.logic.js` | `shouldApplyIncomingBoard(incomingHasRTSnapshot:now:)` in `StationboardViewModel` | Equivalent (after fix) | iOS patch now preserves recent RT-applied board until hard-cap. |
-| Error/backoff rules | `REFRESH_BACKOFF_STEPS_MS` + transient retry + stale-board rescue branches in `v20260205-1.main.js` | No explicit multi-step backoff ladder; next poll stays jittered cadence | Not equivalent | Acceptable platform difference for now; iOS remains within cadence and relies on lifecycle resume + coalescing. |
+| RT anti-downgrade (keep last RT snapshot) | `shouldApplyIncomingBoard(...)` in `v20260227.logic.js` | `shouldApplyIncomingBoard(incomingHasRTSnapshot:now:)` in `StationboardViewModel` | Equivalent (after fix) | iOS patch now preserves recent RT-applied board until hard-cap. |
+| Error/backoff rules | `REFRESH_BACKOFF_STEPS_MS` + transient retry + stale-board rescue branches in `v20260227.main.js` | No explicit multi-step backoff ladder; next poll stays jittered cadence | Not equivalent | Acceptable platform difference for now; iOS remains within cadence and relies on lifecycle resume + coalescing. |
 | Cache-control / no-store behavior | `fetch(..., { cache: "no-store" })` in `fetchStationboardRaw` | `HTTPClient` request cache policy + no-store/no-cache headers + ephemeral session | Equivalent (after fix) | iOS patch hardened request/session cache bypass to avoid accidental cached responses. |
 | Meta freshness fields usage | `recordStationboardFreshnessSample` stores `serverTime`, `rtFetchedAt`, `rtCacheAgeMs`, `responseMode`, `rtStatus` | `FreshnessDiagnosticSample` + `FreshnessDiagnosticsBuffer` in `StationboardViewModel` | Equivalent | Both maintain rolling diagnostics buffers (iOS max 50 samples). |
 | Incremental `since_rt` / 204 no-change | `fetchStationboardRaw` adds `since_rt` + handles `204` | iOS currently does full GET only via `StationboardAPI.fetchStationboard` | Not equivalent | Acceptable platform difference; does not increase polling frequency, but uses larger payloads. |
