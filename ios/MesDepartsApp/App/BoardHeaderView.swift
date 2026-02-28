@@ -8,8 +8,6 @@ struct BoardHeaderView: View {
     let updatedLabel: String
     let servedLines: [String]
     let servedByLinesLabel: String
-    let selectedLineFilter: String?
-    let onToggleLineFilter: (String) -> Void
 
     var body: some View {
         BlueCard {
@@ -53,12 +51,7 @@ struct BoardHeaderView: View {
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: MDDesignSystem.Spacing.xs * 0.88) {
                                 ForEach(servedLines, id: \.self) { line in
-                                    Button {
-                                        onToggleLineFilter(line)
-                                    } label: {
-                                        LinePill(line: line, isSelected: selectedLineFilter == line)
-                                    }
-                                    .buttonStyle(.plain)
+                                    LinePill(line: line)
                                 }
                             }
                             .padding(.vertical, MDDesignSystem.Spacing.xxs * 0.88)

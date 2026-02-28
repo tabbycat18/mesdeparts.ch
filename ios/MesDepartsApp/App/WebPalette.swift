@@ -32,7 +32,7 @@ enum WebPalette {
             "postauto": "line-postbus",
         ]
 
-        // Mirrors .line-generic-tone-0...23 from v20260228.style.css.
+        // Mirrors .line-generic-tone-0...23 from v20260227.style.css.
         private static let genericTones: [Color] = [
             Color(hex: "#1F6FEB"),
             Color(hex: "#B42318"),

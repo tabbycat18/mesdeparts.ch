@@ -107,7 +107,6 @@ private struct StationboardView: View {
     let stop: StopChoice
     @StateObject private var viewModel: StationboardViewModel
     @State private var activeSheet: MoreSheetDestination?
-    @State private var activeLineFilter: String?
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage(AppPreferencesKeys.displayMode) private var displayModeRawValue = DisplayModeOption.line.rawValue
     @AppStorage(AppPreferencesKeys.language) private var languageRawValue = AppLanguageOption.en.rawValue
@@ -128,9 +127,7 @@ private struct StationboardView: View {
                     freshnessLabel: viewModel.freshnessLabel,
                     updatedLabel: appLabel(.updatedLabel, language: language),
                     servedLines: viewModel.servedLines,
-                    servedByLinesLabel: appLabel(.servedByLines, language: language),
-                    selectedLineFilter: activeLineFilter,
-                    onToggleLineFilter: toggleLineFilter
+                    servedByLinesLabel: appLabel(.servedByLines, language: language)
                 )
 
                 if viewModel.isLoading && viewModel.departures.isEmpty {
@@ -155,11 +152,11 @@ private struct StationboardView: View {
                 VStack(alignment: .leading, spacing: MDDesignSystem.Spacing.sm) {
                     SectionHeader(
                         title: appLabel(.departures, language: language),
-                        subtitle: departuresCountSubtitle
+                        subtitle: "\(viewModel.departures.count)"
                     )
 
                     LazyVStack(spacing: MDDesignSystem.Spacing.sm) {
-                        ForEach(filteredDepartures) { item in
+                        ForEach(viewModel.departures) { item in
                             NavigationLink {
                                 DepartureDetailView(
                                     departure: item.departure,
@@ -218,12 +215,6 @@ private struct StationboardView: View {
                 }
             }
         }
-        .onChange(of: viewModel.servedLines) { lines in
-            guard let activeLineFilter else { return }
-            if !lines.contains(activeLineFilter) {
-                self.activeLineFilter = nil
-            }
-        }
     }
 
     private var language: AppLanguageOption {
@@ -232,36 +223,6 @@ private struct StationboardView: View {
 
     private var displayMode: DisplayModeOption {
         DisplayModeOption(rawValue: displayModeRawValue) ?? .line
-    }
-
-    private var filteredDepartures: [DepartureDisplay] {
-        guard let activeLineFilter else {
-            return viewModel.departures
-        }
-        return viewModel.departures.filter { item in
-            lineIdentifier(for: item.departure) == activeLineFilter
-        }
-    }
-
-    private var departuresCountSubtitle: String {
-        if activeLineFilter == nil {
-            return "\(viewModel.departures.count)"
-        }
-        return "\(filteredDepartures.count) / \(viewModel.departures.count)"
-    }
-
-    private func toggleLineFilter(_ line: String) {
-        if activeLineFilter == line {
-            activeLineFilter = nil
-        } else {
-            activeLineFilter = line
-        }
-    }
-
-    private func lineIdentifier(for departure: Departure) -> String? {
-        let value = (departure.line ?? departure.number ?? "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        return value.isEmpty ? nil : value
     }
 
     @ViewBuilder
@@ -524,9 +485,8 @@ private struct DepartureRowView: View {
 
             destinationBlock
 
-            Spacer(minLength: MDDesignSystem.Spacing.xs)
-
             timeContent()
+                .fixedSize(horizontal: true, vertical: false)
         }
     }
 
@@ -539,6 +499,7 @@ private struct DepartureRowView: View {
                 .truncationMode(.tail)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .layoutPriority(1)
     }
 
     private var trainSecondaryRow: some View {
@@ -937,136 +898,7 @@ private final class StationboardViewModel: ObservableObject {
             }
         }
 
-        let decorated = lines.enumerated().map { index, value in
-            makeServedLineSortDescriptor(value, originalIndex: index)
-        }
-
-        return decorated
-            .sorted(by: servedLineComesBefore)
-            .map(\.value)
-    }
-
-    private enum ServedLineSortBucket: Int {
-        case numeric = 0
-        case alphaNumeric = 1
-        case other = 2
-    }
-
-    private struct ServedLineSortDescriptor {
-        let originalIndex: Int
-        let value: String
-        let bucket: ServedLineSortBucket
-        let numericValue: Int?
-        let alphaPrefix: String?
-        let alphaNumericValue: Int?
-        let fallback: String
-    }
-
-    private static func makeServedLineSortDescriptor(
-        _ value: String,
-        originalIndex: Int
-    ) -> ServedLineSortDescriptor {
-        if let numericValue = parsePureNumber(value) {
-            return ServedLineSortDescriptor(
-                originalIndex: originalIndex,
-                value: value,
-                bucket: .numeric,
-                numericValue: numericValue,
-                alphaPrefix: nil,
-                alphaNumericValue: nil,
-                fallback: value
-            )
-        }
-
-        if let (alphaPrefix, alphaNumericValue) = parseAlphaNumeric(value) {
-            return ServedLineSortDescriptor(
-                originalIndex: originalIndex,
-                value: value,
-                bucket: .alphaNumeric,
-                numericValue: nil,
-                alphaPrefix: alphaPrefix,
-                alphaNumericValue: alphaNumericValue,
-                fallback: value
-            )
-        }
-
-        return ServedLineSortDescriptor(
-            originalIndex: originalIndex,
-            value: value,
-            bucket: .other,
-            numericValue: nil,
-            alphaPrefix: nil,
-            alphaNumericValue: nil,
-            fallback: value
-        )
-    }
-
-    private static func servedLineComesBefore(
-        _ lhs: ServedLineSortDescriptor,
-        _ rhs: ServedLineSortDescriptor
-    ) -> Bool {
-        if lhs.bucket != rhs.bucket {
-            return lhs.bucket.rawValue < rhs.bucket.rawValue
-        }
-
-        switch lhs.bucket {
-        case .numeric:
-            if let lhsValue = lhs.numericValue, let rhsValue = rhs.numericValue, lhsValue != rhsValue {
-                return lhsValue < rhsValue
-            }
-        case .alphaNumeric:
-            let lhsPrefix = lhs.alphaPrefix ?? ""
-            let rhsPrefix = rhs.alphaPrefix ?? ""
-            let prefixOrder = lhsPrefix.localizedCaseInsensitiveCompare(rhsPrefix)
-            if prefixOrder != .orderedSame {
-                return prefixOrder == .orderedAscending
-            }
-            if let lhsValue = lhs.alphaNumericValue, let rhsValue = rhs.alphaNumericValue, lhsValue != rhsValue {
-                return lhsValue < rhsValue
-            }
-        case .other:
-            break
-        }
-
-        let fallbackOrder = lhs.fallback.localizedCompare(rhs.fallback)
-        if fallbackOrder != .orderedSame {
-            return fallbackOrder == .orderedAscending
-        }
-        return lhs.originalIndex < rhs.originalIndex
-    }
-
-    private static func parsePureNumber(_ value: String) -> Int? {
-        guard !value.isEmpty, value.allSatisfy(\.isNumber), let numericValue = Int(value) else {
-            return nil
-        }
-        return numericValue
-    }
-
-    private static func parseAlphaNumeric(_ value: String) -> (prefix: String, numericValue: Int)? {
-        guard !value.isEmpty else { return nil }
-
-        var prefix = ""
-        var numericPart = ""
-        var seenDigit = false
-
-        for character in value {
-            if character.isLetter {
-                guard !seenDigit else { return nil }
-                prefix.append(character)
-                continue
-            }
-            if character.isNumber {
-                seenDigit = true
-                numericPart.append(character)
-                continue
-            }
-            return nil
-        }
-
-        guard !prefix.isEmpty, !numericPart.isEmpty, let numericValue = Int(numericPart) else {
-            return nil
-        }
-        return (prefix, numericValue)
+        return lines
     }
 
     private static func makeFreshnessLabel(meta: Meta?) -> String? {
