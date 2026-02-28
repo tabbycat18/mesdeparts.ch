@@ -6651,12 +6651,12 @@ body.dual-embed .board-header {
 
 @media (max-width: 620px) {
   .hc2-search-row {
-    grid-template-columns: 1fr auto;
+    grid-template-columns: minmax(0, 1fr) auto auto;
   }
 
   #favorites-only-toggle {
-    grid-column: span 2;
-    width: 100%;
+    grid-column: auto;
+    width: auto;
   }
 
   .hc2-language-row {

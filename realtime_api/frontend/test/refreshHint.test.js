@@ -2,7 +2,7 @@
 // Regression tests for loading-hint ownership in the stationboard refresh loop.
 //
 // These tests verify the behavioral contract of the `finally` block in
-// `refreshDepartures` (v20260228.main.js) without requiring a browser DOM:
+// `refreshDepartures` (v20260228-1.main.js) without requiring a browser DOM:
 //
 //   1. Queued refresh: after a foreground request finishes with a pending
 //      follow-up, the loading hint must be OFF (not stuck).

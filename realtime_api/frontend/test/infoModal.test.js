@@ -383,7 +383,7 @@ test("info modal keeps dialog semantics, tab behavior, focus return, and backgro
   });
 
   try {
-    const { setupInfoButton } = await import(`../v20260228.infoBTN.js?test=${Date.now()}`);
+    const { setupInfoButton } = await import(`../v20260228-1.infoBTN.js?test=${Date.now()}`);
     setupInfoButton();
 
     badge.focus();

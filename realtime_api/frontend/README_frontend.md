@@ -6,6 +6,7 @@ Static, dependency-free front-end for mesdeparts.ch. Everything in this folder i
 
 ## Features
 - Stop search with suggestions and favorites (stored locally; no account).
+- Mobile search controls keep the favorites toggle inline (right side) with the search/nearby controls; it does not wrap below the search field on narrow viewports.
 - Two bus views: by line (balanced by destination) or chronological; trains are always chronological.
 - Filters for platform/line/train service plus “My favorites” mode.
 - Self-hosted SBB clock + digital clock; auto-refresh every 10–20 s (~3 h horizon).
