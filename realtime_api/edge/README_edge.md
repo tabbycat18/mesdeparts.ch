@@ -9,8 +9,10 @@ unchanged (including `debug.rt.tripUpdates` fields such as `rtEnabledForRequest`
 and `rtMetaReason`).
 
 `/api/stationboard` behavior:
-- Short edge cache (`CDN-Cache-Control`, 15 s) on normalized cache keys.
-- Explicit client no-store headers (`Cache-Control: private, no-store, max-age=0, must-revalidate`) so Safari/iPad browsers don't reuse stale stationboard JSON from local HTTP cache.
+- Uses `caches.default` with normalized cache keys for deterministic edge hits.
+- Strips origin anti-cache headers (`Cache-Control: private/no-store`, `Pragma: no-cache`) before caching.
+- Caches normalized stationboard responses at the edge with cacheable headers (`Cache-Control: public, max-age=0, s-maxage=15`, `CDN-Cache-Control: public, max-age=15`, `Cloudflare-CDN-Cache-Control: public, max-age=15`).
+- Returns browser no-store headers on client responses (`Cache-Control: private, no-store, max-age=0, must-revalidate`, `Pragma: no-cache`) to avoid local stale JSON reuse.
 
 ## Files
 - `realtime_api/edge/worker.js`: Worker logic.
