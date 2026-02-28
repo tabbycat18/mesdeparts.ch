@@ -19,8 +19,8 @@ import {
   isRtUnavailableFromStationboardPayload,
   shouldApplyIncomingBoard,
   shouldHoldRtDowngrade,
-} from "../v20260227.logic.js";
-import { appState, VIEW_MODE_LINE, VIEW_MODE_TIME } from "../v20260227.state.js";
+} from "../v20260228.logic.js";
+import { appState, VIEW_MODE_LINE, VIEW_MODE_TIME } from "../v20260228.state.js";
 
 // classifyMode should categorize common transport codes
 assert.equal(classifyMode("IC"), "train");
@@ -1572,6 +1572,101 @@ assert.equal(
     appState.lineFilter = previous.lineFilter;
     appState.favoritesOnly = previous.favoritesOnly;
     appState.lastPlatforms = previous.lastPlatforms;
+  }
+}
+
+// served lines / simpleLineId should normalize Swiss route-id encodings.
+{
+  const previous = {
+    station: appState.STATION,
+    stationId: appState.stationId,
+    trainFilter: appState.trainServiceFilter,
+    platformFilter: appState.platformFilter,
+    lineFilter: appState.lineFilter,
+    favoritesOnly: appState.favoritesOnly,
+    lastPlatforms: appState.lastPlatforms,
+    lineOptions: appState.lineOptions,
+  };
+
+  const nowBase = Date.now() + 5 * 60 * 1000;
+  const mkIso = (ms) => new Date(ms).toISOString();
+  const rawLines = [
+    "1",
+    "N1",
+    "2",
+    "N2",
+    "N3",
+    "4",
+    "N5",
+    "6",
+    "N6",
+    "7",
+    "8",
+    "9",
+    "16",
+    "18",
+    "ojp:920N2:G:H:j26",
+    "92-N1-H-j26-1",
+    "92-N3-H-j26-1",
+    "92-N5-D-j26-1",
+  ];
+
+  try {
+    appState.STATION = "Lausanne, Motte";
+    appState.stationId = "Parent8501120";
+    appState.trainServiceFilter = "train_all";
+    appState.platformFilter = null;
+    appState.lineFilter = null;
+    appState.favoritesOnly = false;
+    appState.lastPlatforms = {};
+    appState.lineOptions = [];
+
+    const stationboard = rawLines.map((raw, idx) => {
+      const scheduledMs = nowBase + idx * 60 * 1000;
+      return {
+        category: "B",
+        number: raw,
+        name: raw,
+        operator: "TL",
+        to: `Destination ${idx + 1}`,
+        source: "tripupdate",
+        tags: [],
+        stop: {
+          departure: mkIso(scheduledMs),
+          platform: "A",
+          delay: 0,
+          prognosis: {
+            departure: mkIso(scheduledMs),
+            delay: 0,
+            status: "ON_TIME",
+            cancelled: false,
+          },
+          cancelled: false,
+        },
+        cancelled: false,
+      };
+    });
+
+    const rows = buildDeparturesGrouped({ stationboard }, VIEW_MODE_TIME);
+    assert.ok(rows.length >= rawLines.length - 3);
+
+    const normalizedSet = new Set((appState.lineOptions || []).map((v) => String(v)));
+    for (const expected of ["1", "2", "4", "6", "7", "8", "9", "16", "18", "N1", "N2", "N3", "N5", "N6"]) {
+      assert.equal(normalizedSet.has(expected), true, `missing normalized line ${expected}`);
+    }
+
+    for (const raw of ["ojp:920N2:G:H:j26", "92-N1-H-j26-1", "92-N3-H-j26-1", "92-N5-D-j26-1"]) {
+      assert.equal(normalizedSet.has(raw), false, `raw route id leaked into lineOptions: ${raw}`);
+    }
+  } finally {
+    appState.STATION = previous.station;
+    appState.stationId = previous.stationId;
+    appState.trainServiceFilter = previous.trainFilter;
+    appState.platformFilter = previous.platformFilter;
+    appState.lineFilter = previous.lineFilter;
+    appState.favoritesOnly = previous.favoritesOnly;
+    appState.lastPlatforms = previous.lastPlatforms;
+    appState.lineOptions = previous.lineOptions;
   }
 }
 

@@ -5,11 +5,11 @@ import {
   TRAIN_FILTER_ALL,
   TRAIN_FILTER_REGIONAL,
   TRAIN_FILTER_LONG_DISTANCE,
-} from "../v20260227.state.js";
-import { fetchStationSuggestions, fetchStationsNearby, isAbortError } from "../v20260227.logic.js";
-import { loadFavorites, saveFavorites } from "../v20260227.favourites.js";
-import { getHasSeenThreeDotsTip, setHasSeenThreeDotsTip } from "../v20260227.threeDotsTip.js";
-import { t, setLanguage, LANGUAGE_OPTIONS, applyStaticTranslations } from "../v20260227.i18n.js";
+} from "../v20260228.state.js";
+import { fetchStationSuggestions, fetchStationsNearby, isAbortError } from "../v20260228.logic.js";
+import { loadFavorites, saveFavorites } from "../v20260228.favourites.js";
+import { getHasSeenThreeDotsTip, setHasSeenThreeDotsTip } from "../v20260228.threeDotsTip.js";
+import { t, setLanguage, LANGUAGE_OPTIONS, applyStaticTranslations } from "../v20260228.i18n.js";
 
 const STORAGE_COLLAPSED_KEY = "mesdeparts.headerControls2.collapsed";
 
@@ -93,9 +93,9 @@ const state = {
   initialized: false,
   mountEl: null,
   // Integration contract:
-  // - getCurrentStop(): provided by v20260227.main.js -> returns { id, name } from appState.
-  // - onSelectStop(arg1, arg2): provided by v20260227.main.js -> supports `(id, name)` and legacy payloads.
-  // - favorites storage: loadFavorites()/saveFavorites() from v20260227.favourites.js.
+  // - getCurrentStop(): provided by v20260228.main.js -> returns { id, name } from appState.
+  // - onSelectStop(arg1, arg2): provided by v20260228.main.js -> supports `(id, name)` and legacy payloads.
+  // - favorites storage: loadFavorites()/saveFavorites() from v20260228.favourites.js.
   callbacks: {
     getCurrentStop: () => ({ id: appState.stationId || null, name: appState.STATION || "" }),
     onSelectStop: null,

@@ -22,8 +22,8 @@ import {
   TRAIN_FILTER_REGIONAL,
   TRAIN_FILTER_LONG_DISTANCE,
   STATION_ID_STORAGE_KEY,
-} from "./v20260227.state.js";
-import { t } from "./v20260227.i18n.js";
+} from "./v20260228.state.js";
+import { t } from "./v20260228.i18n.js";
 
 // API base can be overridden by setting window.__MD_API_BASE__ before scripts load.
 // Frontend now targets realtime_api/backend endpoints only.
@@ -1167,29 +1167,47 @@ function normalizeBackendStationboard(data) {
 // Normalize a “simple” line id used for CSS and grouping
 function normalizeSimpleLineId(rawNumber, rawCategory) {
   const trimmedNumber = rawNumber ? String(rawNumber).trim() : "";
+  let canonicalNumber = trimmedNumber;
 
-  if (trimmedNumber && /^[0-9]+$/.test(trimmedNumber)) {
-    const n = parseInt(trimmedNumber, 10);
-    return Number.isNaN(n) ? trimmedNumber : String(n); // strip leading zeros
+  if (/^ojp:/i.test(canonicalNumber)) {
+    const parts = canonicalNumber.split(":");
+    const head = String(parts[1] || "").trim();
+    const alphaNumericTail = head.match(/^\d{2,3}([A-Za-z][A-Za-z0-9+]*)$/);
+    if (alphaNumericTail) {
+      canonicalNumber = alphaNumericTail[1];
+    } else {
+      const numericTail = head.match(/^\d{2,3}(0*[0-9]{1,4})$/);
+      if (numericTail) canonicalNumber = numericTail[1];
+    }
+  } else if (/^\d{2,3}-/.test(canonicalNumber)) {
+    const parts = canonicalNumber.split("-");
+    if (parts.length >= 2 && String(parts[1] || "").trim()) {
+      canonicalNumber = String(parts[1]).trim();
+    }
+  }
+
+  if (canonicalNumber && /^[0-9]+$/.test(canonicalNumber)) {
+    const n = parseInt(canonicalNumber, 10);
+    return Number.isNaN(n) ? canonicalNumber : String(n); // strip leading zeros
   }
 
   // Letter+digits without special chars (e.g. "N01" → "N1")
   if (
-    trimmedNumber &&
-    /^[A-Za-z]+0*[0-9]+$/.test(trimmedNumber) &&
-    !/[+]/.test(trimmedNumber)
+    canonicalNumber &&
+    /^[A-Za-z]+0*[0-9]+$/.test(canonicalNumber) &&
+    !/[+]/.test(canonicalNumber)
   ) {
-    const match = trimmedNumber.match(/^([A-Za-z]+)0*([0-9]+)$/);
+    const match = canonicalNumber.match(/^([A-Za-z]+)0*([0-9]+)$/);
     if (match) {
       const prefix = match[1].toUpperCase();
       const numInt = parseInt(match[2], 10);
       const numStr = Number.isNaN(numInt) ? match[2] : String(numInt);
       return `${prefix}${numStr}`;
     }
-    return trimmedNumber;
+    return canonicalNumber;
   }
 
-  if (trimmedNumber) return trimmedNumber;
+  if (canonicalNumber) return canonicalNumber;
   if (rawCategory) return String(rawCategory).trim();
   return "";
 }
