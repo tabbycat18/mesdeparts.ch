@@ -18,7 +18,7 @@ community landing page and pointers to the active codebases.
 ## Pro / RT edition
 
 The production RT backend, modern frontend, edge worker, and deployment stack are proprietary.
-For licensing or partnership requests: contact@mesdeparts.ch
+For licensing or partnership requests: tabbycat18@proton.me
 
 ## How to try it
 
