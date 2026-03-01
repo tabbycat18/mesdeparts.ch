@@ -3,17 +3,17 @@ const CORE_ASSETS = [
   "./index.html",
   "./dual-board.html",
   "./manifest.webmanifest",
-  "./v20260228-1.style.css",
-  "./v20260228-1.main.js",
-  "./v20260228-1.logic.js",
-  "./v20260228-1.ui.js",
-  "./v20260228-1.state.js",
-  "./v20260228-1.i18n.js",
-  "./v20260228-1.favourites.js",
-  "./v20260228-1.homeStop.js",
-  "./v20260228-1.threeDotsTip.js",
-  "./v20260228-1.infoBTN.js",
-  "./ui/v20260228-1.homeStopOnboarding.js",
+  "./v20260301.style.css",
+  "./v20260301.main.js",
+  "./v20260301.logic.js",
+  "./v20260301.ui.js",
+  "./v20260301.state.js",
+  "./v20260301.i18n.js",
+  "./v20260301.favourites.js",
+  "./v20260301.homeStop.js",
+  "./v20260301.threeDotsTip.js",
+  "./v20260301.infoBTN.js",
+  "./ui/v20260301.homeStopOnboarding.js",
   "./disruption-lightning.svg",
   "./bus-icon-1.png",
   "./bus-icon-1.svg",
@@ -26,7 +26,7 @@ const LAZY_ASSETS = [
 ];
 
 const ASSETS = [...CORE_ASSETS, ...LAZY_ASSETS];
-const CACHE_REV = "v20260228-1-v1.9-r1";
+const CACHE_REV = "v20260301-v1.9.1-r1";
 
 function hashStrings(list) {
   const str = list.join("|");
