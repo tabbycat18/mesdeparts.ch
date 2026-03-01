@@ -12,7 +12,7 @@ community landing page and pointers to the active codebases.
 
 - Legacy open-source code (Apache-2.0): https://github.com/tabbycat18/mesdeparts.ch-legacy
   - Legacy client (static web UI) + optional legacy worker proxy.
-- Pro / RT edition (proprietary): https://github.com/tabbycat18/mesdeparts.ch-rt
+- Pro / RT edition (proprietary): available on request
   - RT backend, modern frontend, edge worker, and deployment stack.
 
 ## Pro / RT edition
