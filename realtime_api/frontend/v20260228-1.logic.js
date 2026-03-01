@@ -998,6 +998,12 @@ function normalizeBackendStationboard(data) {
   const rtFetchedAt = String(rtRaw?.cacheFetchedAt || rtRaw?.fetchedAt || "").trim() || null;
   const rtAgeMsRaw = Number(rtRaw?.cacheAgeMs);
   const rtAgeMs = Number.isFinite(rtAgeMsRaw) ? Math.max(0, Math.round(rtAgeMsRaw)) : null;
+  const rtPollAgeMsRaw = Number(rtRaw?.pollAgeMs);
+  const rtPollAgeMs = Number.isFinite(rtPollAgeMsRaw)
+    ? Math.max(0, Math.round(rtPollAgeMsRaw))
+    : Number.isFinite(Number(rtRaw?.pollAgeSeconds))
+      ? Math.max(0, Math.round(Number(rtRaw.pollAgeSeconds) * 1000))
+      : null;
   const rtFreshnessMsRaw = Number(rtRaw?.freshnessThresholdMs);
   const rtFreshnessMs = Number.isFinite(rtFreshnessMsRaw)
     ? Math.max(5_000, Math.round(rtFreshnessMsRaw))
@@ -1016,6 +1022,13 @@ function normalizeBackendStationboard(data) {
         ? Math.max(0, Math.floor(Number(rtRaw.ageSeconds)))
         : rtAgeMs != null
           ? Math.floor(rtAgeMs / 1000)
+          : null,
+    pollAgeMs: rtPollAgeMs,
+    pollAgeSeconds:
+      Number.isFinite(Number(rtRaw?.pollAgeSeconds))
+        ? Math.max(0, Math.floor(Number(rtRaw.pollAgeSeconds)))
+        : rtPollAgeMs != null
+          ? Math.floor(rtPollAgeMs / 1000)
           : null,
     freshnessThresholdMs: rtFreshnessMs,
     freshnessMaxAgeSeconds: Math.round(rtFreshnessMs / 1000),
@@ -1649,6 +1662,8 @@ const RT_META_STATUS_PARTIAL = new Set(["partial", "degraded", "mixed"]);
 const RT_META_STATUS_UNAVAILABLE = new Set(["missing", "error", "stale", "unavailable"]);
 const RT_PARTIAL_TOKENS = ["partial", "mixed", "degrad"];
 const RT_UNAVAILABLE_TOKENS = ["stale", "missing", "error", "fail", "timeout", "unavailable"];
+const RT_POLL_AGE_PARTIAL_MS = 25_000;
+const RT_POLL_AGE_UNAVAILABLE_MS = 45_000;
 
 const RT_UI_COLOR_BY_STATUS = Object.freeze({
   [RT_UI_STATUS_AVAILABLE]: "green",
@@ -1674,6 +1689,33 @@ function rtUiColorForStatus(status) {
   return RT_UI_COLOR_BY_STATUS[status] || RT_UI_COLOR_BY_STATUS[RT_UI_STATUS_UNKNOWN];
 }
 
+function toFiniteMsOrNull(value) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return null;
+  return Math.max(0, Math.round(num));
+}
+
+function resolveRtPollAgeMsFromPayload(data) {
+  const payload = data && typeof data === "object" ? data : {};
+  const meta = payload.meta && typeof payload.meta === "object" ? payload.meta : {};
+  const rt = payload.rt && typeof payload.rt === "object" ? payload.rt : {};
+
+  const directMs = toFiniteMsOrNull(meta.rtPollAgeMs ?? rt.pollAgeMs);
+  if (directMs != null) return directMs;
+
+  const pollAgeSeconds = Number(meta.rtPollAgeSeconds ?? rt.pollAgeSeconds);
+  if (!Number.isFinite(pollAgeSeconds)) return null;
+  return Math.max(0, Math.round(pollAgeSeconds * 1000));
+}
+
+function resolveRtStatusFromPollAgeMs(pollAgeMs) {
+  const ageMs = toFiniteMsOrNull(pollAgeMs);
+  if (ageMs == null) return null;
+  if (ageMs > RT_POLL_AGE_UNAVAILABLE_MS) return RT_UI_STATUS_UNAVAILABLE;
+  if (ageMs > RT_POLL_AGE_PARTIAL_MS) return RT_UI_STATUS_PARTIAL;
+  return null;
+}
+
 function resolveRtUiStatusFromMeta(metaRtStatus) {
   if (metaRtStatus === "applied") return RT_UI_STATUS_AVAILABLE;
   if (RT_META_STATUS_PARTIAL.has(metaRtStatus)) return RT_UI_STATUS_PARTIAL;
@@ -1695,22 +1737,32 @@ export function getRtUiStatusFromStationboardPayload(payload) {
   const data = payload && typeof payload === "object" ? payload : {};
   const meta = data.meta && typeof data.meta === "object" ? data.meta : null;
   const metaRtStatus = normalizeRtSignal(meta?.rtStatus);
+  let status;
+  let source;
+  let rtStatus;
+
   if (metaRtStatus) {
-    const status = resolveRtUiStatusFromMeta(metaRtStatus);
-    return {
-      status,
-      color: rtUiColorForStatus(status),
-      source: "meta",
-      rtStatus: metaRtStatus,
-    };
+    status = resolveRtUiStatusFromMeta(metaRtStatus);
+    source = "meta";
+    rtStatus = metaRtStatus;
+  } else {
+    const rt = data.rt && typeof data.rt === "object" ? data.rt : {};
+    const rtApplied = rt.applied === true;
+    const rtReason = normalizeRtSignal(rt.reason);
+    status = resolveRtUiStatusFromRt(rtApplied, rtReason);
+    source = rtApplied || rtReason ? "rt" : "unknown";
+    rtStatus = rtApplied ? "applied" : rtReason || null;
   }
 
-  const rt = data.rt && typeof data.rt === "object" ? data.rt : {};
-  const rtApplied = rt.applied === true;
-  const rtReason = normalizeRtSignal(rt.reason);
-  const status = resolveRtUiStatusFromRt(rtApplied, rtReason);
-  const source = rtApplied || rtReason ? "rt" : "unknown";
-  const rtStatus = rtApplied ? "applied" : rtReason || null;
+  const pollAgeStatus = resolveRtStatusFromPollAgeMs(resolveRtPollAgeMsFromPayload(data));
+  if (pollAgeStatus === RT_UI_STATUS_UNAVAILABLE && status !== RT_UI_STATUS_UNAVAILABLE) {
+    status = RT_UI_STATUS_UNAVAILABLE;
+    source = `${source}+poll_age`;
+  } else if (pollAgeStatus === RT_UI_STATUS_PARTIAL && status === RT_UI_STATUS_AVAILABLE) {
+    status = RT_UI_STATUS_PARTIAL;
+    source = `${source}+poll_age`;
+  }
+
   return {
     status,
     color: rtUiColorForStatus(status),

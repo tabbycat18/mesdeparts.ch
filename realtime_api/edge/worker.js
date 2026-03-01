@@ -12,6 +12,7 @@ const DEFAULT_GLOBAL_LIMIT_PER_DAY = 0;
 const RATE_LIMIT_WINDOW_SEC = 60;
 const GLOBAL_LIMIT_WINDOW_SEC = 86400;
 const STATIONBOARD_CACHE_TTL_SEC = 15;
+const DEFAULT_STATIONBOARD_CACHE_TAG = "md-stationboard";
 const STATIONBOARD_EDGE_CACHE_CONTROL = `public, max-age=0, s-maxage=${STATIONBOARD_CACHE_TTL_SEC}`;
 const STATIONBOARD_CLIENT_CACHE_CONTROL = "private, no-store, max-age=0, must-revalidate";
 
@@ -236,6 +237,9 @@ export default {
     if (isRtStationboardPath(url.pathname)) {
       const upstream = new URL(`/api/stationboard${url.search}`, rtOrigin);
       const bypass = shouldBypassStationboardCache(url);
+      const stationboardCacheTag = String(
+        env?.STATIONBOARD_CACHE_TAG || DEFAULT_STATIONBOARD_CACHE_TAG
+      ).trim();
       const stationboardHeaders = (cacheStatus, cacheKey, originMs) => ({
         "x-md-cache": cacheStatus,
         "x-md-rate-remaining": perIp.remaining ?? "",
@@ -332,6 +336,9 @@ export default {
       const responseHeaders = stationboardHeaders("MISS", cacheKey.url, originMs);
       for (const [key, value] of Object.entries(responseHeaders)) {
         if (value !== "") proxyRes.headers.set(key, String(value));
+      }
+      if (stationboardCacheTag) {
+        proxyRes.headers.set("Cache-Tag", stationboardCacheTag);
       }
 
       logStationboardTiming(env, {

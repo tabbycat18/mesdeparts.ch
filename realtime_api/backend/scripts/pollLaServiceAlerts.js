@@ -22,6 +22,7 @@ import {
   touchAlertsHeartbeat,
   touchPollerHeartbeatError,
 } from "../src/db/rtPollerHeartbeat.js";
+import { purgeCloudflareStationboardCache } from "./purgeCloudflareStationboardCache.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -186,6 +187,7 @@ export function createLaServiceAlertsPoller({
   decodeFeedLike = decodeServiceAlertsFeed,
   touchAlertsHeartbeatLike = touchAlertsHeartbeat,
   touchPollerHeartbeatErrorLike = touchPollerHeartbeatError,
+  purgeStationboardCacheLike = purgeCloudflareStationboardCache,
   sleepLike = sleep,
   nowLike = () => Date.now(),
   feedKey = FEED_KEY,
@@ -678,6 +680,44 @@ export function createLaServiceAlertsPoller({
       lastSuccessfulPollAtMs = Number(nowLike());
       resetBackoffState();
       resetWriteLockSkipState();
+      const purgeResult = await Promise.resolve(
+        typeof purgeStationboardCacheLike === "function"
+          ? purgeStationboardCacheLike({
+              feedKey,
+              reason: "service_alerts_changed_write",
+              fetchLike,
+            })
+          : null
+      ).catch((err) => ({
+        attempted: true,
+        ok: false,
+        mode: null,
+        status: null,
+        errorCode: String(err?.name || ""),
+        errorMessage: String(err?.message || err || "unknown_error"),
+      }));
+      if (purgeResult?.attempted === true) {
+        logLine(
+          purgeResult.ok === true
+            ? "service_alerts_poller_edge_cache_purge_ok"
+            : "service_alerts_poller_edge_cache_purge_failed",
+          {
+            status: 200,
+            extra: {
+              purgeMode: purgeResult.mode || null,
+              purgeStatus: Number.isFinite(Number(purgeResult.status))
+                ? Number(purgeResult.status)
+                : null,
+              elapsedMs: Number.isFinite(Number(purgeResult.elapsedMs))
+                ? Number(purgeResult.elapsedMs)
+                : null,
+              errorCode: toTextOrNull(purgeResult.errorCode),
+              errorMessage: toTextOrNull(purgeResult.errorMessage),
+              errors: Array.isArray(purgeResult.errors) ? purgeResult.errors : [],
+            },
+          }
+        );
+      }
       logLine("service_alerts_poller_fetch_200", {
         status: 200,
         backoffMs: 0,

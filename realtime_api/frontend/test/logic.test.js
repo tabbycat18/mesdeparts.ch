@@ -365,6 +365,28 @@ assert.equal(
   );
   assert.deepEqual(
     getRtUiStatusFromStationboardPayload({
+      meta: { rtStatus: "applied", rtPollAgeMs: 26_000 },
+    }),
+    {
+      status: "partial",
+      color: "orange",
+      source: "meta+poll_age",
+      rtStatus: "applied",
+    }
+  );
+  assert.deepEqual(
+    getRtUiStatusFromStationboardPayload({
+      meta: { rtStatus: "applied", rtPollAgeMs: 46_000 },
+    }),
+    {
+      status: "unavailable",
+      color: "red",
+      source: "meta+poll_age",
+      rtStatus: "applied",
+    }
+  );
+  assert.deepEqual(
+    getRtUiStatusFromStationboardPayload({
       rt: { applied: true, reason: "missing_cache" },
     }),
     {
@@ -383,6 +405,17 @@ assert.equal(
       color: "orange",
       source: "rt",
       rtStatus: "degraded",
+    }
+  );
+  assert.deepEqual(
+    getRtUiStatusFromStationboardPayload({
+      rt: { applied: true, reason: "fresh", pollAgeSeconds: 30 },
+    }),
+    {
+      status: "partial",
+      color: "orange",
+      source: "rt+poll_age",
+      rtStatus: "applied",
     }
   );
   assert.deepEqual(
@@ -485,6 +518,12 @@ assert.equal(
   assert.equal(
     isRtUnavailableFromStationboardPayload({
       meta: { rtStatus: "stale_cache" },
+    }),
+    true
+  );
+  assert.equal(
+    isRtUnavailableFromStationboardPayload({
+      meta: { rtStatus: "applied", rtPollAgeMs: 46_000 },
     }),
     true
   );

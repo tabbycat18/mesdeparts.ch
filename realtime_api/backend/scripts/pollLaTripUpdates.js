@@ -23,6 +23,7 @@ import {
   touchPollerHeartbeatError,
   touchTripUpdatesHeartbeat,
 } from "../src/db/rtPollerHeartbeat.js";
+import { purgeCloudflareStationboardCache } from "./purgeCloudflareStationboardCache.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -191,6 +192,7 @@ export function createLaTripUpdatesPoller({
   decodeFeedLike = decodeTripUpdatesFeed,
   touchTripUpdatesHeartbeatLike = touchTripUpdatesHeartbeat,
   touchPollerHeartbeatErrorLike = touchPollerHeartbeatError,
+  purgeStationboardCacheLike = purgeCloudflareStationboardCache,
   sleepLike = sleep,
   nowLike = () => Date.now(),
   feedKey = FEED_KEY,
@@ -714,6 +716,42 @@ export function createLaTripUpdatesPoller({
       await markSuccessfulPoll();
       resetBackoffState();
       resetWriteLockSkipState();
+      const purgeResult = await Promise.resolve(
+        typeof purgeStationboardCacheLike === "function"
+          ? purgeStationboardCacheLike({
+              feedKey,
+              reason: "trip_updates_changed_write",
+              fetchLike,
+            })
+          : null
+      ).catch((err) => ({
+        attempted: true,
+        ok: false,
+        mode: null,
+        status: null,
+        errorCode: String(err?.name || ""),
+        errorMessage: String(err?.message || err || "unknown_error"),
+      }));
+      if (purgeResult?.attempted === true) {
+        logLine(
+          purgeResult.ok === true ? "poller_edge_cache_purge_ok" : "poller_edge_cache_purge_failed",
+          {
+            status: 200,
+            extra: {
+              purgeMode: purgeResult.mode || null,
+              purgeStatus: Number.isFinite(Number(purgeResult.status))
+                ? Number(purgeResult.status)
+                : null,
+              elapsedMs: Number.isFinite(Number(purgeResult.elapsedMs))
+                ? Number(purgeResult.elapsedMs)
+                : null,
+              errorCode: toTextOrNull(purgeResult.errorCode),
+              errorMessage: toTextOrNull(purgeResult.errorMessage),
+              errors: Array.isArray(purgeResult.errors) ? purgeResult.errors : [],
+            },
+          }
+        );
+      }
       const nowMsForPrune = Number(nowLike());
       if (nowMsForPrune - lastRetentionPruneAtMs >= retentionPruneIntervalMs) {
         const cutoff = new Date(nowMsForPrune - RT_PARSED_RETENTION_HOURS * 3600 * 1000);

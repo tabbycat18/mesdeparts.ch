@@ -47,7 +47,7 @@ The **poller** is a continuously-running background process that keeps the real-
  ┌───────────────▼──────────────────────────────────────────────────────────┐
  │  Cloudflare Worker — mesdeparts-ch  (edge/worker.js)                     │
  │  Route: api.mesdeparts.ch/*                                              │
- │    /api/stationboard → edge-cached 15 s  (CDN-Cache-Control: 15)         │
+ │    /api/stationboard → edge-cached 15 s  (s-maxage/CDN max-age = 15)     │
  │    /api/*            → proxied, no cache                                 │
  │    Rate limit: 120 req/min per IP  (Cloudflare cache API as store)       │
  │    Headers added: x-md-cache, x-md-request-id, x-md-worker-total-ms     │
@@ -57,7 +57,7 @@ The **poller** is a continuously-running background process that keeps the real-
  ┌──────────────────────────────────────────────────────────────────────────┐
  │  Browser client  /  mesdeparts.ch frontend                               │
  │  Served by Cloudflare Pages (static files from realtime_api/frontend/)  │
- │  v20260228.main.js — refresh loop calling api.mesdeparts.ch/api/       │
+ │  v20260228-1.main.js — refresh loop calling api.mesdeparts.ch/api/       │
  └──────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -70,6 +70,7 @@ The **poller** is a continuously-running background process that keeps the real-
 | [`realtime_api/backend/scripts/pollFeeds.js`](realtime_api/backend/scripts/pollFeeds.js) | **Supervisor entrypoint.** Starts both pollers in parallel via `Promise.all`. Implements `runPollerWithRestart()` — infinite outer loop with exponential-backoff restart (5 s base, 60 s max ±20 % jitter) on any crash or unexpected exit. |
 | [`realtime_api/backend/scripts/pollLaTripUpdates.js`](realtime_api/backend/scripts/pollLaTripUpdates.js) | **TripUpdates poller.** Exports `createLaTripUpdatesPoller()`. Tick-based loop: fetch → ETag check → decode → upsert. Default interval 15 s (floor 5 s). |
 | [`realtime_api/backend/scripts/pollLaServiceAlerts.js`](realtime_api/backend/scripts/pollLaServiceAlerts.js) | **ServiceAlerts poller.** Same architecture as TripUpdates. Default interval 60 s (floor 15 s). Uses snapshot (replace-all) strategy rather than incremental upsert. |
+| [`realtime_api/backend/scripts/purgeCloudflareStationboardCache.js`](realtime_api/backend/scripts/purgeCloudflareStationboardCache.js) | **Optional Cloudflare purge helper.** Called by pollers after successful changed writes when `CF_STATIONBOARD_PURGE_MODE` is enabled; default mode is off. |
 | [`realtime_api/backend/scripts/checkPollerHeartbeat.js`](realtime_api/backend/scripts/checkPollerHeartbeat.js) | **Health check.** Reads `rt_poller_heartbeat` and exits 0 (OK) or 2 (stale/missing). Thresholds: trip ≤ 90 s, alerts ≤ 300 s. |
 | [`realtime_api/backend/src/loaders/fetchTripUpdates.js`](realtime_api/backend/src/loaders/fetchTripUpdates.js) | Resolves API token; provides upstream URL constant `LA_GTFS_RT_TRIP_UPDATES_URL`. Used by both the poller and on-demand request path. |
 | [`realtime_api/backend/src/loaders/fetchServiceAlerts.js`](realtime_api/backend/src/loaders/fetchServiceAlerts.js) | Same as above for ServiceAlerts; also contains `normalizeAlertEntity()` with enum mappings, translation picker, and deduplication. |
@@ -147,14 +148,14 @@ The script compares SHA-256 and ETag of the GTFS ZIP against the values stored i
 
 ### Frontend refresh loop
 
-The browser client (`realtime_api/frontend/v20260228.main.js`) runs its own **`setTimeout`-based refresh loop** (not `setInterval`). Each tick schedules the next via `scheduleNextRefresh()` → `setTimeout(fn, delayMs)`.
+The browser client (`realtime_api/frontend/v20260228-1.main.js`) runs its own **`setTimeout`-based refresh loop** (not `setInterval`). Each tick schedules the next via `scheduleNextRefresh()` → `setTimeout(fn, delayMs)`.
 
 | Constant | Value | Source |
 |---|---|---|
-| `REFRESH_DEPARTURES` | **15 000 ms** (base interval) | `v20260228.state.js:23` |
-| `FOLLOWUP_REFRESH_BASE_MS` | 3 000 ms (post-load follow-up) | `v20260228.main.js:73` |
-| `REFRESH_BACKOFF_STEPS_MS` | [2 000, 5 000, 10 000, 15 000] ms | `v20260228.main.js:76` |
-| `FULL_REFRESH_INTERVAL_MS` | 10 × 60 000 ms (force full reload) | `v20260228.main.js:228` |
+| `REFRESH_DEPARTURES` | **5 000 ms** (base interval) | `v20260228-1.state.js:23` |
+| `FOLLOWUP_REFRESH_BASE_MS` | 3 000 ms (post-load follow-up) | `v20260228-1.main.js:73` |
+| `REFRESH_BACKOFF_STEPS_MS` | [2 000, 5 000, 10 000, 15 000] ms | `v20260228-1.main.js:76` |
+| `FULL_REFRESH_INTERVAL_MS` | 10 × 60 000 ms (force full reload) | `v20260228-1.main.js:229` |
 
 The loop skips scheduling when the tab is hidden (`document.hidden`). It is completely independent of the backend poller — it just polls the Cloudflare edge at `api.mesdeparts.ch/api/stationboard`.
 
@@ -196,7 +197,8 @@ The following patterns were searched across the entire repo and **not found** in
    - Prune rows older than `RT_PARSED_RETENTION_HOURS` (default 6 h).
 10. **Update payload SHA** — write new SHA-256 to `meta_kv` via `setRtCachePayloadSha()`. Fixed (2026-02-27): unnecessary advisory lock removed, silent `.catch(() => {})` replaced with structured `poller_sha_write_warn` log. SHA writes confirmed healthy in production.
 11. **Touch heartbeat** — `touchTripUpdatesHeartbeat({ at, instanceId })` → writes `tripupdates_updated_at` in `rt_poller_heartbeat`.
-12. **Sleep** — wait until next interval tick.
+12. **Optional edge purge** — when `CF_STATIONBOARD_PURGE_MODE` is enabled, call Cloudflare purge API (typically by cache tag) immediately after successful changed write.
+13. **Sleep** — wait until next interval tick.
 
 ### ServiceAlerts poller (every ~60 s)
 
@@ -237,6 +239,12 @@ The blob path ([`loaders/loadRealtime.js`](realtime_api/backend/loaders/loadReal
 | `RT_POLLER_LOCK_SKIP_WARN_STREAK` | No | `6` | Warn after N consecutive lock-skip cycles | Fly secret / env |
 | `RT_POLLER_LOCK_SKIP_STALE_AGE_MS` | No | `90000` | Warn if skipped and cached payload is older than this | Fly secret / env |
 | `RT_POLLER_HEARTBEAT_ENABLED` | No | unset (enabled) | Heartbeat is enabled when unset or any value ≠ `"0"`. Set to `"0"` to **disable** heartbeat writes. Code: `!== "0"` | Fly secret / env |
+| `CF_STATIONBOARD_PURGE_MODE` | No | `off` | Optional Cloudflare purge mode: `off`, `tags`, or `everything` (pollers only purge on changed-write success) | Fly secret / env |
+| `CF_STATIONBOARD_PURGE_TAGS` | No | `md-stationboard` | Comma-separated cache tags to purge when mode=`tags` | Fly secret / env |
+| `CF_STATIONBOARD_PURGE_MIN_INTERVAL_MS` | No | `0` | Optional cooldown between purge calls | Fly secret / env |
+| `CF_STATIONBOARD_PURGE_TIMEOUT_MS` | No | `2500` | Timeout for Cloudflare purge API request | Fly secret / env |
+| `CLOUDFLARE_ZONE_ID` / `CF_ZONE_ID` | No | — | Cloudflare Zone ID for purge endpoint | Fly secret / env |
+| `CLOUDFLARE_API_TOKEN` / `CF_API_TOKEN` | No | — | Cloudflare API token for purge endpoint | Fly secret / env |
 | `LA_GTFS_RT_URL` | No | Upstream default | Override TripUpdates upstream URL | Fly secret / env |
 | `LA_GTFS_SA_URL` | No | Upstream default | Override ServiceAlerts upstream URL | Fly secret / env |
 | `RT_UPSERT_BATCH_DEBUG` | No | — | Set `"1"` to log batch sizes during upsert | Fly secret / env |
@@ -264,6 +272,7 @@ The blob path ([`loaders/loadRealtime.js`](realtime_api/backend/loaders/loadReal
 | `RT_BACKEND_ORIGIN` | **Yes** | `"https://mesdeparts-ch.fly.dev"` | Fly backend URL to proxy to | `wrangler.toml [vars]` |
 | `RATE_LIMIT_PER_MIN` | No | `120` | Per-IP rate limit (requests/minute) | Cloudflare dashboard / `wrangler.toml` |
 | `GLOBAL_DAILY_LIMIT` | No | `0` (disabled) | Global daily request cap | Cloudflare dashboard / `wrangler.toml` |
+| `STATIONBOARD_CACHE_TAG` | No | `md-stationboard` | `Cache-Tag` value attached to stationboard cache objects | Cloudflare dashboard / `wrangler.toml` |
 | `WORKER_CACHE_DEBUG` | No | — | Set `"1"` for cache hit/miss logging | Cloudflare dashboard |
 | `WORKER_TIMING_LOG` | No | — | Set `"1"` for worker timing logs | Cloudflare dashboard |
 
@@ -341,13 +350,17 @@ npx wrangler deploy --config realtime_api/edge/wrangler.toml
 
 ### How Cloudflare affects the poller
 
-The **poller does not interact with Cloudflare at all**. It calls the opendata.swiss upstream APIs directly and writes directly to Neon via PostgreSQL. Cloudflare only sits in the path between browser clients and the backend.
+By default (`CF_STATIONBOARD_PURGE_MODE=off`), the poller still does not call Cloudflare. It fetches upstream APIs directly and writes directly to Neon via PostgreSQL.
+
+When purge mode is enabled, pollers perform an additional Cloudflare purge API call only after successful changed writes. This is API-only invalidation and does not increase PostgreSQL traffic.
 
 What Cloudflare does that matters for freshness:
 
 - `/api/stationboard` responses are edge-cached for **15 seconds** (`CDN-Cache-Control: max-age=15`).
 - Browser clients receive `Cache-Control: private, no-store, max-age=0, must-revalidate` to prevent local caching.
-- Cache key for stationboard is normalised by the worker: only `stop_id`, `limit`, and `window_minutes` params are included; other query params are stripped.
+- Cache key for stationboard is normalised by the worker: `stop_id`, `limit`, `window_minutes`, `lang`, and `include_alerts` are included; other query params are stripped.
+- Stationboard cache objects carry `Cache-Tag: md-stationboard` by default (override with Worker var `STATIONBOARD_CACHE_TAG`) so pollers can purge by tag.
+- Poller-triggered purge runs only on successful changed-write ticks; unchanged/304/error ticks do not purge.
 - Cache bypass: append `?debug=1` to any stationboard request to skip the edge cache (`shouldBypassStationboardCache`).
 - The `x-md-cache` response header indicates `HIT`, `MISS`, or `BYPASS`.
 

@@ -190,6 +190,7 @@ test("poller writes parsed trip updates on changed 200 payload", async () => {
   const createLaTripUpdatesPoller = await loadPollerFactory();
   const payload = Buffer.from("new-payload");
   let parsedWrites = 0;
+  let purgeCalls = 0;
   const poller = createLaTripUpdatesPoller({
     token: "test-token",
     fetchLike: async () => okResponse(payload, "etag-new"),
@@ -207,6 +208,10 @@ test("poller writes parsed trip updates on changed 200 payload", async () => {
       parsedWrites += 1;
       return { updated: true, writeSkippedByLock: false };
     },
+    purgeStationboardCacheLike: async () => {
+      purgeCalls += 1;
+      return { attempted: false, skipped: "mode_off" };
+    },
     decodeFeedLike: () => ({ entity: [] }),
     logLike: () => {},
   });
@@ -214,6 +219,7 @@ test("poller writes parsed trip updates on changed 200 payload", async () => {
   const waitMs = await poller.tick();
   assert.equal(waitMs, 15_000);
   assert.equal(parsedWrites, 1);
+  assert.equal(purgeCalls, 1);
 });
 
 test("poller skips parsed write on unchanged 200 payload within write interval", async () => {
@@ -221,6 +227,7 @@ test("poller skips parsed write on unchanged 200 payload within write interval",
   const payload = Buffer.from("same-payload");
   const payloadSha = payloadSha256Hex(payload);
   let parsedWrites = 0;
+  let purgeCalls = 0;
   const poller = createLaTripUpdatesPoller({
     token: "test-token",
     fetchLike: async () => okResponse(payload, "etag-same"),
@@ -237,6 +244,10 @@ test("poller skips parsed write on unchanged 200 payload within write interval",
       parsedWrites += 1;
       return { updated: true, writeSkippedByLock: false };
     },
+    purgeStationboardCacheLike: async () => {
+      purgeCalls += 1;
+      return { attempted: true, ok: true, mode: "tags", status: 200 };
+    },
     decodeFeedLike: () => ({ entity: [] }),
     logLike: () => {},
   });
@@ -244,6 +255,7 @@ test("poller skips parsed write on unchanged 200 payload within write interval",
   const waitMs = await poller.tick();
   assert.equal(waitMs, 15_000);
   assert.equal(parsedWrites, 0);
+  assert.equal(purgeCalls, 0);
 });
 
 test("poller tx lifecycle log reports success path with committed+released client", async () => {

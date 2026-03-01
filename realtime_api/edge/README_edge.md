@@ -12,6 +12,7 @@ and `rtMetaReason`).
 - Uses `caches.default` with normalized cache keys for deterministic edge hits.
 - Strips origin anti-cache headers (`Cache-Control: private/no-store`, `Pragma: no-cache`) before caching.
 - Caches normalized stationboard responses at the edge with cacheable headers (`Cache-Control: public, max-age=0, s-maxage=15`, `CDN-Cache-Control: public, max-age=15`, `Cloudflare-CDN-Cache-Control: public, max-age=15`).
+- Tags stationboard cache objects with `Cache-Tag` (default `md-stationboard`, override with Worker var `STATIONBOARD_CACHE_TAG`) so pollers can purge by tag after changed writes.
 - Returns browser no-store headers on client responses (`Cache-Control: private, no-store, max-age=0, must-revalidate`, `Pragma: no-cache`) to avoid local stale JSON reuse.
 
 ## Files
