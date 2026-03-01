@@ -1,6 +1,6 @@
 # mesdeparts.ch Mega Repo Guide
 
-MesDeparts is a Swiss public-transport departure-board project that currently ships two parallel tracks in one monorepo: a legacy static frontend (`legacy_api/web-ui/`) and an RT stack (`realtime_api/`) that uses GTFS static + GTFS-RT through an Express backend (`realtime_api/backend`).
+MesDeparts is a Swiss public-transport departure-board project. This repo now contains the active RT stack (`realtime_api/`) that uses GTFS static + GTFS-RT through an Express backend (`realtime_api/backend`).
 
 This guide is intentionally repo-grounded. Any claim not directly verifiable from files in this repository is labeled as `Unknown (not found in repo): ...`.
 
@@ -8,6 +8,9 @@ This guide is intentionally repo-grounded. Any claim not directly verifiable fro
 See `AGENTS.md`.
 
 ## Important Update (Repo Reorganization)
+
+Legacy code was moved out of this repository into a separate repo: `mesdeparts.ch-legacy`.
+References to `legacy_api/*` below are historical context and may point to content that no longer lives in this repo.
 
 The repository was reorganized to make stack boundaries explicit.
 
@@ -45,17 +48,15 @@ Quick start (current paths):
 - backend tests: `cd realtime_api/backend && npm test`
 - RT frontend tests: `cd realtime_api/frontend && npm test`
 - edge worker deploy: `npx wrangler deploy --config realtime_api/edge/wrangler.toml`
-- legacy frontend tests: `cd legacy_api/web-ui && npm test`
 
 ## Repo Layout
 
 - `realtime_api/`: active stack (backend + RT frontend + edge worker).
-- `legacy_api/`: archived legacy stack (`legacy_api/web-ui/`, archive copies of old worker files).
 - `assets/` and `dev-artifacts/` remain at root because they are not clearly legacy-only.
 - Historical incident/debug markdown files from root are archived under `realtime_api/docs/archive/`.
 
 Legacy policy:
-- `legacy_api/` is archive/read-only and should not be used for active Cloudflare deployment.
+- Legacy stack lives in separate repo `mesdeparts.ch-legacy` and should not be used for active Cloudflare deployment.
 
 ## Repo Map
 
