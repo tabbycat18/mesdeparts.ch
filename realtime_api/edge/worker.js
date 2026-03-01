@@ -331,8 +331,12 @@ export default {
       proxyRes.headers.set("Access-Control-Allow-Origin", "*");
       const responseHeaders = stationboardHeaders("MISS", cacheKey.url, originMs);
       for (const [key, value] of Object.entries(responseHeaders)) {
-        if (value !== "") proxyRes.headers.set(key, String(value));
+        if (value !== "") baseRes.headers.set(key, String(value));
       }
+
+      const body = await baseRes.arrayBuffer();
+      const cacheRes = new Response(body, baseRes);
+      const clientRes = new Response(body, baseRes);
 
       logStationboardTiming(env, {
         requestId,
