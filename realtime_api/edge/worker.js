@@ -12,6 +12,7 @@ const DEFAULT_GLOBAL_LIMIT_PER_DAY = 0;
 const RATE_LIMIT_WINDOW_SEC = 60;
 const GLOBAL_LIMIT_WINDOW_SEC = 86400;
 const STATIONBOARD_CACHE_TTL_SEC = 15;
+const STATIONBOARD_EDGE_CACHE_CONTROL = `public, max-age=0, s-maxage=${STATIONBOARD_CACHE_TTL_SEC}`;
 const STATIONBOARD_CLIENT_CACHE_CONTROL = "private, no-store, max-age=0, must-revalidate";
 
 const addCors = (res, extraHeaders = null) => {
@@ -109,6 +110,17 @@ const cacheDebugLog = (env, message, details = null) => {
     return;
   }
   console.log(`[worker-cache] ${message}`);
+};
+
+const stripOriginAntiCacheHeaders = (headers) => {
+  const cacheControl = String(headers.get("cache-control") || "").toLowerCase();
+  if (cacheControl.includes("private") || cacheControl.includes("no-store")) {
+    headers.delete("cache-control");
+  }
+  const pragma = String(headers.get("pragma") || "").toLowerCase();
+  if (pragma.includes("no-cache")) {
+    headers.delete("pragma");
+  }
 };
 
 const roundMs = (value) => {
@@ -270,7 +282,11 @@ export default {
           originMs: 0,
           totalMs: roundMs(performance.now() - workerStartedMs),
         });
-        return addCors(cached, stationboardHeaders("HIT", cacheKey.url, 0));
+        return addCors(cached, {
+          ...stationboardHeaders("HIT", cacheKey.url, 0),
+          "Cache-Control": STATIONBOARD_CLIENT_CACHE_CONTROL,
+          Pragma: "no-cache",
+        });
       }
 
       cacheDebugLog(env, "stationboard miss", { key: cacheKey.url, requestId });
@@ -301,18 +317,26 @@ export default {
         return addCors(res, stationboardHeaders("BYPASS", cacheKey.url, originMs));
       }
 
-      const proxyRes = new Response(res.body, res);
-      proxyRes.headers.set("Cache-Control", STATIONBOARD_CLIENT_CACHE_CONTROL);
-      proxyRes.headers.set("Pragma", "no-cache");
-      proxyRes.headers.set(
+      const baseRes = new Response(res.body, res);
+      stripOriginAntiCacheHeaders(baseRes.headers);
+      baseRes.headers.set("Cache-Control", STATIONBOARD_EDGE_CACHE_CONTROL);
+      baseRes.headers.set(
         "CDN-Cache-Control",
         `public, max-age=${STATIONBOARD_CACHE_TTL_SEC}`
       );
-      proxyRes.headers.set("Access-Control-Allow-Origin", "*");
+      baseRes.headers.set(
+        "Cloudflare-CDN-Cache-Control",
+        `public, max-age=${STATIONBOARD_CACHE_TTL_SEC}`
+      );
+      baseRes.headers.set("Access-Control-Allow-Origin", "*");
       const responseHeaders = stationboardHeaders("MISS", cacheKey.url, originMs);
       for (const [key, value] of Object.entries(responseHeaders)) {
-        if (value !== "") proxyRes.headers.set(key, String(value));
+        if (value !== "") baseRes.headers.set(key, String(value));
       }
+
+      const body = await baseRes.arrayBuffer();
+      const cacheRes = new Response(body, baseRes);
+      const clientRes = new Response(body, baseRes);
 
       logStationboardTiming(env, {
         requestId,
@@ -322,8 +346,12 @@ export default {
         originMs: roundMs(originMs),
         totalMs: roundMs(performance.now() - workerStartedMs),
       });
-      ctx.waitUntil(cache.put(cacheKey, proxyRes.clone()));
-      return proxyRes;
+      ctx.waitUntil(cache.put(cacheKey, cacheRes));
+      return addCors(clientRes, {
+        ...responseHeaders,
+        "Cache-Control": STATIONBOARD_CLIENT_CACHE_CONTROL,
+        Pragma: "no-cache",
+      });
     }
 
     // All other requests (API routes + static assets + HTML) → RT_BACKEND_ORIGIN.
