@@ -13,7 +13,6 @@ and `rtMetaReason`).
 - Strips origin anti-cache headers (`Cache-Control: private/no-store`, `Pragma: no-cache`) before caching.
 - Caches normalized stationboard responses at the edge with cacheable headers (`Cache-Control: public, max-age=0, s-maxage=15`, `CDN-Cache-Control: public, max-age=15`, `Cloudflare-CDN-Cache-Control: public, max-age=15`).
 - Returns browser no-store headers on client responses (`Cache-Control: private, no-store, max-age=0, must-revalidate`, `Pragma: no-cache`) to avoid local stale JSON reuse.
-- On MISS, buffers the upstream JSON once and creates separate cache/client responses to avoid stream-consumption edge cases.
 
 ## Files
 - `realtime_api/edge/worker.js`: Worker logic.

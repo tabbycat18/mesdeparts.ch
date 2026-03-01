@@ -317,18 +317,18 @@ export default {
         return addCors(res, stationboardHeaders("BYPASS", cacheKey.url, originMs));
       }
 
-      const baseRes = new Response(res.body, res);
-      stripOriginAntiCacheHeaders(baseRes.headers);
-      baseRes.headers.set("Cache-Control", STATIONBOARD_EDGE_CACHE_CONTROL);
-      baseRes.headers.set(
+      const proxyRes = new Response(res.body, res);
+      stripOriginAntiCacheHeaders(proxyRes.headers);
+      proxyRes.headers.set("Cache-Control", STATIONBOARD_EDGE_CACHE_CONTROL);
+      proxyRes.headers.set(
         "CDN-Cache-Control",
         `public, max-age=${STATIONBOARD_CACHE_TTL_SEC}`
       );
-      baseRes.headers.set(
+      proxyRes.headers.set(
         "Cloudflare-CDN-Cache-Control",
         `public, max-age=${STATIONBOARD_CACHE_TTL_SEC}`
       );
-      baseRes.headers.set("Access-Control-Allow-Origin", "*");
+      proxyRes.headers.set("Access-Control-Allow-Origin", "*");
       const responseHeaders = stationboardHeaders("MISS", cacheKey.url, originMs);
       for (const [key, value] of Object.entries(responseHeaders)) {
         if (value !== "") baseRes.headers.set(key, String(value));
@@ -346,8 +346,8 @@ export default {
         originMs: roundMs(originMs),
         totalMs: roundMs(performance.now() - workerStartedMs),
       });
-      ctx.waitUntil(cache.put(cacheKey, cacheRes));
-      return addCors(clientRes, {
+      ctx.waitUntil(cache.put(cacheKey, proxyRes.clone()));
+      return addCors(proxyRes, {
         ...responseHeaders,
         "Cache-Control": STATIONBOARD_CLIENT_CACHE_CONTROL,
         Pragma: "no-cache",
