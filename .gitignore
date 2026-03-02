@@ -1,0 +1,34 @@
+venv/
+__pycache__/
+.DS_Store
+node_modules/
+
+# Backend/runtime artifacts
+realtime_api/backend/node_modules/
+realtime_api/backend/.env
+realtime_api/backend/gtfs-rt.pb
+realtime_api/backend/gtfs-rt.json
+dev-artifacts/
+gtfs-rt.*
+*.pb
+*.zip
+*.csv
+
+# Large GTFS data snapshots (local only)
+realtime_api/data/gtfs-static/
+realtime_api/data/**/*.csv
+realtime_api/data/**/*.zip
+!realtime_api/data/README.md
+!realtime_api/data/gtfs-static/README.md
+
+realtime_api/data/gtfs-static-OLD/
+
+# iOS local artifacts
+ios/**/.build/
+ios/**/.swiftpm/
+ios/**/DerivedData/
+ios/**/*.xcworkspace/xcuserdata/
+ios/**/*.xcodeproj/xcuserdata/
+ios/**/*.xcuserdatad/
+ios/**/.DS_Store
+mesdeparts-public-backup.git/
