@@ -1,14 +1,14 @@
 # FAQ
 
-## What is MesDeparts?
+## What is mesdeparts.ch?
 
-MesDeparts is a Swiss public-transport departures project with a focus on a clear, realtime departure-board experience.
+mesdeparts.ch is a Swiss public-transport departures project with a focus on a clear, realtime departure-board experience.
 
 ## What does this repository contain?
 
 This repo is the public landing page and documentation home for the project.
 
-## Is MesDeparts open source?
+## Is mesdeparts.ch open source?
 
 Some parts of the project are public. The legacy client is open source, but the current production stack is not public.
 
@@ -22,7 +22,7 @@ The legacy repo contains the open-source legacy client: https://github.com/tabby
 
 ## Is the live service the same as this public repo?
 
-The live service is the public face of MesDeparts. This repo documents the project, but it does not contain the full private production system.
+The live service is the public face of mesdeparts.ch. This repo documents the project, but it does not contain the full private production system.
 
 ## Can I contribute?
 

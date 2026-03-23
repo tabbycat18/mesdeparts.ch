@@ -1,6 +1,6 @@
-# MesDeparts
+# mesdeparts.ch
 
-MesDeparts is a Swiss public-transport departures project focused on a clear, realtime departure-board experience.
+mesdeparts.ch is a Swiss public-transport departures project focused on a clear, realtime departure-board experience.
 
 This repository is the public landing page and documentation home for the project. It is not the full private production system, and it intentionally does not publish proprietary backend, deployment, or operational details.
 

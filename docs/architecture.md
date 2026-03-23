@@ -1,10 +1,10 @@
 # Architecture
 
-This page gives a high-level public view of the MesDeparts system.
+This page gives a high-level public view of the mesdeparts.ch system.
 
 ## Overview
 
-MesDeparts presents public-transport departures through a browser-based experience backed by a service layer and public transport data sources. This page explains the public shape of the system, not the private implementation.
+mesdeparts.ch presents public-transport departures through a browser-based experience backed by a service layer and public transport data sources. This page explains the public shape of the system, not the private implementation.
 
 ## Main public-facing components
 
@@ -22,7 +22,7 @@ MesDeparts presents public-transport departures through a browser-based experien
 
 ## What this public repo represents
 
-This repo is the public documentation home for the project. It reflects the public-facing shape of MesDeparts, but it is not the full private production system.
+This repo is the public documentation home for the project. It reflects the public-facing shape of mesdeparts.ch, but it is not the full private production system.
 
 ## What is intentionally not documented here
 

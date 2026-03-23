@@ -1,6 +1,6 @@
 All Rights Reserved (Community Documentation)
 
-Copyright (c) 2026 MesDeparts
+Copyright (c) 2026 mesdeparts.ch
 
 Except where otherwise stated, the content in this repository is provided for
 community information purposes only.
