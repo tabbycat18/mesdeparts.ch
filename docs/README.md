@@ -1,8 +1,10 @@
-# Community Docs
+# Public Docs
 
-This folder contains community-facing documentation for MesDeparts.
+This folder contains public-facing documentation for MesDeparts.
 
-Planned additions:
-- FAQ
-- roadmap
-- screenshots
+It is intentionally limited to product-level and high-level repository information. Proprietary backend logic, operational internals, deployment details, and debug surfaces are excluded.
+
+## Contents
+
+- [FAQ](faq.md)
+- [Architecture](architecture.md)

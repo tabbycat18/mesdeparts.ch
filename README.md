@@ -1,31 +1,43 @@
-# MesDeparts Community
+# MesDeparts
 
-MesDeparts is a Swiss public-transport departures project. This repository is the
-community landing page and pointers to the active codebases.
+MesDeparts is a Swiss public-transport departures project focused on a clear, realtime departure-board experience.
 
-## What this project is
+This repository is the public landing page and documentation home for the project. It is not the full private production system, and it intentionally does not publish proprietary backend, deployment, or operational details.
 
-- A fast departures board for Swiss public transport with a focus on clarity and realtime.
-- Live service: https://mesdeparts.ch
+## What this repo contains
 
-## Repositories
+- Public project overview
+- Public documentation for the repo and product
+- A safe high-level view of the system
+- Security and contact paths for public readers
 
-- Legacy open-source code (Apache-2.0): https://github.com/tabbycat18/mesdeparts.ch-legacy
-  - Legacy client (static web UI) + optional legacy worker proxy.
-- Pro / RT edition (proprietary): available on request
-  - RT backend, modern frontend, edge worker, and deployment stack.
+Live service: https://mesdeparts.ch
 
-## Pro / RT edition
+## What is public here
 
-The production RT backend, modern frontend, edge worker, and deployment stack are proprietary.
-For licensing or partnership requests: tabbycat18@proton.me
+- Product-level information
+- Repo-level documentation
+- High-level architecture
+- Public contact and security reporting paths
 
-## How to try it
+## What is not public
 
-- Open https://mesdeparts.ch
-- You can also use the legacy client from the legacy repo if you want a self-hosted static UI.
+- Proprietary backend logic
+- Operational workflows
+- Deployment internals
+- Debug surfaces
+- Secrets and private config details
 
-## Contributing
+## Who this repo is for
 
-Community feedback and collaboration are welcome through GitHub Issues and Discussions.
-If you have legacy fixes or documentation improvements, open a PR in the legacy repo.
+- Users who want to understand the project
+- Contributors who want to make public-facing improvements
+- Technical readers who want a safe high-level view
+
+## Where to go next
+
+- [Docs index](docs/README.md)
+- [FAQ](docs/faq.md)
+- [Architecture](docs/architecture.md)
+- [Security policy](SECURITY.md)
+- Legacy open-source client: https://github.com/tabbycat18/mesdeparts.ch-legacy
