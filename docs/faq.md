@@ -10,11 +10,11 @@ This repo is the public landing page and documentation home for the project.
 
 ## Is MesDeparts open source?
 
-Some parts of the project are public. The legacy client is open source, while the current private production stack is not fully public.
+Some parts of the project are public. The legacy client is open source, but the current production stack is not public.
 
 ## What is not included here?
 
-This repo does not publish proprietary backend logic, deployment internals, operational workflows, debug surfaces, or private configuration details.
+This repo keeps proprietary backend, deployment, operational, debug, and private config details out of public view.
 
 ## What is the legacy repo?
 
@@ -26,11 +26,11 @@ The live service is the public face of MesDeparts. This repo documents the proje
 
 ## Can I contribute?
 
-Yes, if the contribution is public-facing and fits this repo or the legacy client.
+Public-facing improvements are welcome if they fit this repo or the legacy client.
 
 ## How do I report a bug or security issue?
 
-Use the public issue tracker for general feedback. For security issues, follow [SECURITY.md](../SECURITY.md) and report privately.
+For non-security feedback, use the public issue tracker when the topic belongs in this repo. For security issues, follow [SECURITY.md](../SECURITY.md) and report privately.
 
 ## Can I self-host this?
 
